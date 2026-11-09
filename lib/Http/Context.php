@@ -39,7 +39,23 @@ final class Context
             $decoded = json_decode((string) file_get_contents('php://input', false, null, 0, 65536), true);
             $post = is_array($decoded) ? array_filter($decoded, 'is_scalar') : [];
         }
-        return new self($dir, CourseConfig::load($dir), $_SERVER, $_GET, $post, time());
+        return new self($dir, CourseConfig::load($dir), $_SERVER, $_GET, $post, self::clock());
+    }
+
+    /**
+     * The time.  Tests running PHP's built-in server may set it through the file named
+     * in the environment variable CAL6_TEST_CLOCK (T-3); no other server can.
+     */
+    private static function clock(): int
+    {
+        $file = getenv('CAL6_TEST_CLOCK');
+        if (PHP_SAPI === 'cli-server' && is_string($file) && $file !== '' && is_file($file)) {
+            $time = trim((string) file_get_contents($file));
+            if (preg_match('/^\d+$/', $time)) {
+                return (int) $time;
+            }
+        }
+        return time();
     }
 
     public function method(): string
