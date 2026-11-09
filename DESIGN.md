@@ -69,15 +69,106 @@ directory per event, named `<sort>.<Title>` and ordered by natural sort (`01.Int
 **Configuration files are INI (Decided)**, so instructors can edit them; JSON is used only
 between the server and the browser.
 
+### Samples of every `.ini` file
+
+One course, AB123, used in every sample below and in the JSON samples of the endpoints:
+
+| File | Sample |
+|---|---|
+| `config/config.ini` | below |
+| `config/dates.ini` | below |
+| `config/paths.ini` | below |
+| `config/virtual.ini` | below |
+| `config/duplicate.ini` | below |
+| `config/default.ini` | under "Access model" |
+| `config/auth/<username>.ini` | under "Access model" (a user and an instructor) |
+
+Common to all of them: `key = value` lines, `[sections]`, `;` and `#` comments, values unquoted.
+Dates and times follow "Dates, times and windows"; event targets follow `default.ini` (`lab_6`,
+ranges `class_20..27`, lists `class_6,8,22`); in every file **the later line wins**.
+
+### `config.ini` (Decided: the main configuration; proposed keys)
+
+```ini
+[course]
+number     = AB123
+name       = Web and Internet Programming
+timezone   = America/New_York
+secret     = (64 hex digits: php -r 'echo bin2hex(random_bytes(32));')  ; for keys; never sent
+
+[semester]
+start      = 2026-08-24
+end        = 2026-12-18
+weekends   = no                    ; yes: Saturday and Sunday can hold events too
+
+[schedule]                         ; the weekly pattern: type and meeting time
+mon        = class 08:00-08:50
+tue        = lab 13:30-15:20
+wed        = class 08:00-08:50
+fri        = class 08:00-08:50
+
+[types]                            ; event types, in menu order: directory = label
+class      = Class
+lab        = Lab
+project    = Project
+exam       = Exam
+
+[boxes]                            ; box = file names that fill it (first found wins) | label
+title         = index.html, index.md       | Lecture
+notes         = notes.html, notes.md       | Notes
+homework      = homework.html, homework.md | Homework
+homework-solution = homework-solution.html | Homework solution
+lab-solution  = lab-solution.html          | Solution
+slides        = slides.pdf, slides.pptx    | Slides
+instructor    = instructor.html            | Instructor
+
+[access]
+lockdown   = 2026-12-18 17:00      ; see default.ini (R12); optional "until ..."
+postmeeting = end                  ; <postmeeting>: end (of the meeting) | HH:MM | off
+allowed_paths = /home/faculty/username/shared   ; outside the course, for links and virtual.ini
+
+[users]
+valid      = 2026-08-24 until 2026-12-18 23:59  ; the default window for auth/*.ini
+session    = 8h                    ; a login lasts at most this long
+login_attempts = 5 per 15m         ; failed logins per address and per username
+
+[replace]                          ; values for <replace value="...">
+classyear  = 27
+office     = Michelson 342
+```
+
+### `dates.ini` (Decided: days that differ from the weekly schedule; proposed syntax)
+
+Each line is a window (a day, or several) and what happens then, optionally with a label after
+`|`:
+
+```ini
+[days]
+2026-09-07                  = holiday                    | Labor Day
+2026-10-12                  = holiday                    | Columbus Day
+2026-10-13                  = mon                        | Monday schedule   ; Tuesday runs Monday's
+2026-11-25 until 2026-11-27 = holiday                    | Thanksgiving
+2026-11-11                  = none                                          ; no events, no label
+2026-12-02                  = class 08:00-08:50, exam 13:30-15:20           ; that day's own schedule
+2026-12-04 12:00 until 2026-12-04 23:59 = none           | Afternoon cancelled
+```
+
+- `holiday` / `none`: no events that day (`holiday` is shown as such).
+- `mon` ... `sun`: that day follows another weekday's schedule.
+- `type HH:MM-HH:MM, ...`: that day's own meetings.
+- A window with times affects only meetings that start inside it.
+- Events are placed on the days that have meetings of their type, in order; a holiday moves the
+  following events of that type to the next meeting.
+
 ### `paths.ini` (Decided: the course's own pages)
 
 Pages outside the events, by name, relative to the course directory:
 
 ```ini
-[pages]
-home      = home.html
-resources = resources.html
-policy    = syllabus.html        ; shown as "Policy" / the syllabus
+[pages]                          ; name = file, relative to the course | menu label
+home      = home.html            | Home        ; the start page
+resources = resources.html       | Resources
+policy    = syllabus.html        | Syllabus
 ; more named pages later
 ```
 
@@ -462,6 +553,8 @@ Users, instructors included, are created by hand for now (Decided): copy a file 
 hash made with `php -r 'echo password_hash("secret", PASSWORD_DEFAULT), "\n";'`. A tool is a
 future enhancement.
 
+A user, `config/auth/jdoe.ini`:
+
 ```ini
 password_hash = $2y$12$...          ; password_hash(), never plain text
 instructor    = false               ; true: complete access (every file, always, and <inst>)
@@ -473,6 +566,14 @@ lab_6/lab-solution = +7 08:00 until +7 17:00             ; relative to lab 6, li
 lab/lab-solution   = 2026-10-15 13:30 until 2026-10-22   ; an extension, with its own window
 exam_2             = 2026-11-06 08:00 until 2026-11-06 11:50   ; extra time
 class_20..27       = always                             ; ranges work in grants too
+```
+
+An instructor, `config/auth/kenney.ini`:
+
+```ini
+password_hash = $2y$12$Wq0...
+instructor    = true
+valid         = always              ; not limited to the semester
 ```
 
 An instructor is the same kind of file with `instructor = true` (Decided); grants are then not
