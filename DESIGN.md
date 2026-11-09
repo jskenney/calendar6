@@ -206,6 +206,9 @@ Each line is a window (a day, or several) and what happens then, optionally with
 2026-10-12                  = holiday             | Columbus Day
 2026-10-13                  = mon                 | Monday schedule
 2026-10-14                  = lab                 | Lab day
+;2026-10-15                 = lab, class          ; the next lab and the next class
+;2026-10-16                 = class, class, class ; three classes in one day
+;2026-10-19                 = class, lab          ; a class before the lab
 2026-11-11                  = holiday             | Veterans Day
 2026-11-25 until 2026-11-27 = holiday             | Thanksgiving
 ;2026-12-03                 = period 2_hour_delay | 2-hour delay (snow)
@@ -213,13 +216,22 @@ Each line is a window (a day, or several) and what happens then, optionally with
 ```
 
 - `holiday` / `none`: no events that day (`holiday` is shown as such).
-- `class`, `lab`, ... (Decided): that day is that type of day, overriding `config.ini`'s
-  `[schedule]` (`2026-10-14 = lab`).
+- `class`, `lab`, ... (Decided): that day's events, overriding `config.ini`'s `[schedule]`
+  (`2026-10-14 = lab`). Several are allowed (Decided), including the same type more than once;
+  they are placed in the order written, each taking the next event of its type, and are shown in
+  that order:
+  - `lab, class`: the next lab, then the next class;
+  - `class, class, class`: the next three classes;
+  - `class, lab`: a class before the lab.
+
+  All events of the day share its date, so relative rules (`+7`) and `start` / `end` are the same
+  for each of them.
 - `mon` ... `sun`: that day follows another weekday's schedule (its type, and the sections that
   meet on that weekday).
 - `period <schedule>`: a period schedule from `periods.ini` for the day (times change, lessons do
   not).
-- A type or weekday can be combined with a period schedule: `mon, period early`.
+- Types or a weekday (not both) can be combined with a period schedule: `mon, period early`,
+  `class, lab, period 2_hour_delay`.
 - A window with times affects only meetings that start inside it.
 - Events are placed on the days that have meetings of their type, in order; a holiday moves the
   following events of that type to the next meeting.
