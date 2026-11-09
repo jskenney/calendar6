@@ -150,6 +150,20 @@ INI;
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/LAB-SOLUTION-fig.png', $now), 'and its asset');
     }
 
+    public function testAFileSharedByTwoPagesFollowsEachPage(): void
+    {
+        $course = $this->load([
+            'config/paths.ini' => "[pages]\nhome = pages/home.html\nresources = pages/resources.html\n",
+            'config/default.ini' => "page/home = never\n",
+            'pages/home.html' => '<img src="logo.png">',
+            'pages/resources.html' => '<img src="logo.png">',
+            'pages/logo.png' => 'P',
+        ]);
+        $now = self::now($course);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'page/home/pages/logo.png', $now), 'hidden with the hidden page');
+        $this->assertTrue(self::sees($course, Viewer::anonymous(), 'page/resources/pages/logo.png', $now), 'visible with the visible page (L-38)');
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);

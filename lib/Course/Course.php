@@ -154,8 +154,9 @@ final class Course
     private function hasOwnPlace(string $real): bool
     {
         foreach ($this->byRealPath[$real] ?? [] as $key) {
-            if ($this->places[$key]->assetOf === null) {
-                return true;
+            $place = $this->places[$key];
+            if ($place->assetOf === null && !($place->asset && $place->event === null)) {
+                return true; // not a page's asset either: those are per page too
             }
         }
         return false;
@@ -229,9 +230,10 @@ final class Course
                     continue;
                 }
                 $seen[$target] = true;
-                if (isset($this->byRealPath[$target])) {
+                if ($this->hasOwnPlace($target)) {
                     continue; // an event's file or a page of its own
                 }
+                // one key per linking page, so each page's own rule decides it (L-38)
                 $relative = $this->boundary->relative($target);
                 $file = new ContentFile($relative, $target, (int) filesize($target), (int) filemtime($target), false);
                 $place = new Place(Keys::make($this->config->secret, "page/$name/$relative"), $file, null, $name, null, true);
