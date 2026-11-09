@@ -15,7 +15,9 @@ course_directory/
 ## Status
 
 The PHP endpoints are implemented: `php/config.php`, `php/calendar.php`, `php/get.php`,
-`php/html.php` and `php/auth.php`. The browser front end (`app/`) is not started yet.
+`php/html.php` and `php/auth.php`. The browser front end (`app/`) is not started yet, so the
+template's `index.html` leads nowhere for now. Code and security findings are tracked in
+[REVIEW.md](REVIEW.md); deployment notes are under "Deploying" in DESIGN.md.
 
 ## Tests
 

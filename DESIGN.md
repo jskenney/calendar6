@@ -137,7 +137,9 @@ the endpoints:
 | `config/default.ini` | under "Access model" |
 | `config/auth/<username>.ini` | under "Access model" (a user and an instructor) |
 
-Common to all of them: `key = value` lines, `[sections]`, `;` and `#` comments, values unquoted.
+Common to all of them: `key = value` lines, `[sections]`, values unquoted. **Comments:** a line
+that starts with `;` or `#` is a comment; at the end of a line, `;` starts a comment only after a
+space (`period = normal ; the default`); `#` is never a comment at the end of a line.
 Dates and times follow "Dates, times and windows"; event targets follow `default.ini` (`lab_6`,
 ranges `class_20..27`, lists `class_6,8,22`); in every file **the later line wins**.
 
@@ -239,7 +241,8 @@ Each line is a window (a day, or several) and what happens then, optionally with
   not).
 - Types or a weekday (not both) can be combined with a period schedule: `mon, period early`,
   `class, lab, period 2_hour_delay`.
-- A window with times affects only meetings that start inside it.
+- A window with times is only allowed with `holiday` or `none`, and cancels the meetings whose
+  first section starts inside it; any other line with times is listed as a problem and ignored.
 - Events are placed on the days that have meetings of their type, in order; a holiday moves the
   following events of that type to the next meeting.
 
@@ -400,9 +403,10 @@ Proposed meaning:
   day it appears on). A grant for `class_5` covers every `same` repeat.
 - The source and copies are the same type (proposed); a copy of a copy is not allowed.
 
-Proposed: each page gets a key like any file, is served by `html.php`, appears in the menus that
-`config.php` returns, and can be targeted by rules and grants as `page/<name>`
-(`page/policy = 2026-08-24 08:00`); with no rule it is visible (R8).
+Pages from `paths.ini` (Decided): each gets a key like any file, is served by `html.php`, is
+listed in `calendar.php`'s `pages` when visible, and is targeted by rules and grants as
+`page/<name>` (`page/policy = 2026-08-24 08:00`); with no rule it is visible (R8). The files a
+page links to get keys too, decided by the page's rule (see `html.php`).
 
 ## The PHP endpoints
 
@@ -423,7 +427,7 @@ session by `auth.php`. Requests that change something (`auth.php`, a lock code s
 |---|---|---|
 | `username` | to log in | the name of a file in `config/auth/` (letters, digits, `.`, `_`, `-` only) |
 | `password` | to log in | checked with `password_verify` against `password_hash` |
-| `csrf` | always | the token from `config.php` |
+| `csrf` | always | the token from `config.php?csrf=1` |
 
 No `username`/`password`: log out. Any method other than POST: `405`.
 
@@ -445,14 +449,22 @@ No `username`/`password`: log out. Any method other than POST: `405`.
   back. Grants are not listed (they could name hidden files); `calendar.php` shows their effect.
 - Logged out: `200`, the second form (also a new token).
 - Wrong password, unknown user, or outside the account's `valid` window: `401`, the same message
-  for all three. Too many failures: `429` with `Retry-After`. Bad or missing token: `403`.
-- Hardening: cookie flags `HttpOnly`, `Secure` (on HTTPS), `SameSite=Strict`; rate limiting per
-  address and per username; a session lifetime from `config.ini`; the login ends by itself when
-  the `valid` window does.
+  for all three (an unknown user costs a password hash, so it takes as long). Too many attempts:
+  `429` with `Retry-After`. Bad or missing token: `403`. The limiter can not keep count (its
+  private directory is unusable): `503`, nobody can log in until it is fixed (fail closed).
+- Attempts are limited per address and username (`[users] login_attempts`, 5 per 15 minutes in
+  the template), per address (four times that) and per username (ten times that), so guessing
+  from one address can not lock an instructor out. Behind a reverse proxy, list it in
+  `[server] trusted_proxies` so the client's address is used (see "Deploying").
+- Hardening: cookie flags `HttpOnly`, `Secure` (on HTTPS, also behind a trusted proxy that says
+  so), `SameSite=Strict`; a session lifetime from `config.ini`; the login ends by itself when the
+  `valid` window does.
 
 ### `config.php` (Decided: the site config without secrets)
 
-**Inputs:** `GET`, none.
+**Inputs:** `GET`. `csrf=1` (optional): start a session and include its CSRF token, for a login
+form. Without it, no session is created (anonymous visitors leave no session files), and `csrf`
+is `null` unless the browser already has a session.
 
 **Output:** what the front end needs to draw the site. It changes only when `config/*.ini`
 changes, apart from `viewer` and `csrf`.
@@ -580,17 +592,20 @@ never sent.
 |---|---|---|
 | `file` | yes | the key of a page (`.html`, `.htm`, `.md`), from `calendar.php` or a rewritten link |
 | `full=1` | no | a whole HTML document (the site's CSS, MathJax, highlight.js) for a new tab or printing, instead of the fragment the front end inserts |
-| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session and the page comes back unlocked. Rate limited like logins |
+| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The answer is `303` back to the page (`GET`), so a reload does not resend it. Rate limited per address |
 | any other parameter | no | values for `<url value="...">` tags (HTML-escaped, remembered in the session, as v4) |
 
 **Output:** `text/html; charset=utf-8`, by default an HTML **fragment** (the page's body). The
 same key lookup and access check as `get.php`; unknown or not allowed: `404`. Then the page is
 processed:
 
-- links to files of the same event are rewritten to keys, as Calendar 4 does: `<img src="pic.png">`
-  becomes `php/get.php?file=KEY`, `<a href="notes.html">` becomes the front end's route
-  `#/view/KEY`, `<a href="data.zip">` becomes `php/get.php?file=KEY`, and `<source src>`,
-  `<video poster>` the same; links to files the viewer may not see are left as plain text;
+- links to files are rewritten to keys, as Calendar 4 does: `<img src="pic.png">` becomes
+  `/<course>/calendar/php/get.php?file=KEY`, `<a href="notes.html">` becomes the front end's
+  route `#/view/KEY`, `<a href="data.zip">`, `<script src>`, `<link href>`, `<source src>`,
+  `<video poster>` and each `srcset` candidate become `get.php` URLs; links to files the viewer
+  may not see keep their text but lose their target (`data-cal6-hidden="1"`);
+- files that a `paths.ini` page links to (its images, style sheets, the pages next to it) get
+  keys of their own, decided by that page's rule;
 - every Calendar 4 tag except `<ace>` is processed on the server (see "Tags");
 - `<a name>` anchors (and `##` headings in Markdown) get ids; the front end builds the page's menu
   from them, as v4 did on the server;
@@ -609,7 +624,7 @@ All are handled in `html.php`, so hidden content never reaches the browser:
 | `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times) |
 | `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it) |
 | `<host server="name">` ... `</host>` | shown only when served by that server |
-| `<inject src="file">` | another file of the event, processed as part of the page |
+| `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`) |
 | `<codeinject src="file">` | another file, escaped so it shows as source code |
 | `<replace value="name">` | a value from `config.ini` (`[replace]`) or a built-in one (`type`, `ctype`, `event`, `zevent`, `title`, `course`, `coursename`) |
 | `<url value="name" default="x">` | a value from the page's URL, **HTML-escaped** (remembered in the session, as v4) |
@@ -723,7 +738,17 @@ Decided:
   `always`. Precedence still runs, so in the example `class_1 = always` keeps class 1 open,
   `class/notes = always` keeps every class's notes open, and `class/instructor = never` still
   hides instructor material in class 1. Users' grants are not affected (they have their own
-  `valid` window).
+  `valid` window). **Pages count too:** a page with no rule (home, the syllabus) disappears
+  during the lockdown unless `default.ini` says `page/home = always`. An unreadable lockdown
+  value locks at once (and is listed for instructors).
+- **A line whose time can not be read hides its target** (fail closed): `exam = nver` hides the
+  exams and is listed for instructors; it never releases anything. A line whose target can not
+  be read (`class_9..2`) is only listed.
+- **Box assets:** a file named after a box's file, followed by `-`, `_`, `.` or `/`, follows that
+  box's rule instead of the event's: with `lab-solution.html` in the `lab-solution` box,
+  `lab-solution-figure.png` and `lab-solution/data.csv` stay hidden as long as the solution does.
+  The longest matching name wins (`homework-solution-1.png` goes with `homework-solution.html`,
+  not `homework.html`). Other files follow the event's rule, as in v4.
 
 Notes:
 
@@ -789,14 +814,18 @@ Because the precedence is the same, a grant behaves like the rule it replaces:
 This matches the first notes, which list lab 6 **and** its solution as separate grants.
 Complete access is not a grant: it is `instructor = true`.
 
-## Keys (Proposed)
+## Keys (Decided)
 
 A key identifies a file **in a place**; it is **not** a capability, because `get.php` and
-`html.php` check access on every request. Proposed: `HMAC-SHA256(secret, "class_6/notes.html")`
+`html.php` check access on every request. `HMAC-SHA256(secret, "class_6/notes.html")`
 (the event as the calendar shows it, plus the name in it; `page/policy` for pages), shortened.
 So keys are stable (bookmarks keep working), hidden file names can not be guessed or
 enumerated, and a file that appears in several places (a virtual file, a duplicated event) has
 one key per place, each checked with that place's rules. The secret lives in `config.ini`.
+
+Keys change when the place changes: a `numbered` copy in `duplicate.ini` renumbers the events
+after it (directory 6 becomes class 7), so their keys (and bookmarks to them) change; changing
+the secret changes every key. Holidays do not renumber events, so they do not change keys.
 
 ## Finding the course (Decided)
 
@@ -814,10 +843,26 @@ pointer to any one course. Instead:
 3. Its configuration is always `<course>/config/`, and its material is in `<course>/class/`,
    `<course>/lab/`, ... (the types listed in `config.ini`).
 4. Because `config/` and the material are inside the web root, `config/.htaccess` denies all, and
-   each material directory needs the same (proposed: `calendar/` ships an `.htaccess` template,
-   and `config.php` reports to the instructor when a material file can be fetched directly).
+   each material directory needs the same; the template ships them (see "Deploying").
 
-## The front end (Proposed)
+## The front end (Proposed; not built yet)
+
+What the endpoints expect from it (the contract):
+
+- **Routes:** `html.php` writes links to other pages as `#/view/KEY`; the front end shows that page
+  (`html.php?file=KEY`) when the route changes. Links to other files are absolute `get.php` URLs
+  and work as they are.
+- **Hidden links:** `<a data-cal6-hidden="1">` (no `href`) is a link to something the viewer may
+  not see; show it as plain text.
+- **Lock forms:** `<form class="cal6-lock" method="post" action="...html.php?file=KEY">` posts
+  `lock` and `csrf`; submit it with `fetch()` (it answers `303` to the page) and replace the page
+  with the result, instead of letting the browser leave the app.
+- **Scripts:** inserted pages keep their `<script>` elements; run them after insertion, in
+  document order.
+- **Login:** get a token from `config.php?csrf=1`, post to `auth.php`, keep the new token it
+  returns, then reload `calendar.php`.
+
+The plan:
 
 - `index.html` in the course (a link to `calendar/app/index.html`, or a two-line file) loads
   `app.js`, which fetches `config.php` and `calendar.php` and draws the calendar, menus and
@@ -827,6 +872,29 @@ pointer to any one course. Instead:
   run in document order (external ones loaded first, as a browser would), and MathJax and
   highlight.js run over the new content. Scripts are passed through unchanged (Decided).
 - After `auth.php`, the app reloads `calendar.php`, so the view matches the new viewer.
+
+## Deploying (Decided)
+
+- **Apache:** keep the `.htaccess` files the template ships in `config/`, `pages/`, `shared/` and
+  every event-type directory (add one to each new type), and allow `.htaccess` overrides
+  (`AllowOverride AuthConfig` or `All`).
+- **nginx:** no `.htaccess`; deny the same directories in the server block, for example
+  `location ~ ^/AB123/(config|pages|shared|class|lab|exam|project)/ { deny all; }`, and pass only
+  `calendar/php/*.php` to PHP-FPM (`calendar/lib/` and `calendar/tests/` must not be reachable).
+- **Finding the course** relies on `SCRIPT_FILENAME` keeping the linked path; with PHP-FPM set it
+  from `$document_root$fastcgi_script_name` (not `$realpath_root`). If it is resolved, every
+  endpoint answers `500` instead of guessing.
+- **Reverse proxies:** list them in `config.ini` `[server] trusted_proxies`; only then are
+  `X-Forwarded-For` (the client's address, for rate limits) and `X-Forwarded-Proto` (HTTPS, for
+  the `Secure` cookie flag) believed.
+- **Sessions:** a login lasts `[users] session`; Calendar 6 sets PHP's `session.gc_maxlifetime`
+  to match and keeps the course's sessions in its private directory
+  (`<temp>/cal6-<uid>-<hash>/sessions`) when it can, so another application's cleanup does not
+  end them early.
+- **Shared hosting:** the private directory (sessions, caches, rate limits) must belong to the
+  PHP user and be closed to others, or Calendar 6 does not use it (logins are then refused, as a
+  safe default). Courses that run as the **same** PHP user can read each other's files anyway:
+  for real separation, run each faculty member's PHP as their own user (suEXEC, PHP-FPM pools).
 
 ## Security summary (Proposed)
 
@@ -851,10 +919,10 @@ Choices the code made where the design left room (change them here if they are w
 - **Finding the course:** the endpoints refuse to run (500) unless the script was reached as
   `course/calendar/php/...` and `course/calendar` resolves to the running code; `config.ini`
   must have a real `secret` (32+ characters), or nothing is served.
-- **Caching:** `calendar.php` caches each viewer's answer, keyed by a fingerprint of the course
-  directory (the names, sizes and modification times of everything in it except `calendar/`)
-  and valid until `next_change`. On a miss the course model is rebuilt; caching the model itself
-  is left for later if it is ever needed. The cache and rate limiter live in
+- **Caching:** a fingerprint of the course directory (the names, sizes and modification times of
+  everything in it except `calendar/`, following links only while they stay inside) keys two
+  caches: the built course model (shared by every endpoint, signed with the course secret) and
+  `calendar.php`'s answer per viewer (valid until `next_change`). Both live in
   `<temp>/cal6-<uid>-<hash of course path>/`, used only when that directory is ours and closed
   to others.
 - **Calendar:** event numbers follow the calendar slots; when a type runs out of directories its
@@ -866,17 +934,18 @@ Choices the code made where the design left room (change them here if they are w
   subdirectories (`img/pic.png`) get keys so pages can link to them.
 - **Keys:** 22 characters of base64url HMAC-SHA256.
 - **Sessions:** one cookie per course (`cal6_<hash>`, path = the course's URL), opened by
-  read-only endpoints only when the browser already has it; `config.php` creates it, because it
-  hands out the CSRF token.
+  read-only endpoints only when the browser already has it; created by `config.php?csrf=1`,
+  `auth.php`, and `html.php` for pages with `<lock>` or `<url>` tags.
 - **html.php:** links to pages become `#/view/KEY`, other files the absolute path
   `/<course>/calendar/php/get.php?file=KEY`; links to files the viewer may not see keep their
   text but lose their target (`data-cal6-hidden`); links to files that do not exist are left as
   written. `<student>` becomes `<details>`; `<ace>` shows its text in `<pre>`; `<lock>` becomes
-  a small form that posts the code (with the CSRF token) back to `html.php`; `<calphp>` runs after
+  a small form that posts the code (with the CSRF token) back to `html.php`; `<host>` matches the
+  server's host name or address, never the request's `Host` header; `<calphp>` runs after
   hidden sections are removed and its output is not processed. A Markdown page is converted
   first, then processed like HTML.
-- **auth.php:** the username is the file name in `config/auth/`; a missing account is checked
-  against a dummy hash so it takes as long as a wrong password.
+- **auth.php:** the username is the file name in `config/auth/`; a missing account costs a
+  password hash at the current default cost, so it takes as long as a wrong password.
 
 ## Decisions on the first open questions
 

@@ -10,7 +10,9 @@ course_directory/
 ├── class/, lab/, ...    one directory per event type, then <sort>.<event title>/
 ├── pages/               the pages named in config/paths.ini
 ├── shared/              files used by config/virtual.ini
-└── index.html           opens the calendar
+└── index.html           opens the calendar (the front end, calendar/app/, is not built yet:
+                         until it is, index.html leads nowhere; the endpoints in
+                         calendar/php/ already work)
 ```
 
 ## Starting a course
@@ -39,5 +41,8 @@ course_directory/
 
 All paths in the `.ini` files are relative to the course directory, and nothing outside it is
 ever served.
+
+On nginx, behind a reverse proxy, or on shared hosting, read "Deploying" in `../DESIGN.md`
+first (the `.htaccess` files only work on Apache).
 
 `config/periods.ini` holds the school's period schedules; keep it unless the periods change.
