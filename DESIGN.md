@@ -84,10 +84,10 @@ between the server and the browser.
 
 ### The course directory is the boundary (Decided)
 
-- **Everything is relative to the course directory.** Every path in every `.ini` file
-  (`paths.ini` pages, `virtual.ini` real files, `<inject>` / `<calphp>` sources are relative to
-  their page) is relative to `course_directory/`. Absolute paths and `..` are rejected (listed as
-  problems for the instructor).
+- **Every path in every `.ini` file is relative to `course_directory/`** (`paths.ini` pages,
+  `virtual.ini` real files). Absolute paths and `..` are rejected and listed as problems for the
+  instructor. (Paths inside pages, such as `<img src>`, `<inject src>` and `<calphp src>`, stay
+  relative to the page, as in v4, and are held to the same boundary.)
 - **Nothing outside the course directory is ever served or run.** Each path is resolved with
   `realpath()` (so symbolic links are followed) and must still be inside `course_directory/`;
   a link that leads outside is treated as missing. Calendar 4's `$ALLOWED_PATHS` (shared material
