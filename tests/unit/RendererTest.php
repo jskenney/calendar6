@@ -337,6 +337,10 @@ final class RendererTest extends TestCase
             'abrupt2' => '<!---> <inst>S3</inst>',
             'custom' => '<script-x> <inst>S4</inst> </script-x><style-guide><inst>S5</inst></style-guide>',
             'attribute' => '<img alt="<!--"> <inst>S6</inst> <img alt="-->"><a title="<script>"><inst>S7</inst></a><a title="</inst>"><inst>S8</inst></a>',
+            'apostrophe' => "<img alt=it's src=a.png><inst>S9</inst>",
+            'stray' => '<td width=50%"><inst>S10</inst></td><p data-x"y><inst>S11</inst></p> <p class="z">',
+            'unclosed-style' => '<style>p{}</stlye><inst>S12</inst><lock code="xyz">S13</lock>',
+            'unclosed-script' => '<script src="a.js"><inst>S14</inst>',
         ];
         $files = ['config/default.ini' => "class_1 = always\n"];
         foreach ($cases as $name => $html) {
@@ -345,7 +349,7 @@ final class RendererTest extends TestCase
         $course = $this->course($files);
         foreach ($cases as $name => $html) {
             $page = $this->render($course, "class_1/$name.html");
-            $this->assertSame(0, preg_match('/S[1-8]/', $page), "hidden as a browser would parse it (L-36): $name: " . $page);
+            $this->assertSame(0, preg_match('/S(?:[1-9]|1[0-4])\b|xyz/', $page), "hidden as a browser would parse it (L-36, H-5, M-27): $name: " . $page);
             $this->assertContains('END', $page, $name);
         }
     }

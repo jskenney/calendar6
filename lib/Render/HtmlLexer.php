@@ -6,8 +6,9 @@ namespace Cal6\Render;
 
 /**
  * A small, linear HTML lexer that follows the browser's rules where they matter for
- * hiding content (L-36): it skips quoted attribute values (so "<!--", "<script>" or
- * "</inst>" inside an attribute are not markup), ends abrupt comments ("<!-->",
+ * hiding content (L-36, H-5, M-27): it reads attributes as a browser does (a quote starts a
+ * value only after "=", so "<!--", "<script>" or "</inst>" inside a quoted value are not
+ * markup, and a stray quote elsewhere is just a character), ends abrupt comments ("<!-->",
  * "<!--->") where a browser does, treats "<!...>" and "<?...>" as a bogus comment up to
  * the first ">" (a CDATA section, which a browser would end there and show the rest of, is
  * one comment up to "]]>", so it is removed whole), and only treats <script> and <style> (the whole
@@ -18,6 +19,45 @@ namespace Cal6\Render;
  */
 final class HtmlLexer
 {
+    /**
+     * The end of an opening tag, reading attributes as a browser does (H-5): a quote starts a
+     * quoted value only right after "=" (and spaces); anywhere else it is part of an
+     * attribute name or an unquoted value, and the tag ends at the first ">" outside a quoted
+     * value.
+     */
+    private static function openingTagEnd(string $html, int $i): int
+    {
+        $length = strlen($html);
+        while ($i < $length) {
+            $i += strspn($html, " \t\n\r\f/", $i);                    // before an attribute name
+            if ($i >= $length || $html[$i] === '>') {
+                break;
+            }
+            $i += max(1, strcspn($html, " \t\n\r\f/>=", $i));         // the name (quotes included)
+            $i += strspn($html, " \t\n\r\f", $i);
+            if (($html[$i] ?? '') !== '=') {
+                continue;                                              // no value
+            }
+            $i++;
+            $i += strspn($html, " \t\n\r\f", $i);
+            $quote = $html[$i] ?? '';
+            if ($quote === '"' || $quote === "'") {
+                $close = strpos($html, $quote, $i + 1);
+                $i = $close === false ? $length : $close + 1;           // unterminated: to the end, as a browser
+            } else {
+                $i += strcspn($html, " \t\n\r\f>", $i);               // an unquoted value
+            }
+        }
+        return $i < $length ? $i + 1 : $length;
+    }
+
+    /** The end of a closing tag: the first ">". */
+    private static function closingTagEnd(string $html, int $i): int
+    {
+        $close = strpos($html, '>', $i);
+        return $close === false ? strlen($html) : $close + 1;
+    }
+
     /** @return list<array{0: string, 1: int, 2: int, 3?: string, 4?: bool}> */
     public static function scan(string $html): array
     {
@@ -63,17 +103,7 @@ final class HtmlLexer
             }
             $nameEnd = $nameStart + strspn($html, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:.', $nameStart);
             $name = strtolower(substr($html, $nameStart, $nameEnd - $nameStart));
-            $i = $nameEnd;
-            while ($i < $length) {
-                $skip = strcspn($html, $closing ? '>' : '>"\'', $i);
-                $i += $skip;
-                if ($i >= $length || $html[$i] === '>') {
-                    break;
-                }
-                $quote = strpos($html, $html[$i], $i + 1);  // a quoted value: "<" and ">" inside are text
-                $i = $quote === false ? $length : $quote + 1;
-            }
-            $end = $i < $length ? $i + 1 : $length;
+            $end = $closing ? self::closingTagEnd($html, $nameEnd) : self::openingTagEnd($html, $nameEnd);
             $tokens[] = ['tag', $lt, $end, $name, $closing];
             $pos = $end;
             if (!$closing && ($name === 'script' || $name === 'style')) {
@@ -85,9 +115,12 @@ final class HtmlLexer
                     }
                     $close += 2;
                 }
-                $rawEnd = $close === false ? $length : $close;
-                $tokens[] = ['raw', $end, $rawEnd];
-                $pos = $rawEnd;
+                if ($close !== false) {
+                    $tokens[] = ['raw', $end, $close];
+                    $pos = $close;
+                }
+                // never closed (a typo such as </stlye>): the rest is read as ordinary markup,
+                // so hidden blocks after it are still found and removed (fail closed, M-27)
             }
         }
         return $tokens;
