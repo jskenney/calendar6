@@ -179,7 +179,7 @@ final class CalendarBuilder
         }
     }
 
-    /** @return array<string, array<int, array{source: int, mode: string}>> type => slot => copy */
+    /** @return array<string, array<int, array{source: int, mode: string, line: int}>> type => slot => copy */
     private function duplicates(IniFile $ini): array
     {
         array_push($this->problems, ...$ini->problems);
@@ -197,7 +197,7 @@ final class CalendarBuilder
                     if ($type === null || strcasecmp($t[1], $m[1]) !== 0) {
                         throw new InvalidArgumentException("a copy must be the same type as its source: $target = $line->value");
                     }
-                    $copies[$type][(int) $t[2]] = ['source' => (int) $m[2], 'mode' => strtolower($m[3] ?? 'numbered')];
+                    $copies[$type][(int) $t[2]] = ['source' => (int) $m[2], 'mode' => strtolower($m[3] ?? 'numbered'), 'line' => $line->line];
                 }
             } catch (InvalidArgumentException $e) {
                 $this->problems[] = new Problem($e->getMessage(), 'duplicate.ini', $line->line);
@@ -206,7 +206,7 @@ final class CalendarBuilder
         return $copies;
     }
 
-    /** @param array<string, array<int, array{source: int, mode: string}>> $copies */
+    /** @param array<string, array<int, array{source: int, mode: string, line: int}>> $copies */
     private function place(array $copies): void
     {
         $slot = $nextDir = $nextNumber = [];
@@ -227,12 +227,12 @@ final class CalendarBuilder
                     // the source is the event with that number on the calendar (M-15)
                     $source = $copy['source'];
                     if (isset($copyNumbers[$type][$source])) {
-                        $this->problems[] = new Problem("{$type}_$s copies {$type}_$source, which is itself a copy; copy its source instead", 'duplicate.ini');
+                        $this->problems[] = new Problem("{$type}_$s copies {$type}_$source, which is itself a copy; copy its source instead", 'duplicate.ini', $copy['line']);
                         continue;
                     }
                     $d = $dirOfNumber[$type][$source] ?? null;
                     if ($d === null) {
-                        $this->problems[] = new Problem("{$type}_$s copies {$type}_$source, which is not on the calendar before it", 'duplicate.ini');
+                        $this->problems[] = new Problem("{$type}_$s copies {$type}_$source, which is not on the calendar before it", 'duplicate.ini', $copy['line']);
                         continue;
                     }
                     $folder = $folders[$d - 1];

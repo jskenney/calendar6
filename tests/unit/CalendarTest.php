@@ -125,6 +125,8 @@ final class CalendarTest extends TestCase
         $this->assertSame('Class 5', $title('class_7'));
         $messages = implode("\n", array_map(static fn ($p): string => $p->message, $course->problems));
         $this->assertContains('class_8 copies class_3, which is itself a copy', $messages, 'no copies of copies');
+        $lines = array_map(static fn ($p): string => "$p->file:$p->line", array_filter($course->problems, static fn ($p): bool => $p->file === 'duplicate.ini'));
+        $this->assertSame(['duplicate.ini:3', 'duplicate.ini:4'], array_values($lines), 'with their line numbers (DOC-15)');
         $this->assertContains('class_9 copies class_12, which is not on the calendar before it', $messages, 'a source must come first');
     }
 }

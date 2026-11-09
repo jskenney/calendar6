@@ -81,7 +81,7 @@ foreach ([
     'config/config.ini', 'config/auth/prof.ini', 'config/', 'class/01.Introduction/index.html', 'lab/01.Setup/lab-solution.html',
     'pages/syllabus.html', 'shared/checklist.md', '.git/HEAD', 'calendar/lib/App.php', 'calendar/lib/autoload.php', 'calendar/tests/run.php',
     'calendar/template/config/config.ini', 'calendar/template/index.html', 'calendar/template/README.md',
-    'calendar/.git/HEAD', 'calendar/DESIGN.md.ini', 'tools/report.php', 'backup.php~', 'db.inc',
+    'calendar/.git/HEAD', 'calendar/DESIGN.md.ini', 'calendar/REVIEW.md', 'calendar/DESIGN.md', 'tools/report.php', 'backup.php~', 'db.inc',
 ] as $path) {
     $status = request($base . $path)[0];
     check(in_array($status, [403, 404], true), "not reachable directly: $path ($status)");
