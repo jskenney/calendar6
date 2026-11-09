@@ -7,7 +7,6 @@ namespace Cal6\Endpoint;
 use Cal6\Access\Viewer;
 use Cal6\Http\AnswerCache;
 use Cal6\Http\Context;
-use Cal6\Http\Fingerprint;
 use Cal6\Http\Response;
 use Cal6\Http\Session;
 
@@ -54,7 +53,7 @@ final class CalendarEndpoint
         }
 
         $cache = AnswerCache::forCourse($c->courseDir);
-        $fingerprint = $preview ? '' : Fingerprint::of($c->courseDir);
+        $fingerprint = $preview ? '' : $c->fingerprint();
         $body = $preview ? null : $cache->get($viewer->cacheName(), $fingerprint, $now);
         if ($body === null) {
             $json = new CalendarJson($c->course(), $c);

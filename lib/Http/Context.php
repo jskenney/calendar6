@@ -13,6 +13,7 @@ final class Context
 {
     private ?Course $course = null;
     private ?Viewer $viewer = null;
+    private ?string $fingerprint = null;
 
     /**
      * @param array<string, mixed> $server
@@ -58,9 +59,23 @@ final class Context
         return is_scalar($value) ? (string) $value : null;
     }
 
+    /** The course model: from the model cache while the course is unchanged, else built (and cached). */
     public function course(): Course
     {
-        return $this->course ??= Course::load($this->courseDir, $this->config);
+        if ($this->course === null) {
+            $cache = ModelCache::forCourse($this->courseDir, $this->config->secret);
+            $this->course = $cache->get($this->fingerprint());
+            if ($this->course === null) {
+                $this->course = Course::load($this->courseDir, $this->config);
+                $cache->put($this->fingerprint(), $this->course);
+            }
+        }
+        return $this->course;
+    }
+
+    public function fingerprint(): string
+    {
+        return $this->fingerprint ??= Fingerprint::of($this->courseDir);
     }
 
     /** The logged-in account (read from config/auth/ now), or anonymous. */
