@@ -13,16 +13,15 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-No critical or high item is open.
-
-1. **M-20, M-21**: server-side code must not run or be sent by any URL form (Apache PATH_INFO,
-   nginx extensions and case); a few lines of configuration and smoke checks.
-2. **M-22, M-23, M-24**: three more routes to raw or unprocessed page content (backups,
-   injects inside comments/scripts, `<postmeeting>` through inject).
-3. **M-25, M-26**: box names without case; IPv4-mapped addresses.
-4. **L-35, L-39, L-40, L-41**, then **L-36, L-37, L-38**.
-5. **DOC-16, T-12** with the fixes.
-6. **E** items; E-1 (the front end) is the next big piece of work.
+1. **H-5** at once, with **M-27**: the lexer must read attribute quotes and unclosed raw-text
+   elements the way a browser does, or fail closed.
+2. **M-28**: no `<url>` values in script, handler or style contexts.
+3. **M-29, M-30**: remaining routes to raw or commented-out content (backup names, Markdown
+   comments).
+4. **M-31**: shared addresses must not lock out the instructor or a classroom.
+5. **L-43, L-45, L-46, L-47, L-48, L-49, L-44**, then **L-42** (a design decision).
+6. **DOC-17, T-13** with the fixes.
+7. **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -30,43 +29,44 @@ None open.
 
 ## High
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| H-5 | 8 | `lib/Render/HtmlLexer.php:66-75` | **The lexer treats a quote anywhere in a tag as the start of a quoted value** (residual of L-36): a browser quotes only right after `=`. An apostrophe in an unquoted value (`<img alt=it's>`) or a stray quote (`<td width=50%">`) makes the lexer skip to the next matching quote (or the end of the page), and every `<inst>`, `<lock>`, `<postmeeting>`, `<host>` and comment it skips is sent. Confirmed. | Handle quotes only in the "before attribute value" state (after `=` and optional spaces); elsewhere a quote is part of the name or unquoted value. |
 
 ## Medium
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| M-20 | 7 | `template/.htaccess` | **Apache runs stray course PHP through a PATH_INFO suffix** (residual of L-27): the exception for `/calendar/php/<name>.php` matches the end of the URI, so `/AB123/tools/report.php/calendar/php/get.php` runs `tools/report.php`. Confirmed (200). | Refuse `\.(php\d?|phtml|phar)/` anywhere in the URI (or `AcceptPathInfo Off`), anchor the exception to the course's `calendar/php/`; smoke checks. |
-| M-21 | 7 | `tests/deploy/nginx-site.conf` | **nginx sends the source of `.PHP`, `.phtml`, `.php5` and `.phar` files** outside the denied folders: the catch-all `location ~ \.php$` is case-sensitive and `.php` only. Confirmed (200 with the source). | One case-insensitive `location ~* \.(php\d?|phtml|phar|phps|pht|inc)$ { deny all; }` after the endpoint location; smoke checks. |
-| M-22 | 7 | `lib/Content/ContentFile.php` (`isPage`), `lib/Course/Boundary.php` | **Editor backups of pages leak raw page source:** `index.html~`, `notes.md.bak`, `#x.html#`, `x.html.orig` are neither pages nor refused, so they are listed and `get.php` sends them with `<inst>` and `<lock>` codes. Confirmed. | Treat backup forms of pages as never served (and list them as problems). |
-| M-23 | 7 | `lib/Render/PageRenderer.php` (`injects()`, `block()`) | **An `<inject>` inside an HTML comment or a script body ships the injected file unprocessed:** the content lands in an opaque range, so its `<inst>`/`<lock>`/`<postmeeting>` are never removed (view-source). Comments are sent as written, so commented-out hidden blocks ship too. Confirmed. | Do not expand `<inject>`/`<codeinject>`/`<calphp>` inside opaque ranges; strip HTML comments from `html.php` output. |
-| M-24 | 7 | `lib/Render/PageRenderer.php` (`postmeeting()`, `hideForSource()`) | **`<postmeeting>` in an injected (or codeinjected) page follows the host page's event:** class_1 injecting class_2's page shows class 2's answers before class 2 meets; a `paths.ini` page shows them always. Confirmed by the reviewer. | Decide `<postmeeting>` per injected file with that file's own place, before merging. |
-| M-25 | 7 | `lib/Course/Course.php` (`boxesOf`) | **Box filling and box assets are case-sensitive** (against M-14): `Lab-Solution.html` fills no box, so `lab/lab-solution = never` does not apply and it follows the event's rule. Confirmed. | Compare box candidates and asset stems without case. |
-| M-26 | 7 | `lib/Http/RateLimiter.php` (`addressKey`) | (impact suspected) **IPv4-mapped IPv6 addresses (`::ffff:1.2.3.4`) all share one key**, so behind a server or proxy that reports them every IPv4 client shares one login and lock-code bucket (anyone can block everyone). Code behaviour confirmed. | Key mapped addresses by their IPv4 address. |
+| M-27 | 8 | `lib/Render/HtmlLexer.php:79-91` | **An unclosed `<script>`/`<style>` exposes everything after it:** the raw text runs to the end of the page, so later hidden blocks (and lock codes) are not seen as tags; a typo like `</stlye>` is enough. Confirmed. | When the raw-text element is never closed, fail closed (do not treat the rest as raw for hiding, or refuse the page). |
+| M-28 | 8 | `lib/Render/PageRenderer.php` (`url()`) | **`<url>` values in script, event-handler and style contexts:** HTML escaping does not protect JavaScript (`&#039;` is decoded before an `onclick` runs; script bodies are not escaped at all), so a crafted link can run script for a logged-in instructor on a page that uses `<url>` there (residual of L-39). Confirmed. | Do not substitute `<url>` inside raw-text ranges or `on*`/`style` attributes; document the contexts. |
+| M-29 | 8 | `lib/Course/Boundary.php` (`isPageBackup`, `neverServed`) | **More editor backups of pages pass as plain files** (residual of M-22): `index.html.~1~`, `notes.md.~3~`, `index.html.bak~`, `index.html_bak`, `.new`, `-`, `,v`, `.prev`, `.dist`, `.swo`; also `x.pht.bak`, `x.phar~`, `x.phtm`. They are listed and served raw. Confirmed. | Treat any name with `.html`/`.htm`/`.md` followed by a non-alphanumeric character as a page backup; one extension list for PHP and its backups. |
+| M-30 | 8 | `lib/Render/Markdown.php:511` | **In Markdown, a comment that starts mid-line and spans a blank line is shown as text** (it is escaped before the comment removal sees it). Confirmed by the reviewer. | Remove HTML comments from the Markdown source before converting (outside code). |
+| M-31 | 8 | `lib/Endpoint/AuthEndpoint.php`, `lib/Endpoint/HtmlEndpoint.php` | **Anyone at the same address can lock out the instructor and a whole room's lock codes:** the device cookie skips only the per-username gate, so 20 bad logins from a shared address (campus NAT, one IPv6 /64) block the instructor; the lock-code limit (10 per 15 minutes) is shared by everyone in a classroom. Confirmed by the reviewer on Apache. | Let a valid device cookie skip the address limits (keep the pair limit); count lock codes per session or page, with a higher address allowance. |
 
 ## Low
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| L-35 | 7 | `lib/Course/Course.php`, `lib/Render/PageRenderer.php`, `Course::placeForPath` | A `%00` in a link (`<img src="x%00.png">`) makes `realpath()` throw, so the course model can not be built and every endpoint answers 500. Confirmed. | Treat links with a NUL byte as missing (in `Boundary::resolve`). |
-| L-36 | 7 | `lib/Render/PageRenderer.php` (`opaqueRanges`) | Where the scanner's idea of "opaque" differs from HTML, it fails open: `<![CDATA[ <inst>..</inst> ]]>` in HTML, `<!-->`/`<!--->`, custom elements `<script-x>`/`<style-guide>`, and comment or script markers inside attribute values. Needs unusual markup. Confirmed by the reviewer. | Follow HTML's rules (CDATA only in SVG/MathML, abrupt comments, `[\s/>]` after `script`/`style`, skip attribute values). |
-| L-37 | 7 | `lib/Render/PageRenderer.php`, `lib/Render/Markdown.php` | Residual of L-34: about 70,000 nested blocks exhaust memory (recursive rendering); many unterminated `<script ` are quadratic; a page injecting itself 8 times fans out exponentially; Markdown emphasis and deep lists are slow or exhaust memory. Confirmed by the reviewer. | Iterative rendering; one `>` search per opening; forbid inject cycles and cap inject output; cap Markdown nesting. |
-| L-38 | 7 | `lib/Course/Course.php` (`addPageAssets`) | A file linked by several `paths.ini` pages is keyed only for the first page, so it follows that page's rule (hidden on the others when the first is hidden). Fails closed. Confirmed by the reviewer. | Key page assets per page, as `addLinkedAssets` does. |
-| L-39 | 7 | `lib/Render/PageRenderer.php` (`url()`) | A `<url>` value inside an `href` can be `javascript:...` (reflected, and remembered in the session); the attribute itself is escaped. Confirmed at render level by the reviewer. | Drop values with a scheme other than http/https (at least inside attributes). |
-| L-40 | 7 | `lib/Endpoint/HtmlEndpoint.php:80` | Numeric `<url>` parameter names (`?7=x`) are ignored (`is_string` on integer keys). Confirmed by the reviewer. | Cast the name to string. |
-| L-41 | 7 | `lib/Endpoint/HtmlEndpoint.php` (`Session::start($c, true)`) | (suspected) A cross-site link to a page with `<lock>` or `<url>` arrives without the `SameSite=Strict` cookie, so a new session is created and its cookie replaces the instructor's (a forced logout). | Create a session only for an actual unlock (POST) or `<url>` value, not on every view of such a page. |
+| L-42 | 8 | `lib/Render/Markdown.php:242-253` | (design gap) `<inst>` indented four spaces (or in a fenced block) in Markdown becomes visible code. Confirmed by the reviewer. | Decide and document: remove hidden blocks from code too, or treat block tags as HTML whatever their indent. |
+| L-43 | 8 | `ConfigEndpoint.php:27`, `HtmlEndpoint.php:48`, `AuthEndpoint.php:62` | Residual of L-41: a POST to `html.php` (even with a bad key) and to `auth.php` (before the token check), and `config.php?csrf=1`, create a session, so a cross-site navigation can still replace an instructor's session cookie. Server side confirmed; browser behaviour suspected. | Check method, key and token before starting a session; start one only for a matching lock code; consider `Sec-Fetch-Site` for `csrf=1`. |
+| L-44 | 8 | `lib/Render/PageRenderer.php` (`inRanges`) | Quadratic work for pages with many script ranges and inject/calphp tags (20000 pairs: 9 s). Confirmed by the reviewer. | Walk the ranges with a moving pointer, or use the lexer's tokens. |
+| L-45 | 8 | `lib/Render/PageRenderer.php` (`lockCodes`) | A lock code containing `>` can never be unlocked (regex vs lexer). Confirmed by the reviewer. | Take lock codes from the lexer's tokens. |
+| L-46 | 8 | `lib/Course/CourseConfig.php:156-159` | `login_attempts = 5 per 0m` disables the limiter; `0 per 15m` raises a warning and blocks every attempt; neither is a problem. Confirmed by the reviewer. | Require at least 1 attempt and 1 minute; otherwise keep the default and list a problem. |
+| L-47 | 8 | `lib/Render/PageRenderer.php` (inject, codeinject, calphp, url, replace) | These are found by regular expressions, so they work inside quoted attribute values, where an injected `<inst>` then hides from the lexer. Needs an author mistake. Confirmed by the reviewer. | Find them with the lexer too (real tags outside raw ranges). |
+| L-48 | 8 | `lib/Render/PageRenderer.php` (`injects`) | (suspected) The size cap is checked before adding the file, so one huge injected file is read whole and can exhaust memory. | Check `injectedBytes + filesize > MAX` before reading. |
+| L-49 | 8 | `lib/Access/Policy.php` (`realPlace`), `lib/Course/Course.php` | A virtual file whose real file is a hidden page's attachment (`class_1/answers.pdf = pages/answers.pdf`, linked only from a `never` page) is visible: the page rule is never checked. Needs an instructor's `virtual.ini` line. Confirmed by the reviewer. | For a virtual file whose real file a page links to, also apply that page's rule. |
 
 ## Documentation
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| DOC-16 | 7 | `DESIGN.md` (Tags) | DESIGN does not say that HTML comments (and anything inside them) are sent as written, and claims linear time at any depth (L-37). | Correct both with the fixes. |
+| DOC-17 | 8 | `DESIGN.md` (Tags) | Say that block tags inside `<script>`/`<style>` bodies are sent as written (a hiding hole authors should know), and how `<url>` behaves in script contexts. | With M-28. |
 
 ## Testing
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| T-12 | 7 | `tests/` | No tests for the PATH_INFO form and nginx extension/case variants (smoke), page backups, inject inside comments/scripts, `<postmeeting>` through inject, box-name case, mapped IPv4 keys, `%00` links. | Tests with each fix. |
+| T-13 | 8 | `tests/` | No tests for quotes in unquoted attribute values, unclosed script/style, `<url>` in script/handler contexts, the further backup names, mid-line Markdown comments, shared-address lockouts, `>` in lock codes, odd `login_attempts`. | Tests with each fix. |
 
 ## Enhancements
 
@@ -106,6 +106,13 @@ None open.
 | M-17 | 6 | `22c140c` | **A name made only of digits takes the whole course down:** PHP turns array keys like `"1"` or `"2024"` into integers, and with `strict_types` `strlen()` / `Place::__construct` throw, so every endpoint answers 500. Triggers: a file `class/01.Introduction/1` in an event with a box file, a `paths.ini` page `2027 = ...`, a virtual name `lab_1/42`. Confirmed. | Names read back from array keys are cast to strings; a test with numeric file, page and virtual names. |
 | M-18 | 6 | `81907b8` | **The per-username slow-down does not limit the guessing rate** (L-23's fix): each request sleeps 1 s on its own, so parallel requests guess as fast as the PHP-FPM pool allows (about 3 guesses/s with 5 workers, more with more), while tying up every worker. Per-address limits use the full address, so an IPv6 /64 gives unlimited "fresh" addresses (logins and lock codes). Confirmed on Apache + FPM by the reviewer. | A per-username gate passes one attempt per second (others 429 at once, nothing sleeps); a signed device cookie skips it; IPv6 counted per /64. |
 | M-19 | 6 | `f992ba4` | **A missing `config/default.ini` publishes everything:** only an unreadable file fails closed; a deleted or misnamed file (`defaults.ini`) means "no rules", so every solution is visible, and no problem is listed. Confirmed by reading. | A missing `default.ini` fails closed like an unreadable one and is listed as a problem. |
+| M-20 | 7 | `0f91c9b` | **Apache runs stray course PHP through a PATH_INFO suffix** (residual of L-27): the exception for `/calendar/php/<name>.php` matches the end of the URI, so `/AB123/tools/report.php/calendar/php/get.php` runs `tools/report.php`. Confirmed (200). | `template/.htaccess` also refuses a PHP name followed by `/` (PATH_INFO); smoke checks. |
+| M-21 | 7 | `0f91c9b` | **nginx sends the source of `.PHP`, `.phtml`, `.php5` and `.phar` files** outside the denied folders: the catch-all `location ~ \.php$` is case-sensitive and `.php` only. Confirmed (200 with the source). | `nginx-site.conf` refuses every PHP spelling, case-insensitively, also with a following `/`; smoke checks (`x.PHP`, `.phtml`, `.php5`, `.phar`). |
+| M-22 | 7 | `e2886f4` | **Editor backups of pages leak raw page source:** `index.html~`, `notes.md.bak`, `#x.html#`, `x.html.orig` are neither pages nor refused, so they are listed and `get.php` sends them with `<inst>` and `<lock>` codes. Confirmed. | `Boundary::isPageBackup()`: `index.html~`, `.bak`, `.orig`, `#x#`, ... are never listed or served and are problems (residual: M-29). |
+| M-23 | 7 | `f8d901e` | **An `<inject>` inside an HTML comment or a script body ships the injected file unprocessed:** the content lands in an opaque range, so its `<inst>`/`<lock>`/`<postmeeting>` are never removed (view-source). Comments are sent as written, so commented-out hidden blocks ship too. Confirmed. | HTML comments are removed (outside script/style bodies) before processing; `<inject>`/`<codeinject>`/`<calphp>` inside script bodies are text. |
+| M-24 | 7 | `2bbb19f` | **`<postmeeting>` in an injected (or codeinjected) page follows the host page's event:** class_1 injecting class_2's page shows class 2's answers before class 2 meets; a `paths.ini` page shows them always. Confirmed by the reviewer. | Each injected or codeinjected file's `<postmeeting>` is decided with its own visible place. |
+| M-25 | 7 | `8562407` | **Box filling and box assets are case-sensitive** (against M-14): `Lab-Solution.html` fills no box, so `lab/lab-solution = never` does not apply and it follows the event's rule. Confirmed. | Box files and asset stems are matched without case. |
+| M-26 | 7 | `8562407` | (impact suspected) **IPv4-mapped IPv6 addresses (`::ffff:1.2.3.4`) all share one key**, so behind a server or proxy that reports them every IPv4 client shares one login and lock-code bucket (anyone can block everyone). Code behaviour confirmed. | `::ffff:a.b.c.d` is keyed as `a.b.c.d`. |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -140,6 +147,13 @@ None open.
 | L-32 | 6 | `8ae1b53` | Links in injected content still break in three cases (images shown as hidden): `paths.ini` pages that inject (page assets do not follow `<inject>`); box-asset pages (skipped because they are `asset=true`); numbered copies (an injected file's assets are keyed only for the first page with that real file). Box assets also get the wrong `placeForPath` score. Confirmed by the reviewer. | Page assets follow `<inject>`; box-asset pages and copies get their own linked assets; scoring fixed (residual: L-38). |
 | L-33 | 6 | `8ae1b53` | Virtual files are added to `same` repeats (same number) but not to `numbered` copies; the design does not say which is right. Confirmed by the reviewer. | Numbered copies carry their source's virtual files; documented. |
 | L-34 | 6 | `3551b2b` | Author input can make a page very slow or crash it: 2000 nested `<inst>` blocks take 15 s (4000: 114 s), and a Markdown line of 20000 `> ` exhausts memory (an uncatchable fatal). Confirmed by the reviewer. | Linear token pass with a stack; Markdown block quotes at most 16 deep (residual: L-37). |
+| L-35 | 7 | `feb2c85` | A `%00` in a link (`<img src="x%00.png">`) makes `realpath()` throw, so the course model can not be built and every endpoint answers 500. Confirmed. | `Boundary::realpath()` treats a NUL byte as missing. |
+| L-36 | 7 | `2df4f8e` | Where the scanner's idea of "opaque" differs from HTML, it fails open: `<![CDATA[ <inst>..</inst> ]]>` in HTML, `<!-->`/`<!--->`, custom elements `<script-x>`/`<style-guide>`, and comment or script markers inside attribute values. Needs unusual markup. Confirmed by the reviewer. | `HtmlLexer` reads markup as a browser does; CDATA removed whole (residual: H-5, M-27). |
+| L-37 | 7 | `2df4f8e` | Residual of L-34: about 70,000 nested blocks exhaust memory (recursive rendering); many unterminated `<script ` are quadratic; a page injecting itself 8 times fans out exponentially; Markdown emphasis and deep lists are slow or exhaust memory. Confirmed by the reviewer. | Stack-based matching, inject cycle and 4 MB limits, Markdown list and emphasis caps (residual: L-44, L-48). |
+| L-38 | 7 | `a21ac98` | A file linked by several `paths.ini` pages is keyed only for the first page, so it follows that page's rule (hidden on the others when the first is hidden). Fails closed. Confirmed by the reviewer. | Page assets keyed per linking page. |
+| L-39 | 7 | `04563f4` | A `<url>` value inside an `href` can be `javascript:...` (reflected, and remembered in the session); the attribute itself is escaped. Confirmed at render level by the reviewer. | `<url>` values with a scheme other than http(s) are ignored (residual: M-28). |
+| L-40 | 7 | `04563f4` | Numeric `<url>` parameter names (`?7=x`) are ignored (`is_string` on integer keys). Confirmed by the reviewer. | Numeric `<url>` names are cast to strings. |
+| L-41 | 7 | `04563f4` | (suspected) A cross-site link to a page with `<lock>` or `<url>` arrives without the `SameSite=Strict` cookie, so a new session is created and its cookie replaces the instructor's (a forced logout). | The `<lock>` form token is an HMAC of page and hour; viewing creates no session; `<url>` values only in an existing session (residual: L-43). |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -155,6 +169,7 @@ None open.
 | DOC-13 | 5 | `96f7d95` | DESIGN promises a problem for "material directories that can be fetched directly"; nothing produces it (see E-5). | `DESIGN.md` no longer promises a "fetchable directories" problem; the smoke test (and E-5) check that. |
 | DOC-14 | 6 | `391a353` | `calendar/REVIEW.md` (and the other repository documents) are served on both servers, publishing the list of known open weaknesses of the running copy. | The repository `.htaccess` and nginx refuse `calendar/*.md`; smoke check. |
 | DOC-15 | 6 | `391a353` | `duplicate.ini` problems are reported with line 0. | `duplicate.ini` problems carry their line numbers. |
+| DOC-16 | 7 | `2df4f8e` | DESIGN does not say that HTML comments (and anything inside them) are sent as written, and claims linear time at any depth (L-37). | DESIGN "Tags" describes the lexer, comment removal and the limits. |
 | T-1 | 1 | `628734a`, `467a23d` | No tests for the course boundary: a material link that leads outside the course or into `config/`, `virtual.ini` with `..` or an absolute path, `paths.ini` outside the course, `<inject src="../../config/config.ini">`, `<calphp>` outside. These are the core security promises. | `BoundaryTest`, renderer boundary cases, `TemplateTest`. |
 | T-2 | 1 | `467a23d` | Nothing checks that `template/` itself loads without problems, although every new course starts from it. | `BoundaryTest`, renderer boundary cases, `TemplateTest`. |
 | T-3 | 1 | `9870c0b` | Time-dependent behaviour is only tested in unit tests: the HTTP tests can not move the clock, so the cache expiring at `next_change`, `<postmeeting>` before the meeting ends, session expiry and an account window ending during a session are untested end to end. | `CAL6_TEST_CLOCK` (built-in server only) and `tests/http/TimeTest.php`. |
@@ -166,6 +181,7 @@ None open.
 | T-9 | 3 | `f3ae06e` | Only Apache is tested as a real deployment; the nginx rules in "Deploying" (dot files, `.ini`, the protected directories, `SCRIPT_FILENAME` from `$document_root$fastcgi_script_name`) are untested. | `tests/deploy/nginx-site.conf` (a complete, tested server block) and `nginx-setup.sh`; a CI job serves a linked course with nginx + PHP-FPM and runs the smoke test. |
 | T-10 | 4 | `46868fa` | `testSoftwareVersionFollowsContentsNotTimes` writes `lib/Version.php` into the repository for a moment; if the test is interrupted, the file stays and changes the software version (and `git status`). | `Fingerprint::softwareOf($root)`; the test works on a temporary copy of `lib/` and `php/`. |
 | T-11 | 5 | `72580cf`, `4c14a1b` | No test caught C-1, H-4 or M-13: nothing checks that `get.php` refuses page keys, or that hidden blocks stay hidden when large or nested. | Tests: `get.php` refuses page keys (also for instructors); 1.2 MB, nested, unclosed and upper-case blocks; they fail on the previous renderer. |
+| T-12 | 7 | `0f91c9b`, `e2886f4`, `f8d901e`, `2bbb19f`, `8562407`, `feb2c85`, `04563f4`, `2df4f8e`, `a21ac98` | No tests for the PATH_INFO form and nginx extension/case variants (smoke), page backups, inject inside comments/scripts, `<postmeeting>` through inject, box-name case, mapped IPv4 keys, `%00` links. | Tests (and smoke checks) with each fix; the renderer tests fail on the previous renderer. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
@@ -180,6 +196,7 @@ None open.
 | 5 | 2026-11-09 | `46868fa` | an **independent** review (a separate reviewer given the code and DESIGN.md, not the earlier findings), after fixing T-10 and DOC-10; probes on `php -S`, Apache and nginx; C-1, H-4, M-14 and M-15 reproduced again before recording | C-1, H-4, M-13..M-16, L-20..L-24, DOC-11..DOC-13, T-11 |
 | 6 | 2026-11-09 | `96f7d95` | an **independent** review again, after fixing M-15, L-20, L-21, L-23, L-24 and DOC-11..13; probes on `php -S`, Apache + FPM and nginx; M-17 and L-27 reproduced again before recording. Nothing found that lets an anonymous visitor reach hidden material without an author or configuration mistake | M-17..M-19, L-26..L-34, DOC-14, DOC-15 |
 | 7 | 2026-11-09 | `391a353` | an **independent** review again, after fixing every M, L and DOC item of review 6; probes on `php -S`, Apache + FPM and nginx; M-20, M-21, M-22, M-23 and M-25 reproduced again before recording | M-20..M-26, L-35..L-41, DOC-16, T-12 |
+| 8 | 2026-11-09 | `a21ac98` | an **independent** review again, after fixing every M, L, DOC and T item of review 7; probes on `php -S`, Apache + FPM and nginx (every direct-access probe refused); H-5, M-27, M-28 and M-29 reproduced again before recording | H-5, M-27..M-31, L-42..L-49, DOC-17, T-13 |
 
 ## CI notes
 
