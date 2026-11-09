@@ -29,7 +29,7 @@ final class RateLimiterTest extends TestCase
         for ($i = 0; $i < 3; $i++) {
             $this->assertSame(0, $limiter->hit('k', 1000 + $i, 3));
         }
-        $this->assertSame(900, $limiter->hit('k', 1003, 3), 'the fourth waits until the first leaves the window');
+        $this->assertSame(897, $limiter->hit('k', 1003, 3), 'the fourth waits until the first leaves the window (1000 + 900 - 1003)');
         $limiter->forgive('k');
         $this->assertSame(0, $limiter->hit('k', 1004, 3), 'a forgiven attempt does not count');
         $this->assertSame(0, $limiter->hit('k', 1900, 3), 'old attempts leave the window');
