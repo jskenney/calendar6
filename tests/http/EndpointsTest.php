@@ -38,7 +38,7 @@ final class EndpointsTest extends TestCase
 
     private function login(HttpClient $client, string $user = 'prof'): void
     {
-        $csrf = (string) ($client->get('calendar/php/config.php')->json()['csrf'] ?? '');
+        $csrf = (string) ($client->get('calendar/php/config.php?csrf=1')->json()['csrf'] ?? '');
         $result = $client->post('calendar/php/auth.php', ['username' => $user, 'password' => Fixture::PASSWORD, 'csrf' => $csrf]);
         $this->assertSame(200, $result->status, "login as $user: " . $result->body);
     }
@@ -77,12 +77,16 @@ final class EndpointsTest extends TestCase
         $this->assertSame('06:45-07:35', $data['periods']['normal']['times']['X'] ?? null, 'the full periods.ini');
         $this->assertSame('HP301', $data['sections'][1]['meetings'][1]['room'] ?? null, 'rooms per meeting');
         $this->assertSame(null, $data['viewer']['user']);
-        $this->assertSame(48, strlen((string) ($data['csrf'] ?? '')));
+        $this->assertSame(null, $data['csrf'], 'no session for anonymous visitors (L-12)');
+        $this->assertSame('', $response->header('set-cookie'));
+        $withToken = $client->get('calendar/php/config.php?csrf=1');
+        $this->assertSame(48, strlen((string) ($withToken->json()['csrf'] ?? '')));
         foreach ([Fixture::SECRET, 'password_hash', '$2y$', 'default.ini', $this->dir, 'lockdown'] as $secret) {
             $this->assertNotContains($secret, $response->body, 'never in config.php');
         }
-        $this->assertContains('HttpOnly', $response->header('set-cookie'));
-        $this->assertContains('SameSite=Strict', $response->header('set-cookie'));
+        $this->assertContains('HttpOnly', $withToken->header('set-cookie'));
+        $this->assertContains('SameSite=Strict', $withToken->header('set-cookie'));
+        $this->assertSame(48, strlen((string) ($client->get('calendar/php/config.php')->json()['csrf'] ?? '')), 'an existing session keeps its token');
         $this->assertSame(405, $client->post('calendar/php/config.php', [])->status);
     }
 
@@ -265,7 +269,7 @@ HTML;
         $client = $this->start();
         $this->assertSame(405, $client->get('calendar/php/auth.php')->status);
         $this->assertSame(403, $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD])->status, 'no token');
-        $csrf = (string) $client->get('calendar/php/config.php')->json()['csrf'];
+        $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
         $wrong = $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => 'nope', 'csrf' => $csrf]);
         $this->assertSame(401, $wrong->status);
         $unknown = $client->post('calendar/php/auth.php', ['username' => 'nobody', 'password' => 'nope', 'csrf' => $csrf]);
@@ -286,7 +290,7 @@ HTML;
         $this->assertSame('ta', $json->json()['user'] ?? null, 'JSON bodies work too');
 
         $attacker = new HttpClient($this->server);
-        $token = (string) $attacker->get('calendar/php/config.php')->json()['csrf'];
+        $token = (string) $attacker->get('calendar/php/config.php?csrf=1')->json()['csrf'];
         for ($i = 0; $i < 5; $i++) {
             $attacker->post('calendar/php/auth.php', ['username' => 'prof', 'password' => "bad$i", 'csrf' => $token]);
         }

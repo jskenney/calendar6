@@ -50,6 +50,11 @@ final class Session
         return self::$open;
     }
 
+    public static function isOpen(): bool
+    {
+        return self::$open;
+    }
+
     public static function https(array $server): bool
     {
         return (!empty($server['HTTPS']) && strtolower((string) $server['HTTPS']) !== 'off')

@@ -11,7 +11,8 @@ use Cal6\Http\Session;
 
 /**
  * config.php (DESIGN.md): what the front end needs to draw the site, without
- * secrets.  It also hands out the session's CSRF token.
+ * secrets.  With ?csrf=1 (or an existing session) it also hands out the session's
+ * CSRF token.
  */
 final class ConfigEndpoint
 {
@@ -21,8 +22,10 @@ final class ConfigEndpoint
             Response::error(405, 'GET only', ['Allow: GET, HEAD']);
             return;
         }
-        $viewer = $c->viewer(true);
-        $csrf = Session::csrf();
+        // A session (and its CSRF token) only when one exists or is asked for with
+        // ?csrf=1 (a login form), so anonymous visitors leave no session files (L-12).
+        $viewer = $c->viewer($c->query('csrf') === '1');
+        $csrf = Session::isOpen() ? Session::csrf() : null;
         Session::close();
         Response::json(self::data($c->config, $c) + [
             'viewer' => ['user' => $viewer->user, 'instructor' => $viewer->instructor],
