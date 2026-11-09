@@ -150,12 +150,22 @@ final class CourseConfig
             }
         }
         $session = $ini->get('users', 'session');
-        if ($session !== null && preg_match('/^(\d+)\s*([mhd])$/i', $session, $m)) {
-            $config->sessionSeconds = (int) $m[1] * ['m' => 60, 'h' => 3600, 'd' => 86400][strtolower($m[2])];
+        if ($session !== null) {
+            if (preg_match('/^(\d+)\s*([mhd])$/i', $session, $m) && (int) $m[1] > 0) {
+                $config->sessionSeconds = (int) $m[1] * ['m' => 60, 'h' => 3600, 'd' => 86400][strtolower($m[2])];
+            } else {
+                $config->problems[] = new Problem("[users] session: \"$session\" is not like \"8h\" (the default is kept)", 'config.ini');
+            }
         }
+        // at least one attempt per minute or longer: "0 per 15m" would block every login and
+        // "5 per 0m" would count nothing (L-46); otherwise the default stays and it is a problem
         $attempts = $ini->get('users', 'login_attempts');
-        if ($attempts !== null && preg_match('/^(\d+)\s+per\s+(\d+)\s*([mh])$/i', $attempts, $m)) {
-            $config->loginAttempts = [(int) $m[1], (int) $m[2] * (strtolower($m[3]) === 'h' ? 3600 : 60)];
+        if ($attempts !== null) {
+            if (preg_match('/^(\d+)\s+per\s+(\d+)\s*([mh])$/i', $attempts, $m) && (int) $m[1] >= 1 && (int) $m[2] >= 1) {
+                $config->loginAttempts = [(int) $m[1], (int) $m[2] * (strtolower($m[3]) === 'h' ? 3600 : 60)];
+            } else {
+                $config->problems[] = new Problem("[users] login_attempts: \"$attempts\" is not like \"5 per 15m\" with at least 1 attempt and 1 minute (the default is kept)", 'config.ini');
+            }
         }
         $config->trustedProxies = array_values(array_filter(array_map('trim', explode(',', (string) $ini->get('server', 'trusted_proxies', ''))), static fn (string $p): bool => $p !== ''));
         foreach ($ini->section('replace') as $line) {

@@ -204,6 +204,9 @@ classyear = 27
 office    = Michelson 342
 ```
 
+A `session` or `login_attempts` value that can not be read (or `login_attempts` with fewer than
+one attempt or a window under one minute) keeps the default and is listed as a problem.
+
 ### `dates.ini` (Decided: days that differ from the weekly schedule; proposed syntax)
 
 Each line is a window (a day, or several) and what happens then, optionally with a label after

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Cal6\Tests\Unit;
 
 use Cal6\Access\Target;
+use Cal6\Course\CourseConfig;
+use Cal6\Tests\Fixture;
 use Cal6\Ini\IniFile;
 use Cal6\Schedule\Sections;
 use Cal6\Tests\TestCase;
@@ -24,6 +26,19 @@ final class IniAndTimeTest extends TestCase
     private function ts(string $time): int
     {
         return (new DateTimeImmutable($time, $this->zone()))->getTimestamp();
+    }
+
+    public function testOddLoginAttemptsKeepTheDefault(): void
+    {
+        $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        foreach (['5 per 0m' => [5, 900], '0 per 15m' => [5, 900], 'lots' => [5, 900], '3 per 2h' => [3, 7200]] as $value => $expected) {
+            $dir = Fixture::course(['config/config.ini' => str_replace('login_attempts = 5 per 15m', "login_attempts = $value", $template)]);
+            $config = CourseConfig::load($dir);
+            Fixture::remove($dir);
+            $this->assertSame($expected, $config->loginAttempts, "login_attempts = $value (L-46)");
+            $listed = array_filter($config->problems, static fn ($p): bool => str_contains($p->message, 'login_attempts'));
+            $this->assertSame($expected === [5, 900] ? 1 : 0, count($listed), "a problem for $value");
+        }
     }
 
     public function testIniReader(): void
