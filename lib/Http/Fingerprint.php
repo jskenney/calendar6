@@ -16,8 +16,10 @@ final class Fingerprint
     private static ?string $software = null;
 
     /**
-     * The version of the running software: a hash of the names, sizes and times of
-     * its PHP files.  Part of every cache key, so caches do not outlive an update (M-11).
+     * The version of the running software: a hash of the names and contents of its
+     * PHP files (about 200 KB, well under a millisecond), so it changes with any
+     * update however it was copied, times kept or not (M-11, L-18).  Part of every
+     * cache key, so caches never outlive an update.
      */
     public static function software(): string
     {
@@ -29,7 +31,7 @@ final class Fingerprint
                 $list = [];
                 foreach ($files as $file) {
                     if ($file->isFile() && str_ends_with($file->getFilename(), '.php')) {
-                        $list[substr($file->getPathname(), strlen($root))] = $file->getSize() . ':' . $file->getMTime();
+                        $list[substr($file->getPathname(), strlen($root))] = (string) hash_file('sha1', $file->getPathname());
                     }
                 }
                 ksort($list);

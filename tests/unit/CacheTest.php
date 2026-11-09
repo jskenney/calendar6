@@ -72,4 +72,21 @@ final class CacheTest extends TestCase
         $this->assertTrue(Fingerprint::key($this->dir) !== $key, 'another software version misses every cache (M-11, T-7)');
         $software->setValue(null, $before);
     }
+
+    public function testSoftwareVersionFollowsContentsNotTimes(): void
+    {
+        $software = new \ReflectionProperty(Fingerprint::class, 'software');
+        $software->setValue(null, null);
+        $first = Fingerprint::software();
+        $file = dirname(__DIR__, 2) . '/lib/Version.php';
+        file_put_contents($file, "<?php\n// a same-size change\n");
+        $mtime = (int) filemtime($file);
+        $software->setValue(null, null);
+        $changed = Fingerprint::software();
+        unlink($file);
+        $software->setValue(null, null);
+        $this->assertTrue($first !== $changed, 'a new file changes the version (L-18)');
+        $this->assertSame($first, Fingerprint::software(), 'and removing it restores it: contents, not times');
+        $this->assertTrue($mtime > 0);
+    }
 }
