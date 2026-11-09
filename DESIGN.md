@@ -121,16 +121,53 @@ processed and returned as `text/html`:
 
 ### `default.ini` (Decided: when things are available to anonymous users)
 
-Proposed: the same targets and times as Calendar 5's release rules (minutes, `until`, relative
-to the meeting), written as INI:
+Requirements, taken from a real Calendar 4 access file (`cal4.access`):
+
+| # | Requirement | Seen in the v4 file as |
+|---|---|---|
+| R1 | **Targets** at five levels: a whole type, one event, a box of every event of a type, a box of one event, one file of one event (plus `*` and `*/box`, as v4) | `lab`, `lab_6`, `class/notes`, `class_25/notes` |
+| R2 | **Always / never** | `1 1 1999`, `99 99 9999` |
+| R3 | **Absolute dates** | `11 1 2023` |
+| R4 | **Relative to the event**: days before/after, and the weekday on or before / after | `-0`, `+7`, `-monday` |
+| R5 | **Most specific wins, and a box beats an event**: a box rule decides over the event's own rule, so a box can stay hidden in an open event (or open in a hidden one) | `class_1` always but `class/instructor` never; `lab_6` always but `lab/lab-solution +7`; `class_25` never but `class/notes` always, so `class_25/notes` must be hidden explicitly |
+| R6 | **No rule: visible** | `class` has no (uncommented) rule, so classes are visible |
+| R7 | **Comments that switch rules on and off**: the file is edited by commenting lines in and out over the semester | `#project 99 99 9999`, `#exam_2 11 1 2023` |
+| R8 | **Many events at once** | `class_20` ... `class_27`, one line each |
+| R9 | **A semester-end lockdown** that overrides normal rules | the block at the top |
+
+Proposed format: one rule per line, `target = when`, with `#` and `;` comments. Read by our own
+parser, not `parse_ini_file`, so that every line keeps its number for error messages, `#` works
+as it does today, and duplicates can be reported. The precedence is v4's, unchanged (see Calendar
+5's `docs/design/access-rules.md`): `T_N/F`, `F`, `T_N/C`, `T/C`, `T_N`, `T/*`, `T_N/all`, `T_N/*`,
+`*/C`, `T`, `*`.
 
 ```ini
-; target = when
-class/title             = -2 08:00
-class/homework-solution = +7 17:00 until +21 23:59
-lab#6                   = 2026-10-15 13:30
+# when := always | never | YYYY-MM-DD [HH:MM] | (+|-)N [HH:MM] | (+|-)weekday [HH:MM]
+#         | start[-15m] | end            ; the meeting's start/end time, from config.ini
+#         followed by an optional: until <when>
+class_1                 = always
+class/notes             = always
+class/instructor        = never
+class/homework-solution = never
+lab                     = -0
+lab/lab-solution        = +7 17:00
+project                 = -monday 08:00
 exam                    = never
+class_20..27            = never        ; R8, proposed: a range of events
 ```
+
+Proposed changes from v4 (to confirm):
+
+- **R8 ranges:** `class_20..27` instead of eight lines.
+- **Duplicates are an error**, not "the later line wins". In the v4 example, `lab 99 99 9999` in the
+  lockdown block is silently undone by `lab -0` further down, so the lockdown does not lock labs.
+- **R9 lockdown** as a setting instead of a block of rules: `config.ini` `[access] locked_after =
+  2026-12-18` hides everything from anonymous viewers after that date (except `always` rules?),
+  so the normal rules do not need editing at the end of the semester.
+- **Target names:** v4's `lab_6`, or `lab#6` as in the first notes. One spelling for both
+  `default.ini` and the grants; `lab_6` lets old files be copied with only the dates rewritten.
+- v4's `M D Y` dates are not kept (the converter rewrites them); `1 1 1999` / `99 99 9999` become
+  `always` / `never`.
 
 ### `auth/<username>.ini` (Decided fields, proposed syntax)
 
@@ -138,22 +175,34 @@ exam                    = never
 password_hash = $2y$12$...          ; password_hash(), never plain text
 valid_from    = 2026-08-24          ; optional: the default comes from config.ini
 valid_to      = 2026-12-18          ; optional
-grants        = lab#6, lab#6/solution, lab#6/html, lab#*, exam#*
+
+[grants]                            ; the same targets and "when" as default.ini
+lab_6              = always
+lab_6/lab-solution = always
+lab/lab-solution   = 2026-10-15 13:30 until 2026-10-22   ; an extension, with its own window
+exam               = always
 ```
 
-Proposed grant grammar, from specific to general:
+**How grants combine with `default.ini` (proposed):** a user's rules are `default.ini` with the
+user's grants laid over it (a grant replaces the rule for the same target), evaluated with the
+**same precedence**. The user sees a file if anonymous viewers see it **or** the user's rules
+allow it, so a grant can only add, never hide. Grants apply only between `valid_from` and
+`valid_to`.
 
-| Grant | Means |
-|---|---|
-| `lab#6` | everything in lab 6 |
-| `lab#6/solution` | the `solution` box of lab 6 |
-| `lab#6/notes.html` | one file of lab 6 |
-| `lab#*` | every lab (`lab#*/solution`: the solution box of every lab) |
-| `exam#*` | every exam |
-| `*` | everything (the instructor) |
+Because the precedence is the same, a grant behaves like the rule it replaces:
 
-Proposed: a grant may carry its own window, `lab#6 = 2026-10-15 13:30 until 2026-10-22`, for
-extensions and accommodations.
+| Grant | Shows | Does not show |
+|---|---|---|
+| `lab_6` | lab 6, except boxes that have their own rule | `lab/lab-solution` (a box rule wins, R5) |
+| `lab_6/lab-solution` | the solution box of lab 6 | |
+| `lab_6/notes.html` | one file | |
+| `lab` | every lab, as `lab_6` | boxes with their own rule |
+| `lab/lab-solution` | the solution box of every lab | |
+| `*` | everything, always (the instructor) | - |
+
+This matches the first notes, which list `lab#6` **and** `lab#6/solution` as separate grants.
+`*` is the one exception: in v4 order it would lose to every other rule, so it is checked first
+and means "everything".
 
 ## Keys (Proposed)
 
