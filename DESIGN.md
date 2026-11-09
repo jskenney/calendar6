@@ -121,53 +121,96 @@ processed and returned as `text/html`:
 
 ### `default.ini` (Decided: when things are available to anonymous users)
 
-Requirements, taken from a real Calendar 4 access file (`cal4.access`):
+Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manual
+(`calendar-core/instructor.html`, "Setting files to be available on a certain date"):
 
-| # | Requirement | Seen in the v4 file as |
+| # | Requirement | In v4 |
 |---|---|---|
-| R1 | **Targets** at five levels: a whole type, one event, a box of every event of a type, a box of one event, one file of one event (plus `*` and `*/box`, as v4) | `lab`, `lab_6`, `class/notes`, `class_25/notes` |
-| R2 | **Always / never** | `1 1 1999`, `99 99 9999` |
-| R3 | **Absolute dates** | `11 1 2023` |
-| R4 | **Relative to the event**: days before/after, and the weekday on or before / after | `-0`, `+7`, `-monday` |
-| R5 | **Most specific wins, and a box beats an event**: a box rule decides over the event's own rule, so a box can stay hidden in an open event (or open in a hidden one) | `class_1` always but `class/instructor` never; `lab_6` always but `lab/lab-solution +7`; `class_25` never but `class/notes` always, so `class_25/notes` must be hidden explicitly |
-| R6 | **No rule: visible** | `class` has no (uncommented) rule, so classes are visible |
-| R7 | **Comments that switch rules on and off**: the file is edited by commenting lines in and out over the semester | `#project 99 99 9999`, `#exam_2 11 1 2023` |
-| R8 | **Many events at once** | `class_20` ... `class_27`, one line each |
-| R9 | **A semester-end lockdown** that overrides normal rules | the block at the top |
+| R1 | **Targets** at every level: a whole type, one event, a box of every event of a type, a box of one event, one file of one event | `lab`, `lab_6`, `class/notes`, `class_25/notes`, `lab_3/filename.ext` |
+| R2 | **A file name alone** matches that file in every event | `homework01.html` |
+| R3 | **Wildcards and synonyms** | `class_2/all` (= `class_2`), `class/*`, `class_2/*`, `*/homework`, `*` |
+| R4 | **Always / never** | `1 1 1999`, `99 99 9999` |
+| R5 | **Absolute dates** | `12 15 2020`, `12 15` (the year from `$YEAR`) |
+| R6 | **Relative to the event's date**: `+N` / `-N` days (`-0` = on the day); `-monday` = the Monday on or before the event, `+monday` = the next Monday strictly after it | `-0`, `+7`, `-2`, `-monday` |
+| R7 | **Most specific wins, and a box beats an event**, in v4's fixed order (below) | `class_1` always but `class/instructor` never; `lab_6` always but `lab/lab-solution +7`; `class_25` never but `class/notes` always, so `class_25/notes` is hidden on its own line |
+| R8 | **No rule: visible** | `class` has no active rule, so classes are visible |
+| R9 | **The same target twice: the later line wins** | `lab 99 99 9999`, then `lab -0` |
+| R10 | **`#` comments**, used to switch rules on and off during the semester; blank lines ignored | `#project 99 99 9999` |
+| R11 | **Many events at once** | `class_20` ... `class_27`, one line each |
+| R12 | **A semester-end lockdown** | the block at the top of the example |
+| R13 | **Virtual files** (`$CLASS_FILE`: a file shown in an event but stored elsewhere) are checked under both names; the stricter answer wins (Calendar 5 behaviour; v4 mixed them up) | `notes.html  homework/homework01.html  lab  1` |
+| R14 | **Events that are on no calendar day** are never shown to anonymous viewers | a third exam folder with two exam days |
+| R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable file** hides everything (fail closed) | |
+| R16 | **Paths with spaces** | tab-separated lines |
 
-Proposed format: one rule per line, `target = when`, with `#` and `;` comments. Read by our own
-parser, not `parse_ini_file`, so that every line keeps its number for error messages, `#` works
-as it does today, and duplicates can be reported. The precedence is v4's, unchanged (see Calendar
-5's `docs/design/access-rules.md`): `T_N/F`, `F`, `T_N/C`, `T/C`, `T_N`, `T/*`, `T_N/all`, `T_N/*`,
-`*/C`, `T`, `*`.
+The order, from strongest to weakest (v4's `get_file_security()`, kept exactly): `T_N/F`, `F`,
+`T_N/C`, `T/C`, `T_N`, `T/*`, `T_N/all`, `T_N/*`, `*/C`, `T`, `*`.
+
+**Format (Decided):** one rule per line, `target = when`, read by our own parser (not
+`parse_ini_file`), so every line keeps its number for messages, `#` and `;` comments both work,
+and targets may contain spaces (R16, no more tabs).
 
 ```ini
 # when := always | never | YYYY-MM-DD [HH:MM] | (+|-)N [HH:MM] | (+|-)weekday [HH:MM]
-#         | start[-15m] | end            ; the meeting's start/end time, from config.ini
-#         followed by an optional: until <when>
+#         | start[(+|-)N(m|h)] | end        ; the meeting's start/end time, from config.ini
+#         optionally followed by: until <when>
 class_1                 = always
 class/notes             = always
 class/instructor        = never
 class/homework-solution = never
+homework01.html         = 2026-12-15         ; R2: this file in every event
 lab                     = -0
 lab/lab-solution        = +7 17:00
 project                 = -monday 08:00
 exam                    = never
-class_20..27            = never        ; R8, proposed: a range of events
+class_20..27            = never              ; R11: a range
+class_20..27/notes      = never              ; a range with a box
+class_25                = always             ; R9: later line wins, so class 25 is open
 ```
 
-Proposed changes from v4 (to confirm):
+Decided:
 
-- **R8 ranges:** `class_20..27` instead of eight lines.
-- **Duplicates are an error**, not "the later line wins". In the v4 example, `lab 99 99 9999` in the
-  lockdown block is silently undone by `lab -0` further down, so the lockdown does not lock labs.
-- **R9 lockdown** as a setting instead of a block of rules: `config.ini` `[access] locked_after =
-  2026-12-18` hides everything from anonymous viewers after that date (except `always` rules?),
-  so the normal rules do not need editing at the end of the semester.
-- **Target names:** v4's `lab_6`, or `lab#6` as in the first notes. One spelling for both
-  `default.ini` and the grants; `lab_6` lets old files be copied with only the dates rewritten.
-- v4's `M D Y` dates are not kept (the converter rewrites them); `1 1 1999` / `99 99 9999` become
-  `always` / `never`.
+- **Target names are v4's:** `lab_6`, `lab_6/lab-solution`, in `default.ini` and in grants.
+- **The later line wins** (R9), as v4. `bin/cal6 check` (or the instructor's status view) lists
+  lines that a later line overrides, as information, since that is how the lockdown example
+  silently failed to lock labs.
+- **Ranges** (R11): `class_20..27` is the same as eight lines, `class_20` ... `class_27`, written
+  where the range is, so a later line for one of them still wins. Allowed wherever `T_N` is:
+  `class_20..27/notes`, `class_20..27/slides.pdf`.
+- **Lockdown** (R12) is a setting: `config.ini` `[access] lockdown = 2026-12-18` (optionally
+  with a time). From then on, anonymous viewers see a file only when the rule that decides it is
+  `always`. Precedence still runs, so in the example `class_1 = always` keeps class 1 open,
+  `class/notes = always` keeps every class's notes open, and `class/instructor = never` still
+  hides instructor material in class 1. Users' grants are not affected (they have their own
+  `valid_to`).
+
+Proposed:
+
+- v4's `M D Y` and `M D` dates are not read; the converter rewrites them as `YYYY-MM-DD`
+  (`1 1 1999` becomes `always`, `99 99 9999` becomes `never`, a missing year comes from the
+  semester).
+- The manual shows `class/01.Course Overview/intro.html` as a target, but v4 never matched
+  course-relative paths (only `T_N/F` and `F`); Calendar 6 keeps that and writes it
+  `class_1/intro.html`. The converter reports such lines.
+- **Root pages** (`home`, `syllabus`, ... v4's `?load=` and `$LOAD_PAGES`) need targets too, for
+  example `page/syllabus = 2026-08-24`. Open question 10.
+
+### Protection inside pages (`html.php`), from the v4 manual
+
+These are decided per request on the server, so hidden content never reaches the browser:
+
+| Tag | v4 meaning | Calendar 6 (proposed) |
+|---|---|---|
+| `<inst>` | only for the logged-in instructor | removed unless the viewer has `*` |
+| `<student>` | answers behind a "reveal" icon (sent to everyone, only hidden visually) | kept as is (it never protected anything) |
+| `<postmeeting>` | shown once the meeting is over | kept, decided on the server |
+| `<lock code="a,b">` | a section unlocked by a shared password | kept; a grant could also unlock it (`lock` = the code name?) |
+| `<host server="name">` | shown only when served by that server | kept |
+
+Other v4 security behaviour to keep: names starting with a dot are ignored everywhere; content
+files and link targets must be inside the course (or `$ALLOWED_PATHS`, now `config.ini`);
+`.php` files are never sent; `config/`, logs and access data are never served; passwords and
+lock codes are removed from any log.
 
 ### `auth/<username>.ini` (Decided fields, proposed syntax)
 
@@ -200,7 +243,7 @@ Because the precedence is the same, a grant behaves like the rule it replaces:
 | `lab/lab-solution` | the solution box of every lab | |
 | `*` | everything, always (the instructor) | - |
 
-This matches the first notes, which list `lab#6` **and** `lab#6/solution` as separate grants.
+This matches the first notes, which list lab 6 **and** its solution as separate grants.
 `*` is the one exception: in v4 order it would lose to every other rule, so it is checked first
 and means "everything".
 
@@ -263,3 +306,6 @@ The software is shared by many courses through a link, so a single JSON pointer 
    everything a person edits and JSON only on the wire.
 9. **Users:** created by hand, or by a small command-line tool (`bin/cal6 user add`), which would
    hash the password properly?
+10. **Root pages:** how `default.ini` and grants name pages outside events (`home`, `syllabus`,
+    `policy`), for example `page/syllabus`.
+11. **`<lock>`:** keep shared codes only, or let a user's grant unlock a lock section too?
