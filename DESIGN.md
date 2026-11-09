@@ -914,7 +914,8 @@ The plan:
 - **Apache:** keep the `.htaccess` files the template ships: the one at the course root (it
   refuses every name that starts with a dot, such as `.git/` when the course is kept in git,
   every `.ini` file, and every PHP file or PHP backup except `calendar/php/<name>.php`, anywhere
-  under the course, also through `calendar/`), and the deny-all
+  under the course, also through `calendar/` and also with a path after the script name such as
+  `report.php/calendar/php/get.php`), and the deny-all
   files in `config/`, `pages/`, `shared/` and every event-type directory (add one to each new
   type). They need `AllowOverride AuthConfig` (or `All`) and Apache 2.4 for the dot rule. The
   repository's own `.htaccess` (in `calendar/`) refuses `calendar/template/` and the repository's
@@ -924,7 +925,9 @@ The plan:
   (CI serves a course with it). In short: deny the same directories in the server block, for example
   `location ~ ^/AB123/(config|pages|shared|class|lab|exam|project)/ { deny all; }`, deny dot
   files and `.ini` files everywhere (`location ~ /\.(?!well-known/) { deny all; }` and
-  `location ~ \.ini$ { deny all; }`), and pass only `calendar/php/*.php` to PHP-FPM
+  `location ~ \.ini$ { deny all; }`), deny every PHP spelling in any case
+  (`location ~* \.(php\d?|phtml|phar|phps|pht|inc)$` and with a following `/`), and pass only
+  `calendar/php/*.php` to PHP-FPM
   (`calendar/lib/`, `calendar/tests/` and `calendar/template/` must not be reachable).
 - **Checking a server:** `tests/deploy/smoke.php <course URL> <course directory>` checks a real
   deployment: the endpoints, a login, and that `config/`, the material, `.git/`, `calendar/lib/`,
