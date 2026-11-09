@@ -566,7 +566,13 @@ viewer may see, with their keys. Things the viewer may not see are left out enti
    system temporary directory, in a folder named by a hash of the course path, so the web server
    never needs write access to the course directory (the same for the login rate limiter).
 
-### `get.php` (Decided: one file by key, with the right MIME type)
+### `get.php` (Decided: one file by key, with the right MIME type; never a page)
+
+**Which endpoint serves what (Decided):** `get.php` serves every file except pages; `html.php`
+serves only pages. A page is an `.html`, `.htm` or `.md` file (by its name and by the real file
+behind a link). `get.php` answers `404` for a page key, for everyone, so the raw source of a page
+(`<inst>`, `<lock>` codes, `<postmeeting>`, `<host>`) never leaves the server; Markdown stays a
+page type, processed like HTML.
 
 **Inputs:**
 
@@ -602,8 +608,10 @@ processed:
 - links to files are rewritten to keys, as Calendar 4 does: `<img src="pic.png">` becomes
   `/<course>/calendar/php/get.php?file=KEY`, `<a href="notes.html">` becomes the front end's
   route `#/view/KEY`, `<a href="data.zip">`, `<script src>`, `<link href>`, `<source src>`,
-  `<video poster>` and each `srcset` candidate become `get.php` URLs; links to files the viewer
-  may not see keep their text but lose their target (`data-cal6-hidden="1"`);
+  `<video poster>` and each `srcset` candidate become `get.php` URLs; `<iframe>`, `<embed>` and
+  `<object>` pointing at a page get `html.php?file=KEY&full=1` (a page is never sent by
+  `get.php`, and is never an image or script); links to files the viewer may not see keep their
+  text but lose their target (`data-cal6-hidden="1"`);
 - files that a `paths.ini` page links to (its images, style sheets, the pages next to it) get
   keys of their own, decided by that page's rule;
 - every Calendar 4 tag except `<ace>` is processed on the server (see "Tags");
@@ -615,7 +623,12 @@ processed:
 
 ### Tags (Decided: every Calendar 4 tag except `<ace>`)
 
-All are handled in `html.php`, so hidden content never reaches the browser:
+All are handled in `html.php`, so hidden content never reaches the browser. Blocks
+(`<inst>`, `<student>`, `<postmeeting>`, `<host>`, `<lock>`, `<ace>`) are found by a tag scanner,
+not regular expressions: tag names are not case-sensitive, nested blocks of the same tag are
+matched by depth, any size works, and **a block that is never closed hides the rest of the
+page** (fail closed). If any other pattern fails on a page, the request fails rather than sending
+the page half processed.
 
 | Tag | Meaning |
 |---|---|

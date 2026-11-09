@@ -12,33 +12,26 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **C-1** at once: refuse page keys in `get.php` (a few lines and a test).
-2. **H-4, M-13** together: find `<inst>`, `<lock>`, `<postmeeting>` and `<host>` blocks with a
-   small tag scanner that handles nesting and fails closed, instead of regular expressions.
-3. **L-22**: the same kind of leak (source code) through a symbolic link.
-4. **M-14, M-15**: page-name case, and `duplicate.ini` sources by calendar number.
-5. **M-16**: a deployment warning about shared origins (documentation).
-6. **T-11** with the fixes above; then **L-20, L-21, L-23, L-24**.
-7. **DOC-11, DOC-12, DOC-13**.
-8. **E** items; E-1 (the front end) is the next big piece of work.
+No critical or high item is open.
+
+1. **M-14, M-15**: page-name case, and `duplicate.ini` sources by calendar number.
+2. **M-16**: a deployment warning about shared origins (documentation).
+3. **L-20, L-21, L-23, L-24**.
+4. **DOC-11, DOC-12, DOC-13**.
+5. **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| C-1 | 5 | `lib/Endpoint/GetEndpoint.php:30-36`, `lib/Render/PageRenderer.php` (`urlFor`) | **`get.php` serves the raw source of pages.** It never checks the kind of file, so every page key `calendar.php` hands out also works with `get.php?file=KEY` and returns the unprocessed file: `<inst>` content, every `<lock code="...">` with its code and locked text, `<postmeeting>` before the meeting, `<host>` content, and the names of `<inject>`/`<calphp>` sources (`.md` pages even inline as text). `urlFor()` also sends `<iframe>`/`<embed>`/`<object>` links to pages through `get.php`. Confirmed on `php -S` and on the real Apache deployment. | `get.php` answers 404 for page keys (except, perhaps, for instructors); links to pages from non-`<a>` elements go through `html.php` or are hidden. A test. |
+None open.
 
 ## High
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| H-4 | 5 | `lib/Render/PageRenderer.php` (`block()`, `host()`, `lock()`, `postmeeting()`) | **Hidden blocks fail open on large content.** Every `preg_replace_callback(...) ?? $html` returns the unprocessed page when PCRE gives up: with the default `pcre.backtrack_limit`, one `<inst>`, `<lock>`, `<postmeeting>` or `<host>` block of about 1 MB (a pasted base64 image is enough) is sent with its hidden text and the lock code. Confirmed (an `<inst>` of 1.1 MB, a `<lock>` around a 1 MB image). | Treat a failed match as an error and fail closed; better, find blocks with a small tag scanner (`stripos`) instead of `[\s\S]*?` (fixes M-13 too). |
+None open.
 
 ## Medium
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| M-13 | 5 | `lib/Render/PageRenderer.php` (`block()`, `lock()`, `host()`) | **Nested blocks leak:** `<inst>A<inst>B</inst>SECRET</inst>` closes at the first `</inst>`, so `SECRET` reaches anonymous viewers; nested `<lock>` and `<host>` the same. Confirmed. | Match nesting (a tag scanner), or fail closed when an opening tag is left inside the match. |
 | M-14 | 5 | `lib/Course/CourseConfig.php:168` | **Page names are lowercased but rules are case-sensitive:** with `Solutions = pages/x.html` in `paths.ini`, `page/Solutions = never` matches nothing and the page stays visible, with no problem listed. Confirmed. | Keep the name as written (or refuse names that are not lower case); list rules whose target matches nothing as problems. |
 | M-15 | 5 | `lib/Schedule/CalendarBuilder.php:225,230` | **`duplicate.ini` copies the wrong event:** the source `class_N` is used as a directory index, not as the number the calendar shows (DESIGN), so after an earlier numbered copy the wrong material is copied while `copy_of` names the right event; a source not placed yet can be copied, and "a copy of a copy is not allowed" is not enforced. Confirmed (`class_3 = class_1`, `class_6 = class_5`: class_6 gets directory 5, which is class_7). | Map the source event number to its directory; report sources not placed yet, or copies, as problems. |
 | M-16 | 5 | `DESIGN.md` ("Deploying") | (suspected, design analysis) **Same-origin pages can act as a logged-in instructor:** courses served as `/~user/AB123/` share an origin with every other course and personal page on the host; their JavaScript (passed through by design) can call another course's `calendar.php` with a visiting instructor's cookie (`SameSite=Strict` and the cookie path do not stop same-origin requests), read keys and fetch a CSRF token. | Document that each course (or each faculty member) should have its own origin, or at least warn under "Shared hosting"; E-3 (CSP) helps only partly. |
@@ -49,7 +42,6 @@ A running list of code and security findings for the whole project, and their hi
 |---|---|---|---|---|
 | L-20 | 5 | `lib/Course/Course.php` (`placeForPath`) | Relative links in a virtual file are first looked up by name in the event that shows it, not relative to the real file (DESIGN); the virtual file's own images (`homework/fig.png`) have no key and are marked hidden. Confirmed. | Skip the by-name lookup when the page is not inside the event folder; give files linked from virtual files keys, as page assets have. |
 | L-21 | 5 | `lib/Render/PageRenderer.php` (`injects`) | After `<inject>`, the injected file's `<calphp>`, links and `<showlink>` resolve relative to the page, not to the injected file (nested injects do resolve relative to it). Confirmed. | Rewrite relative `src`/`href` in injected text against its own directory, or document it. |
-| L-22 | 5 | `lib/Content/Scanner.php:88`, `lib/Endpoint/HtmlEndpoint.php` | A symbolic link `view.html -> db.php` inside an event is listed as a page and `html.php` shows the PHP source: the scanner checks the link's name, not the real file, and `html.php` does not re-check (`get.php` does). Confirmed. | Check `Boundary::neverServed($real)` in the scanner and in `html.php`. |
 | L-23 | 5 | `lib/Endpoint/AuthEndpoint.php:57` | Residual of M-7: the per-username limit (50 per 15 minutes in the template) is counted before the password check, so attempts from many addresses can still lock the real instructor out. | Check the password before counting the per-username bucket (a correct password is never blocked by it), or slow down instead of blocking. |
 | L-24 | 5 | `template/` in the repository | On Apache, `calendar/template/index.html` and `calendar/template/README.md` are served (only `template/config/` and the material folders deny); DESIGN says `calendar/template/` must not be reachable (nginx denies it). Nothing secret, but it is not what the design says. | A deny-all `.htaccess` that applies to `calendar/template/` but is not copied into courses (for example in the repository root, scoped to `template/`). |
 
@@ -63,9 +55,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-11 | 5 | `tests/` | No test caught C-1, H-4 or M-13: nothing checks that `get.php` refuses page keys, or that hidden blocks stay hidden when large or nested. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -81,9 +71,11 @@ A running list of code and security findings for the whole project, and their hi
 
 | ID | Found | Fixed in | Finding | Fix |
 |---|---|---|---|---|
+| C-1 | 5 | `72580cf` | **`get.php` serves the raw source of pages.** It never checks the kind of file, so every page key `calendar.php` hands out also works with `get.php?file=KEY` and returns the unprocessed file: `<inst>` content, every `<lock code="...">` with its code and locked text, `<postmeeting>` before the meeting, `<host>` content, and the names of `<inject>`/`<calphp>` sources (`.md` pages even inline as text). `urlFor()` also sends `<iframe>`/`<embed>`/`<object>` links to pages through `get.php`. Confirmed on `php -S` and on the real Apache deployment. | `get.php` answers 404 for pages (`.html`, `.htm`, `.md`, by name and real file) for everyone; links to pages from `<iframe>`/`<embed>`/`<object>` go to `html.php?full=1`, from any other element they are hidden. |
 | H-1 | 1 | `29ca3f2` | `<host server="...">` compares against `$_SERVER['SERVER_NAME']`, which Apache (default `UseCanonicalName Off`) and nginx (`$host`) take from the request's `Host` header. Anyone can send `Host: the-internal-server` and see content meant only for one server (for example solutions). (Calendar 4 had the same weakness.) | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | H-2 | 1 | `49d9e43` | A `default.ini` line that can not be read is skipped and shown only as a problem, so the target falls back to a weaker rule or to "no rule = visible". A typo such as `exam = nver` or `exam = 2026-13-01` publishes every exam. That fails open, in the one file whose job is to protect. | A line whose time can not be read is `never` for its targets; the problem is listed. |
 | H-3 | 1 | `73e5799` | When the private temporary directory can not be used (wrong owner or permissions, `sys_get_temp_dir()` not writable, or a directory another account created first under the predictable name `cal6-<uid>-<hash>`), `RateLimiter` silently stops counting: unlimited password and lock-code guessing. | New `RateLimiter`: fails closed (503), `flock()` around each check-and-record, attempts recorded before the password check and forgiven on success; limits per address+username, per address (x4), per username (x10); `[server] trusted_proxies` for `X-Forwarded-For` / `-Proto`; unknown users cost a `password_hash()`. |
+| H-4 | 5 | `4c14a1b` | **Hidden blocks fail open on large content.** Every `preg_replace_callback(...) ?? $html` returns the unprocessed page when PCRE gives up: with the default `pcre.backtrack_limit`, one `<inst>`, `<lock>`, `<postmeeting>` or `<host>` block of about 1 MB (a pasted base64 image is enough) is sent with its hidden text and the lock code. Confirmed (an `<inst>` of 1.1 MB, a `<lock>` around a 1 MB image). | Blocks are found with a `stripos()` tag scanner (no PCRE limit); every remaining pattern in `html.php` fails closed. |
 | M-1 | 1 | `4f067fc` | `json_encode(... JSON_THROW_ON_ERROR)`: one directory or file name that is not UTF-8 (common for files copied from older systems) makes `calendar.php` and `config.php` answer 500 for everyone. Confirmed with a file named `bad\xe9.txt`. | `JSON_INVALID_UTF8_SUBSTITUTE`; names that are not UTF-8 are listed as problems. |
 | M-2 | 1 | `f9ba660` | `<inject>` and `<codeinject>` read any file inside the course boundary without checking its release rule, so a visible page can pull in another event's hidden solution (or a hidden file of its own event). Authors write these tags, but the effect contradicts "access is checked where files are served". | An injected file with a key must be visible to the viewer; without a key it may only come from outside the event directories. |
 | M-3 | 1 | `f9ba660` | Files that fill no box are governed by the event's rule (v4 behaviour), so the images or attachments that go with a hidden solution page (for example `solution-figure.png`) are listed in `files` and served while the solution itself is hidden. | Box assets: files named after a box file follow that box's rule. |
@@ -96,6 +88,7 @@ A running list of code and security findings for the whole project, and their hi
 | M-10 | 1 | `a6c0b7f` | The fingerprint follows symbolic links to directories, also links that lead outside the course (up to depth 7), on every `calendar.php` request; a link to a large tree (or `/`) makes every request slow. The scanner itself stays inside the boundary. | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | M-11 | 2 | `0118054` | The fingerprint skips `calendar/`, so after the software is updated (`git pull`) the caches keep serving what the old code built: a stale model is unserialised into changed classes (wrong results, or errors until the course changes), and `calendar.php` answers keep the old shape. | Cache keys combine the course fingerprint with `Fingerprint::software()`, a hash of the software's PHP files. |
 | M-12 | 2 | `8ff3e50` | Apache serves dot files and directories by default, and the template has no rule at the course root. An instructor who keeps the course in git exposes `course/.git/`: the history of `config/auth/*.ini` (password hashes), `config.ini` (the secret) and every hidden solution. Calendar 6 itself never serves them, but the web server does. | `template/.htaccess` at the course root refuses dot names and `.ini` files everywhere (needs only `AllowOverride AuthConfig`); nginx equivalents documented; `tests/deploy/` serves a template course with Apache + PHP-FPM through a `calendar` link and checks it, in CI. |
+| M-13 | 5 | `4c14a1b` | **Nested blocks leak:** `<inst>A<inst>B</inst>SECRET</inst>` closes at the first `</inst>`, so `SECRET` reaches anonymous viewers; nested `<lock>` and `<host>` the same. Confirmed. | The tag scanner matches nested blocks by depth; an unclosed block hides the rest of the page. |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -115,6 +108,7 @@ A running list of code and security findings for the whole project, and their hi
 | L-17 | 2 | `b07f6bf` | Logging out removes the login but keeps the session's unlocked `<lock>` codes and `<url>` values, so the next person at a shared computer still sees unlocked sections. | Logging out clears the whole session. |
 | L-18 | 3 | `f87fe96` | The software version is a hash of the names, sizes and modification times of `lib/` and `php/` files; a deployment that keeps times and sizes (`rsync -t` of a same-size edit, or files restored from an archive) would not invalidate the caches. | The software version hashes the contents of the `lib/` and `php/` files, not their times or sizes. |
 | L-19 | 3 | `f3ae06e` | The script removes `/opt/calendar6` and `/var/www/html/AB123` and rewrites Apache's configuration without asking; it says "CI, or a throwaway machine", but run by mistake on a real server it deletes a course called AB123. | `tests/deploy/course-setup.sh` (used by both setup scripts) runs only with `--yes` or `CI=true` and never replaces a directory without its marker file; a unit test checks the refusal. |
+| L-22 | 5 | `72580cf` | A symbolic link `view.html -> db.php` inside an event is listed as a page and `html.php` shows the PHP source: the scanner checks the link's name, not the real file, and `html.php` does not re-check (`get.php` does). Confirmed. | The scanner and `html.php` check the real file behind a link (`Boundary::neverServed($real)`); a page is decided by name and real file. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -135,6 +129,7 @@ A running list of code and security findings for the whole project, and their hi
 | T-8 | 2 | `8cb4efd` | `X-Forwarded-For` from a trusted proxy is tested, `X-Forwarded-Proto` (the `Secure` cookie behind a proxy) and an untrusted sender of both headers are not. | New cases in `PolicyTest`, `RendererTest` and `EndpointsTest`. |
 | T-9 | 3 | `f3ae06e` | Only Apache is tested as a real deployment; the nginx rules in "Deploying" (dot files, `.ini`, the protected directories, `SCRIPT_FILENAME` from `$document_root$fastcgi_script_name`) are untested. | `tests/deploy/nginx-site.conf` (a complete, tested server block) and `nginx-setup.sh`; a CI job serves a linked course with nginx + PHP-FPM and runs the smoke test. |
 | T-10 | 4 | `46868fa` | `testSoftwareVersionFollowsContentsNotTimes` writes `lib/Version.php` into the repository for a moment; if the test is interrupted, the file stays and changes the software version (and `git status`). | `Fingerprint::softwareOf($root)`; the test works on a temporary copy of `lib/` and `php/`. |
+| T-11 | 5 | `72580cf`, `4c14a1b` | No test caught C-1, H-4 or M-13: nothing checks that `get.php` refuses page keys, or that hidden blocks stay hidden when large or nested. | Tests: `get.php` refuses page keys (also for instructors); 1.2 MB, nested, unclosed and upper-case blocks; they fail on the previous renderer. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
