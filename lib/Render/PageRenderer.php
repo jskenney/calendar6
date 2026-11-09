@@ -45,6 +45,22 @@ final class PageRenderer
     ) {
     }
 
+    /** The page after <inject>: what its <lock> codes are looked for in. */
+    public function expandedSource(Place $place): string
+    {
+        return $this->injects($this->load($place->file->realPath), dirname($place->file->realPath), 0);
+    }
+
+    /** Constant-time comparison of a code with each of the page's codes (L-5). @param list<string> $codes */
+    public static function codeMatches(string $code, array $codes): bool
+    {
+        $match = false;
+        foreach ($codes as $candidate) {
+            $match = hash_equals($candidate, $code) || $match;
+        }
+        return $match;
+    }
+
     public function render(Place $place): string
     {
         $dir = dirname($place->file->realPath);
@@ -191,8 +207,8 @@ final class PageRenderer
     {
         return preg_replace_callback('/<lock\b([^>]*)>([\s\S]*?)<\/lock\s*>/i', function (array $m): string {
             $codes = array_filter(array_map('trim', explode(',', (string) self::attribute('<lock' . $m[1] . '>', 'code'))), static fn (string $c): bool => $c !== '');
-            foreach ($codes as $code) {
-                if (in_array($code, $this->unlocked, true)) {
+            foreach ($this->unlocked as $entered) {
+                if (self::codeMatches($entered, array_values($codes))) {
                     return $m[2];
                 }
             }

@@ -90,8 +90,10 @@ final class Download
         }
         http_response_code($status);
         header('Content-Type: ' . $type);
-        $safe = str_replace(['"', "\r", "\n", '\\'], '', basename($name));
-        header('Content-Disposition: ' . ($inline && !$forceDownload ? 'inline' : 'attachment') . '; filename="' . $safe . '"');
+        $base = basename($name);
+        $ascii = (string) preg_replace('/[^\x20-\x7E]/', '_', str_replace(['"', '\\'], '', $base));
+        header('Content-Disposition: ' . ($inline && !$forceDownload ? 'inline' : 'attachment')
+            . '; filename="' . $ascii . '"; filename*=UTF-8\'\'' . rawurlencode($base)); // L-8
         header('Content-Length: ' . ($size === 0 ? 0 : $end - $start + 1));
         if ($status === 206) {
             header("Content-Range: bytes $start-$end/$size");

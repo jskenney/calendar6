@@ -13,10 +13,18 @@ namespace Cal6\Course;
 final class Boundary
 {
     private string $real;
+    /** @var list<string> real paths that are never served: config/ and calendar/ */
+    private array $closed = [];
 
     public function __construct(string $courseDir)
     {
         $this->real = rtrim((string) realpath($courseDir), '/');
+        foreach (['config', 'calendar'] as $name) {
+            $closed = realpath($this->real . '/' . $name);
+            if ($closed !== false) {
+                $this->closed[] = $closed;
+            }
+        }
     }
 
     public function root(): string
@@ -32,9 +40,14 @@ final class Boundary
             return null;
         }
         $relative = substr($real, strlen($this->real) + 1);
-        $first = explode('/', $relative)[0];
+        $first = strtolower(explode('/', $relative)[0]);
         if ($first === 'config' || $first === 'calendar') {
-            return null;
+            return null; // also Config/ on case-insensitive file systems (L-11)
+        }
+        foreach ($this->closed as $closed) {
+            if ($real === $closed || str_starts_with($real, $closed . '/')) {
+                return null;
+            }
         }
         foreach (explode('/', $relative) as $part) {
             if ($part === '' || $part[0] === '.') {

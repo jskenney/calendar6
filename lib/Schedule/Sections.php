@@ -28,7 +28,7 @@ final class Sections
     {
         $sections = new self();
         $sections->problems = $ini->problems;
-        $defaultType = array_key_first($types) ?? 'class';
+        $defaultType = isset($types['class']) ? 'class' : (array_key_first($types) ?? 'class'); // L-2
         foreach ($ini->sections() as $name) {
             if ($name === '') {
                 $sections->problems[] = new Problem('settings outside a [section] heading', $ini->label);

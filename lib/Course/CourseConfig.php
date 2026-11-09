@@ -141,7 +141,10 @@ final class CourseConfig
                 try {
                     $config->$property = Window::parse($value, false);
                 } catch (InvalidArgumentException $e) {
-                    $config->problems[] = new Problem("[$section] $key: " . $e->getMessage(), 'config.ini');
+                    // fail closed (L-10): an unreadable lockdown locks now; an unreadable
+                    // default window lets no account without its own window log in
+                    $config->$property = Window::parse($property === 'lockdown' ? 'always' : 'never');
+                    $config->problems[] = new Problem("[$section] $key: " . $e->getMessage() . ($property === 'lockdown' ? ' (locked until this is fixed)' : ' (accounts without their own window can not log in)'), 'config.ini');
                 }
             }
         }

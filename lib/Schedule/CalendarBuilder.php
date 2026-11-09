@@ -79,7 +79,12 @@ final class CalendarBuilder
             if ($window->close === null) { // one day: until the end of the day it starts on
                 $to = (new \DateTimeImmutable('@' . $from))->setTimezone($this->config->zone)->setTime(0, 0)->modify('+1 day')->getTimestamp();
             }
-            $partial = $window->open->text !== '' && (str_contains($window->open->text, ':') || str_contains((string) $window->close?->text, ':'));
+            $partial = str_contains($window->open->text, ':') || str_contains((string) $window->close?->text, ':');
+            if ($partial && !in_array($change['events'], ['holiday', 'none'], true)) {
+                // only holiday/none can cancel part of a day; anything else changes whole days (L-3)
+                $this->problems[] = new Problem('times are only allowed with holiday or none (they cancel the meetings that start inside the window): ' . $line->key, 'dates.ini', $line->line);
+                continue;
+            }
             foreach ($this->days as $day) {
                 $dayStart = $day->date->getTimestamp();
                 $dayEnd = $day->date->modify('+1 day')->getTimestamp();

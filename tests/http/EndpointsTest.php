@@ -165,6 +165,7 @@ final class EndpointsTest extends TestCase
         $this->assertSame('0123456789', $data->body);
         $this->assertSame('text/plain; charset=utf-8', $data->header('content-type'));
         $this->assertContains('inline', $data->header('content-disposition'));
+        $this->assertContains("filename=\"data.txt\"; filename*=UTF-8''data.txt", $data->header('content-disposition'));
         $range = $client->get('calendar/php/get.php?file=' . $keys['class_1/data.txt'], ['Range' => 'bytes=2-4']);
         $this->assertSame(206, $range->status);
         $this->assertSame('234', $range->body);
@@ -214,7 +215,7 @@ HTML;
             'class/01.Introduction/index.html' => $page,
             'class/01.Introduction/pic.png' => 'PNG',
             'class/01.Introduction/secret.pdf' => 'PDF',
-            'class/01.Introduction/part.html' => '<p>INJECTED <replace value="course"></p>',
+            'class/01.Introduction/part.html' => '<p>INJECTED <replace value="course"></p><lock code="open"><p>INJECTED-LOCKED</p></lock>',
             'class/01.Introduction/Example.java' => 'class A { int a = 1 < 2; }',
             'class/01.Introduction/script.php' => '<?php echo "<p>PHP-OUTPUT " . $COURSE . " <inst>kept</inst></p>";',
         ]);
@@ -254,13 +255,15 @@ HTML;
         $this->assertContains('Hello &lt;b&gt;Eve', $remembered, '<url> values are remembered in the session');
 
         preg_match('/name="csrf" value="([^"]+)"/', $body, $m);
-        $wrong = $client->post("calendar/php/html.php?file=$index", ['lock' => 'wrong', 'csrf' => $m[1] ?? '']);
-        $this->assertNotContains('LOCKED-PART', $wrong->body);
+        $client->post("calendar/php/html.php?file=$index", ['lock' => 'wrong', 'csrf' => $m[1] ?? '']);
+        $this->assertNotContains('LOCKED-PART', $client->get("calendar/php/html.php?file=$index")->body, 'a wrong code');
         $this->assertSame(403, $client->post("calendar/php/html.php?file=$index", ['lock' => 'open'])->status, 'no token');
         $unlocked = $client->post("calendar/php/html.php?file=$index", ['lock' => 'open', 'csrf' => $m[1] ?? '']);
-        $this->assertContains('LOCKED-PART', $unlocked->body, 'a shared code');
-        $this->assertContains('LOCKED-PART', $client->get("calendar/php/html.php?file=$index")->body, 'remembered');
+        $this->assertSame(303, $unlocked->status, 'a redirect, so a reload does not resend (L-6)');
+        $this->assertSame("/calendar/php/html.php?file=$index", $unlocked->header('location'));
+        $this->assertContains('LOCKED-PART', $client->get("calendar/php/html.php?file=$index")->body, 'a shared code, remembered');
 
+        $this->assertContains('INJECTED-LOCKED', $client->get("calendar/php/html.php?file=$index")->body, 'a lock inside an injected file can be opened too (L-4)');
         $full = $client->get("calendar/php/html.php?file=$index&full=1")->body;
         $this->assertContains('<!doctype html>', $full);
         $this->assertContains('href="/calendar/php/html.php?file=' . $keys['class_1/notes.md'] . '&amp;full=1#part"', $full);

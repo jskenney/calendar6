@@ -38,7 +38,9 @@ final class HtmlEndpoint
             Response::error(404, 'not found');
             return;
         }
-        $source = (string) @file_get_contents($place->file->realPath);
+        // lock codes are looked for after <inject>, so a <lock> in an injected file works (L-4)
+        $source = (new PageRenderer($course, $policy, $viewer, $c->now, ''))->expandedSource($place);
+        $full = $c->query('full') === '1';
 
         if ($method === 'POST') {
             if (!Session::checkCsrf($c->post('csrf'))) {
@@ -55,13 +57,20 @@ final class HtmlEndpoint
                     Response::error($limiter->available() ? 429 : 503, 'too many attempts: try again later', ['Retry-After: ' . $wait]);
                     return;
                 }
-                if (in_array($code, PageRenderer::lockCodes($source), true)) {
+                if (PageRenderer::codeMatches($code, PageRenderer::lockCodes($source))) {
                     $unlocked = (array) Session::get('unlocked', []);
                     $unlocked[] = $code;
                     Session::set('unlocked', array_values(array_unique($unlocked)));
                     $limiter->forgive('lock:' . $c->address());
                 }
             }
+            // answer with a redirect, so reloading the page does not send the form again (L-6)
+            Session::close();
+            Response::common();
+            http_response_code(303);
+            header('Location: ' . Locator::coursePath($c->server) . 'calendar/php/html.php?file=' . rawurlencode($place->key) . ($full ? '&full=1' : ''));
+            header('Cache-Control: no-store');
+            return;
         }
 
         $urlValues = (array) Session::get('url', []);
@@ -70,7 +79,6 @@ final class HtmlEndpoint
                 $urlValues[$name] = mb_substr($value, 0, 200);
             }
         }
-        $full = $c->query('full') === '1';
         $hasLock = PageRenderer::lockCodes($source) !== [];
         if ($hasLock) {
             Session::start($c, true);

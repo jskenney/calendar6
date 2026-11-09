@@ -93,7 +93,7 @@ final class CalendarTest extends TestCase
     public function testPartialCancellationAndProblems(): void
     {
         $course = $this->course(
-            "2026-09-14 07:00 until 2026-09-14 08:00 = none | Late start\n2026-09-15 12:00 = none\n2026-09-16 = nonsense\n2026-09-17 = mon, class\n"
+            "2026-09-14 07:00 until 2026-09-14 08:00 = none | Late start\n2026-09-15 12:00 = none\n2026-09-16 = nonsense\n2026-09-17 = mon, class\n2026-09-18 12:00 = lab\n"
         );
         $days = self::days($course);
         $this->assertFalse(isset($days['2026-09-14']), 'the first section starts inside the window: cancelled');
@@ -101,5 +101,16 @@ final class CalendarTest extends TestCase
         $messages = implode("\n", array_map(static fn ($p): string => $p->file . ':' . $p->line . ' ' . $p->message, $course->problems));
         $this->assertContains('dates.ini:3', $messages, 'an unknown word');
         $this->assertContains('dates.ini:4', $messages, 'a weekday and types together');
+        $this->assertContains('dates.ini:5 times are only allowed with holiday or none', $messages, 'L-3');
+        $this->assertSame(['class'], $course->days['2026-09-18']->types, 'the line was not applied');
+    }
+
+    public function testSectionsDefaultToClass(): void
+    {
+        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = str_replace("[types]\n; event types, in menu order: directory = label\nclass   = Class\nlab     = Lab", "[types]\nlab     = Lab\nclass   = Class", $config);
+        $this->dir = Fixture::course(['config/config.ini' => $config]);
+        $course = Course::load($this->dir);
+        $this->assertSame('class', $course->config->sections->sections['1121']['meetings'][0]['type'], 'not the first type (L-2)');
     }
 }

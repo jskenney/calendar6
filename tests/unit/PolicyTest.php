@@ -145,6 +145,14 @@ INI;
         $this->assertFalse($ta !== null && self::sees($course, $ta, 'lab_2/index.html', $after), 'a user does not escape the lockdown without a grant');
     }
 
+    public function testUnreadableLockdownLocks(): void
+    {
+        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $course = $this->load(['config/config.ini' => str_replace(';lockdown    = 2026-12-18 17:00', 'lockdown = 2026-12-32', $config)]);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/index.html', self::now($course)), 'locked until fixed (L-10)');
+        $this->assertTrue(self::sees($course, Viewer::anonymous(), 'class_1/index.html', self::now($course)), '"always" rules still show');
+    }
+
     public function testGrantsAndInstructors(): void
     {
         $course = $this->load();

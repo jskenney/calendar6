@@ -52,7 +52,7 @@ final class Policy
             foreach ($lists as [$targets, $time]) {
                 $rule = $this->deciding($overlay, $targets);
                 $anonRuleHere = $this->deciding($this->course->rules, $targets);
-                $anonOpen = $locked ? ($anonRuleHere !== null && $anonRuleHere->window->isAlways()) : $this->open($anonRuleHere, $now, $time, true);
+                $anonOpen = $locked ? ($anonRuleHere !== null && $anonRuleHere->window->isAlways()) : $this->open($anonRuleHere, $now, $time);
                 $grantOpen = $rule !== null && $rule->grant && $rule->window->isOpen($now, $zone, $time);
                 if ($rule !== null && $rule->grant) {
                     $next = self::min($next, $rule->window->nextChange($now, $zone, $time));
@@ -90,7 +90,7 @@ final class Policy
             if ($rule !== null) {
                 $next = self::min($next, $rule->window->nextChange($now, $zone, $time));
             }
-            $open = $locked ? ($rule !== null && $rule->window->isAlways()) : $this->open($rule, $now, $time, true);
+            $open = $locked ? ($rule !== null && $rule->window->isAlways()) : $this->open($rule, $now, $time);
             if (!$open) {
                 $visible = false;
                 [$o] = $rule === null ? [null] : $rule->window->bounds($zone, $time);
@@ -104,9 +104,10 @@ final class Policy
         return [$visible, $neverOpens ? null : $opens, $next];
     }
 
-    private function open(?Rule $rule, int $now, ?EventTime $time, bool $noRule): bool
+    /** No rule: visible (v4). */
+    private function open(?Rule $rule, int $now, ?EventTime $time): bool
     {
-        return $rule === null ? $noRule : $rule->window->isOpen($now, $this->course->config->zone, $time);
+        return $rule === null || $rule->window->isOpen($now, $this->course->config->zone, $time);
     }
 
     /** @param list<string> $targets */
