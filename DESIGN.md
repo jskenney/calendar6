@@ -401,7 +401,11 @@ Proposed meaning:
 - Rules and grants use the numbers the calendar shows: a `numbered` copy is `class_6` (its own
   rules; relative times from its own date); a `same` copy is `class_5` (relative times from each
   day it appears on). A grant for `class_5` covers every `same` repeat.
-- The source and copies are the same type (proposed); a copy of a copy is not allowed.
+- The source is the event **with that number on the calendar** (Decided, M-15), so after
+  `class_3 = class_1` the folder that would have been class 3 is class 4, and `class_6 = class_5`
+  copies that event. The source must be on the calendar before the copy, it must not be a copy
+  itself, and it must be the same type; otherwise the line is listed as a problem and the slot
+  stays empty.
 
 Pages from `paths.ini` (Decided): each gets a key like any file, is served by `html.php`, is
 listed in `calendar.php`'s `pages` when visible, and is targeted by rules and grants as

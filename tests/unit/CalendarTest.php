@@ -113,4 +113,18 @@ final class CalendarTest extends TestCase
         $course = Course::load($this->dir);
         $this->assertSame('class', $course->config->sections->sections['1121']['meetings'][0]['type'], 'not the first type (L-2)');
     }
+
+    public function testDuplicateSourcesAreCalendarNumbers(): void
+    {
+        $course = $this->course('', "class_3 = class_1\nclass_6 = class_5\nclass_8 = class_3\nclass_9 = class_12\n", '2026-09-30');
+        $title = fn (string $id): string => $course->events[$id]->title();
+        $this->assertSame('Class 1', $title('class_3'), 'a copy of class 1');
+        $this->assertSame('Class 4', $title('class_5'), 'directory 4 is class 5 after the copy');
+        $this->assertSame('Class 4', $title('class_6'), 'class_6 = class_5 copies the event numbered 5 on the calendar (M-15)');
+        $this->assertSame('class_5', $course->events['class_6']->copyOf);
+        $this->assertSame('Class 5', $title('class_7'));
+        $messages = implode("\n", array_map(static fn ($p): string => $p->message, $course->problems));
+        $this->assertContains('class_8 copies class_3, which is itself a copy', $messages, 'no copies of copies');
+        $this->assertContains('class_9 copies class_12, which is not on the calendar before it', $messages, 'a source must come first');
+    }
 }

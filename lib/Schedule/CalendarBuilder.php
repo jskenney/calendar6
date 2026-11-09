@@ -210,7 +210,8 @@ final class CalendarBuilder
     private function place(array $copies): void
     {
         $slot = $nextDir = $nextNumber = [];
-        $numberOfDir = [];
+        $dirOfNumber = []; // type => calendar number => directory (regular events only)
+        $copyNumbers = []; // type => calendar numbers that are numbered copies
         foreach ($this->days as $day) {
             foreach ($day->types as $type) {
                 $time = $this->eventTime($day, $type);
@@ -223,18 +224,25 @@ final class CalendarBuilder
                 $nextNumber[$type] ??= 1;
                 $copy = $copies[$type][$s] ?? null;
                 if ($copy !== null) {
-                    $folder = $folders[$copy['source'] - 1] ?? null;
-                    if ($folder === null) {
-                        $this->problems[] = new Problem("{$type}_$s copies {$type}_$copy[source], which does not exist", 'duplicate.ini');
+                    // the source is the event with that number on the calendar (M-15)
+                    $source = $copy['source'];
+                    if (isset($copyNumbers[$type][$source])) {
+                        $this->problems[] = new Problem("{$type}_$s copies {$type}_$source, which is itself a copy; copy its source instead", 'duplicate.ini');
                         continue;
                     }
-                    $sourceNumber = $numberOfDir[$type][$copy['source']] ?? $copy['source'];
+                    $d = $dirOfNumber[$type][$source] ?? null;
+                    if ($d === null) {
+                        $this->problems[] = new Problem("{$type}_$s copies {$type}_$source, which is not on the calendar before it", 'duplicate.ini');
+                        continue;
+                    }
+                    $folder = $folders[$d - 1];
                     if ($copy['mode'] === 'same') {
-                        $id = $this->uniqueId("{$type}_$sourceNumber@" . $day->key());
-                        $event = new ScheduledEvent($id, $type, $sourceNumber, $folder, $day->key(), $time, "{$type}_$sourceNumber", 'same');
+                        $id = $this->uniqueId("{$type}_$source@" . $day->key());
+                        $event = new ScheduledEvent($id, $type, $source, $folder, $day->key(), $time, "{$type}_$source", 'same');
                     } else {
                         $number = $nextNumber[$type]++;
-                        $event = new ScheduledEvent("{$type}_$number", $type, $number, $folder, $day->key(), $time, "{$type}_$sourceNumber", 'numbered');
+                        $copyNumbers[$type][$number] = true;
+                        $event = new ScheduledEvent("{$type}_$number", $type, $number, $folder, $day->key(), $time, "{$type}_$source", 'numbered');
                     }
                 } else {
                     $d = $nextDir[$type];
@@ -243,7 +251,7 @@ final class CalendarBuilder
                     }
                     $nextDir[$type]++;
                     $number = $nextNumber[$type]++;
-                    $numberOfDir[$type][$d] = $number;
+                    $dirOfNumber[$type][$number] = $d;
                     $event = new ScheduledEvent("{$type}_$number", $type, $number, $folders[$d - 1], $day->key(), $time);
                 }
                 $this->events[$event->id] = $event;
