@@ -1,0 +1,182 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Cal6\Course;
+
+use Cal6\Ini\IniFile;
+use Cal6\Schedule\Periods;
+use Cal6\Schedule\Sections;
+use Cal6\Support\Problem;
+use Cal6\Time\Window;
+use DateTimeImmutable;
+use DateTimeZone;
+use Exception;
+use InvalidArgumentException;
+
+/**
+ * Everything in course_directory/config/ except the release rules and accounts
+ * (DESIGN.md, "Samples of every .ini file").  Paths are relative to the course.
+ */
+final class CourseConfig
+{
+    public const WEEKDAYS = ['mon' => 1, 'tue' => 2, 'wed' => 3, 'thu' => 4, 'fri' => 5, 'sat' => 6, 'sun' => 7];
+
+    public string $number = '';
+    public string $name = '';
+    public DateTimeZone $zone;
+    public string $secret = '';
+    public string $defaultPeriod = 'normal';
+    public DateTimeImmutable $start;
+    public DateTimeImmutable $end;
+    public bool $weekends = false;
+    /** @var array<int, array{type: string, start: ?string, end: ?string}> weekday (1-7) => entry */
+    public array $schedule = [];
+    /** @var array<string, string> type directory => label, in menu order */
+    public array $types = [];
+    /** @var list<array{box: string, files: list<string>, label: string}> */
+    public array $boxes = [];
+    public ?Window $lockdown = null;
+    public ?Window $usersValid = null;
+    public int $sessionSeconds = 8 * 3600;
+    /** @var array{0: int, 1: int} failures allowed per seconds */
+    public array $loginAttempts = [5, 900];
+    /** @var array<string, string> */
+    public array $replace = [];
+    /** @var array<string, array{file: string, label: string}> paths.ini pages */
+    public array $pages = [];
+    public Periods $periods;
+    public Sections $sections;
+    /** @var list<Problem> */
+    public array $problems = [];
+    /** @var array<string, IniFile> */
+    public array $files = [];
+
+    public function __construct(public readonly string $courseDir)
+    {
+        $this->zone = new DateTimeZone('UTC');
+        $this->start = new DateTimeImmutable('today');
+        $this->end = $this->start;
+    }
+
+    public function configDir(): string
+    {
+        return $this->courseDir . '/config';
+    }
+
+    public function ini(string $name): IniFile
+    {
+        return $this->files[$name] ??= IniFile::load($this->configDir() . '/' . $name, $name);
+    }
+
+    public static function load(string $courseDir): self
+    {
+        $config = new self($courseDir);
+        $ini = $config->ini('config.ini');
+        if (!$ini->exists || !$ini->readable) {
+            throw new ConfigError('config/config.ini is missing or can not be read');
+        }
+        $config->problems = $ini->problems;
+
+        $config->number = (string) $ini->get('course', 'number', '');
+        $config->name = (string) $ini->get('course', 'name', '');
+        try {
+            $config->zone = new DateTimeZone((string) $ini->get('course', 'timezone', date_default_timezone_get()));
+        } catch (Exception) {
+            throw new ConfigError('config.ini: [course] timezone is not a time zone');
+        }
+        $config->secret = (string) $ini->get('course', 'secret', '');
+        if (strlen($config->secret) < 32 || str_contains($config->secret, 'REPLACE')) {
+            throw new ConfigError('config.ini: [course] secret must be set to a long random value');
+        }
+        $config->defaultPeriod = strtolower((string) $ini->get('course', 'period', 'normal'));
+
+        foreach (['start', 'end'] as $key) {
+            $value = (string) $ini->get('semester', $key, '');
+            $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value, $config->zone);
+            if ($date === false || $date->format('Y-m-d') !== $value) {
+                throw new ConfigError("config.ini: [semester] $key must be a date (YYYY-MM-DD)");
+            }
+            $config->$key = $date;
+        }
+        if ($config->end < $config->start) {
+            throw new ConfigError('config.ini: [semester] end is before start');
+        }
+        $config->weekends = in_array(strtolower((string) $ini->get('semester', 'weekends', 'no')), ['yes', 'true', '1', 'on'], true);
+
+        foreach ($ini->section('types') as $line) {
+            if (!preg_match('/^[A-Za-z][A-Za-z0-9-]*$/', $line->key) || in_array(strtolower($line->key), ['config', 'calendar', 'page'], true)) {
+                $config->problems[] = new Problem("not a usable type directory name: $line->key", 'config.ini', $line->line);
+                continue;
+            }
+            $config->types[$line->key] = $line->value !== '' ? $line->value : ucfirst($line->key);
+        }
+        foreach ($ini->section('schedule') as $line) {
+            $day = self::WEEKDAYS[strtolower(substr($line->key, 0, 3))] ?? null;
+            if ($day === null || !preg_match('/^([A-Za-z][A-Za-z0-9-]*)(?:\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2}))?$/', $line->value, $m)) {
+                $config->problems[] = new Problem("expected \"weekday = type [HH:MM-HH:MM]\" (one type per day): $line->key = $line->value", 'config.ini', $line->line);
+                continue;
+            }
+            if (!isset($config->types[$m[1]])) {
+                $config->problems[] = new Problem("unknown event type: $m[1]", 'config.ini', $line->line);
+                continue;
+            }
+            try {
+                $config->schedule[$day] = ['type' => $m[1], 'start' => isset($m[2]) ? self::hhmm($m[2]) : null, 'end' => isset($m[3]) ? self::hhmm($m[3]) : null];
+            } catch (InvalidArgumentException $e) {
+                $config->problems[] = new Problem($e->getMessage(), 'config.ini', $line->line);
+            }
+        }
+        foreach ($ini->section('boxes') as $line) {
+            [$files, $label] = array_pad(explode('|', $line->value, 2), 2, '');
+            $names = array_values(array_filter(array_map('trim', explode(',', $files)), static fn (string $f): bool => $f !== ''));
+            $config->boxes[] = ['box' => $line->key, 'files' => $names, 'label' => trim($label) !== '' ? trim($label) : $line->key];
+        }
+
+        foreach (['lockdown' => ['access', 'lockdown'], 'usersValid' => ['users', 'valid']] as $property => [$section, $key]) {
+            $value = $ini->get($section, $key);
+            if ($value !== null && $value !== '') {
+                try {
+                    $config->$property = Window::parse($value, false);
+                } catch (InvalidArgumentException $e) {
+                    $config->problems[] = new Problem("[$section] $key: " . $e->getMessage(), 'config.ini');
+                }
+            }
+        }
+        $session = $ini->get('users', 'session');
+        if ($session !== null && preg_match('/^(\d+)\s*([mhd])$/i', $session, $m)) {
+            $config->sessionSeconds = (int) $m[1] * ['m' => 60, 'h' => 3600, 'd' => 86400][strtolower($m[2])];
+        }
+        $attempts = $ini->get('users', 'login_attempts');
+        if ($attempts !== null && preg_match('/^(\d+)\s+per\s+(\d+)\s*([mh])$/i', $attempts, $m)) {
+            $config->loginAttempts = [(int) $m[1], (int) $m[2] * (strtolower($m[3]) === 'h' ? 3600 : 60)];
+        }
+        foreach ($ini->section('replace') as $line) {
+            $config->replace[$line->key] = $line->value;
+        }
+
+        $paths = $config->ini('paths.ini');
+        array_push($config->problems, ...$paths->problems);
+        foreach ($paths->section('pages') as $line) {
+            [$file, $label] = array_pad(explode('|', $line->value, 2), 2, '');
+            $config->pages[strtolower($line->key)] = ['file' => trim($file), 'label' => trim($label) !== '' ? trim($label) : ucfirst($line->key)];
+        }
+
+        $config->periods = Periods::fromIni($config->ini('periods.ini'));
+        $config->sections = Sections::fromIni($config->ini('sections.ini'), $config->types);
+        array_push($config->problems, ...$config->periods->problems, ...$config->sections->problems);
+        if ($config->periods->schedules !== [] && !isset($config->periods->schedules[$config->defaultPeriod])) {
+            $config->problems[] = new Problem("[course] period: no such period schedule in periods.ini: $config->defaultPeriod", 'config.ini');
+        }
+        return $config;
+    }
+
+    public static function hhmm(string $time): string
+    {
+        [$h, $i] = array_map('intval', explode(':', $time));
+        if ($h > 24 || $i > 59) {
+            throw new InvalidArgumentException("not a time of day: $time");
+        }
+        return sprintf('%02d:%02d', $h, $i);
+    }
+}

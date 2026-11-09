@@ -4,6 +4,11 @@ Status: **draft**, being defined. Sections marked **Decided** follow the agreed 
 sections marked **Proposed** are suggestions still to be confirmed. Later work is collected
 under "Future enhancements" at the end.
 
+**Implemented so far:** the five endpoints in `php/` (`config.php`, `calendar.php`, `get.php`,
+`html.php`, `auth.php`) on the library in `lib/`, with tests in `tests/` (`php tests/run.php`).
+The front end (`app/`) is not started. "Implementation notes" near the end lists the choices the
+code made where this document left room.
+
 ## Goal
 
 A course site that is **mostly static HTML/JS**: the browser loads a plain page, asks small
@@ -24,12 +29,14 @@ example `/home/faculty/username/public_html/AB123/calendar/php/get.php`.
 
 ```
 calendar6/                    the shared software (linked into each course as calendar/)
-├── php/                      the only server-side code
+├── php/                      the only scripts a browser requests
 │   ├── auth.php              log in / log out (POST only)
 │   ├── config.php            the site configuration, without secrets (JSON)
 │   ├── calendar.php          everything this viewer may see (JSON)
 │   ├── get.php               one file, by key, with its MIME type
 │   └── html.php              one HTML page, by key, processed (keys, tags)
+├── lib/                      the library behind them (classes only; .htaccess denies all)
+├── tests/                    php tests/run.php (unit tests, and HTTP tests on php -S)
 ├── (proposed) app/           the static front end: index.html, app.js, app.css, vendored
 │                             libraries (MathJax, highlight.js; no Ace)
 └── template/                 a starting point for a new course: copy it, then link calendar/
@@ -831,6 +838,45 @@ pointer to any one course. Instead:
 - Access is checked where files are served (`get.php`, `html.php`), not only in `calendar.php`.
 - One answer (`404`) for "no such key" and "not allowed".
 - No secrets in any JSON; JSON only from `config.php`, `calendar.php`, `auth.php`.
+
+## Implementation notes
+
+Choices the code made where the design left room (change them here if they are wrong):
+
+- **Library layout:** `lib/Ini` (our own INI reader), `lib/Time` (the date/time/window grammar),
+  `lib/Schedule` (periods, sections, the calendar builder), `lib/Content` (the walk),
+  `lib/Course` (configuration, the boundary, keys, the course model), `lib/Access` (rules,
+  viewers, the policy), `lib/Render` (html.php's processing, the Markdown converter from
+  Calendar 4/5), `lib/Http` and `lib/Endpoint` (the endpoints).
+- **Finding the course:** the endpoints refuse to run (500) unless the script was reached as
+  `course/calendar/php/...` and `course/calendar` resolves to the running code; `config.ini`
+  must have a real `secret` (32+ characters), or nothing is served.
+- **Caching:** `calendar.php` caches each viewer's answer, keyed by a fingerprint of the course
+  directory (the names, sizes and modification times of everything in it except `calendar/`)
+  and valid until `next_change`. On a miss the course model is rebuilt; caching the model itself
+  is left for later if it is ever needed. The cache and rate limiter live in
+  `<temp>/cal6-<uid>-<hash of course path>/`, used only when that directory is ours and closed
+  to others.
+- **Calendar:** event numbers follow the calendar slots; when a type runs out of directories its
+  remaining slots stay empty; directories that do not fit are events on no day (instructors
+  only). A `dates.ini` line with one date means that day only; a window with times only cancels
+  meetings whose first section starts inside it.
+- **calendar.php:** an event whose files are all hidden is listed without its title (so hidden
+  titles do not leak). Only files directly in the event directory are listed; files in
+  subdirectories (`img/pic.png`) get keys so pages can link to them.
+- **Keys:** 22 characters of base64url HMAC-SHA256.
+- **Sessions:** one cookie per course (`cal6_<hash>`, path = the course's URL), opened by
+  read-only endpoints only when the browser already has it; `config.php` creates it, because it
+  hands out the CSRF token.
+- **html.php:** links to pages become `#/view/KEY`, other files the absolute path
+  `/<course>/calendar/php/get.php?file=KEY`; links to files the viewer may not see keep their
+  text but lose their target (`data-cal6-hidden`); links to files that do not exist are left as
+  written. `<student>` becomes `<details>`; `<ace>` shows its text in `<pre>`; `<lock>` becomes
+  a small form that posts the code (with the CSRF token) back to `html.php`; `<calphp>` runs after
+  hidden sections are removed and its output is not processed. A Markdown page is converted
+  first, then processed like HTML.
+- **auth.php:** the username is the file name in `config/auth/`; a missing account is checked
+  against a dummy hash so it takes as long as a wrong password.
 
 ## Decisions on the first open questions
 

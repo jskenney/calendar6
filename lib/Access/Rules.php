@@ -1,0 +1,66 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Cal6\Access;
+
+use Cal6\Ini\IniFile;
+use Cal6\Ini\IniLine;
+use Cal6\Support\Problem;
+use Cal6\Time\Window;
+use InvalidArgumentException;
+
+/**
+ * A set of release rules, by target; the later line wins (v4).  Lines that a
+ * later line overrides are remembered, so instructors can be told.
+ */
+final class Rules
+{
+    /** @var array<string, Rule> */
+    public array $byTarget = [];
+    /** @var list<Problem> */
+    public array $problems = [];
+    /** @var list<string> */
+    public array $overridden = [];
+
+    /** @param list<IniLine> $lines */
+    public static function fromLines(array $lines, string $label, bool $grant = false): self
+    {
+        $rules = new self();
+        foreach ($lines as $line) {
+            try {
+                $window = Window::parse($line->value);
+                foreach (Target::expand($line->key) as $target) {
+                    if (isset($rules->byTarget[$target])) {
+                        $rules->overridden[] = sprintf('%s line %d (%s) is overridden by line %d', $label,
+                            (int) substr(strrchr($rules->byTarget[$target]->source, ':') ?: ':0', 1), $target, $line->line);
+                    }
+                    $rules->byTarget[$target] = new Rule($target, $window, "$label:$line->line", $grant);
+                }
+            } catch (InvalidArgumentException $e) {
+                $rules->problems[] = new Problem($e->getMessage(), $label, $line->line);
+            }
+        }
+        return $rules;
+    }
+
+    public static function fromIni(IniFile $file, string $section = ''): self
+    {
+        $rules = self::fromLines($file->section($section), $file->label);
+        array_unshift($rules->problems, ...$file->problems);
+        return $rules;
+    }
+
+    public function get(string $target): ?Rule
+    {
+        return $this->byTarget[$target] ?? null;
+    }
+
+    /** This set with $other laid over it: a rule of $other replaces the rule for the same target. */
+    public function overlay(self $other): self
+    {
+        $merged = new self();
+        $merged->byTarget = array_merge($this->byTarget, $other->byTarget);
+        return $merged;
+    }
+}
