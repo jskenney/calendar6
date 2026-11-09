@@ -46,12 +46,23 @@ final class Scanner
                 $names[] = $name;
             }
             usort($names, 'strnatcmp');
+            foreach ($names as $name) {
+                $this->checkName("$type/$name");
+            }
             foreach ($names as $i => $name) {
                 $path = (string) realpath("$dir/$name");
                 $events[$type][] = new EventFolder($type, $i + 1, $name, EventFolder::titleOf($name), $path, $this->files($path, '', 0));
             }
         }
         return $events;
+    }
+
+    /** Names that are not UTF-8 are shown with a replacement character; tell instructors (M-1). */
+    private function checkName(string $path): void
+    {
+        if (!mb_check_encoding($path, 'UTF-8')) {
+            $this->problems[] = new Problem('this name is not UTF-8 and is shown with a replacement character; rename it: ' . mb_convert_encoding($path, 'UTF-8', 'ISO-8859-1'));
+        }
     }
 
     /** @return array<string, ContentFile> */
@@ -77,6 +88,7 @@ final class Scanner
             if (!is_file($real) || Boundary::neverServed($name)) {
                 continue;
             }
+            $this->checkName(basename($dir) . "/$prefix$name");
             $files[$prefix . $name] = new ContentFile($prefix . $name, $real, (int) filesize($real), (int) filemtime($real), $prefix === '');
         }
         return $files;

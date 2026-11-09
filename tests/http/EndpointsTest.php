@@ -133,6 +133,16 @@ final class EndpointsTest extends TestCase
         $this->assertSame(self::keys($data), self::keys($student->get('calendar/php/calendar.php?as=prof')->json()), 'as/at are ignored for others');
     }
 
+    public function testNamesThatAreNotUtf8(): void
+    {
+        $client = $this->start(["class/01.Introduction/caf\xe9.txt" => 'x']);
+        $response = $client->get('calendar/php/calendar.php');
+        $this->assertSame(200, $response->status, 'one bad name does not take the calendar down (M-1)');
+        $this->assertContains("caf\u{FFFD}.txt", $response->body);
+        $this->login($client);
+        $this->assertContains('not UTF-8', $client->get('calendar/php/calendar.php')->body, 'reported to instructors');
+    }
+
     public function testCalendarCacheFollowsChanges(): void
     {
         $client = $this->start();
