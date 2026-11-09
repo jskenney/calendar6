@@ -22,6 +22,19 @@ final class HtmlEndpoint
 {
     private const RESERVED = ['file', 'full', 'lock', 'csrf'];
 
+    /** The token of a page's <lock> form: the page key and the hour, signed with the course secret. */
+    private static function lockToken(Context $c, string $key, int $hour): string
+    {
+        return substr(hash_hmac('sha256', "lock|$key|$hour", $c->config->secret), 0, 40);
+    }
+
+    /** A token from this hour or the one before. */
+    private static function validLockToken(Context $c, string $key, string $token): bool
+    {
+        $hour = intdiv($c->now, 3600);
+        return $token !== '' && (hash_equals(self::lockToken($c, $key, $hour), $token) || hash_equals(self::lockToken($c, $key, $hour - 1), $token));
+    }
+
     public static function handle(Context $c): void
     {
         $method = $c->method();
@@ -46,7 +59,7 @@ final class HtmlEndpoint
         $full = $c->query('full') === '1';
 
         if ($method === 'POST') {
-            if (!Session::checkCsrf($c->post('csrf'))) {
+            if (!self::validLockToken($c, $place->key, (string) $c->post('csrf'))) {
                 Session::close();
                 Response::error(403, 'the form has expired: reload the page');
                 return;
@@ -78,20 +91,20 @@ final class HtmlEndpoint
 
         $urlValues = (array) Session::get('url', []);
         foreach ($c->query as $name => $value) {
-            if (is_string($name) && is_string($value) && !in_array($name, self::RESERVED, true) && preg_match('/^[A-Za-z0-9_-]{1,64}$/', $name)) {
+            $name = (string) $name; // numeric names come back from $_GET as integers (L-40)
+            if (is_string($value) && !in_array($name, self::RESERVED, true) && preg_match('/^[A-Za-z0-9_-]{1,64}$/', $name)) {
                 $urlValues[$name] = mb_substr($value, 0, 200);
             }
         }
+        // the lock form carries a token made from the page and the hour, so showing a page
+        // with <lock> creates no session: a cross-site link can not replace a logged-in
+        // instructor's session cookie (L-41)
         $hasLock = PageRenderer::lockCodes($source) !== [];
-        if ($hasLock) {
-            Session::start($c, true);
-        }
         $renderer = new PageRenderer($course, $policy, $viewer, $c->now, Locator::coursePath($c->server),
             array_map('strval', (array) Session::get('unlocked', [])), array_map('strval', $urlValues),
-            $place->key, $hasLock ? Session::csrf() : '', $full, PageRenderer::serverNames($c->server));
+            $place->key, $hasLock ? self::lockToken($c, $place->key, intdiv($c->now, 3600)) : '', $full, PageRenderer::serverNames($c->server));
         $html = $renderer->render($place);
-        if ($renderer->usedUrlValues !== []) {
-            Session::start($c, true);
+        if ($renderer->usedUrlValues !== [] && Session::isOpen()) { // remembered only in an existing session (L-41)
             $remember = (array) Session::get('url', []);
             foreach ($renderer->usedUrlValues as $name) {
                 $remember[$name] = $urlValues[$name];

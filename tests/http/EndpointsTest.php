@@ -274,8 +274,13 @@ HTML;
         $this->assertContains('<a id="Intro" name="Intro">', $body);
         $this->assertContains('>pic.png</a>', $body, '<showlink>');
 
-        $remembered = $client->get("calendar/php/html.php?file=$index")->body;
-        $this->assertContains('Hello &lt;b&gt;Eve', $remembered, '<url> values are remembered in the session');
+        $this->assertSame('', $client->get("calendar/php/html.php?file=$index&who=x")->header('set-cookie'), 'viewing a page with <lock> or <url> creates no session (L-41)');
+        $this->assertNotContains('Hello &lt;b&gt;Eve', $client->get("calendar/php/html.php?file=$index")->body, 'without a session, <url> values are not remembered');
+        $client->get('calendar/php/config.php?csrf=1');
+        $client->get("calendar/php/html.php?file=$index&who=Ann");
+        $this->assertContains('Hello Ann', $client->get("calendar/php/html.php?file=$index")->body, 'in an existing session they are');
+        $this->assertContains('Hello nobody', $client->get("calendar/php/html.php?file=$index&who=javascript:alert(1)")->body, 'a script URL is never used (L-39)');
+        $this->assertContains('Hello 7', $client->get("calendar/php/html.php?file=$index&who=7")->body);
 
         preg_match('/name="csrf" value="([^"]+)"/', $body, $m);
         $client->post("calendar/php/html.php?file=$index", ['lock' => 'wrong', 'csrf' => $m[1] ?? '']);

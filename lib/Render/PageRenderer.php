@@ -410,7 +410,7 @@ final class PageRenderer
     {
         $html = preg_replace_callback('/<url\b[^>]*>/i', function (array $m): string {
             $name = (string) self::attribute($m[0], 'value');
-            if (isset($this->urlValues[$name])) {
+            if (isset($this->urlValues[$name]) && !self::hasUnsafeScheme($this->urlValues[$name])) {
                 $this->usedUrlValues[] = $name;
                 $value = $this->urlValues[$name];
             } else {
@@ -419,6 +419,13 @@ final class PageRenderer
             return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         }, $html) ?? self::failed();
         return preg_replace('/<\/url\s*>/i', '', $html) ?? self::failed();
+    }
+
+    /** A value that would make a link run script (javascript:, data:, vbscript:, ...): only http(s) and plain text pass (L-39). */
+    private static function hasUnsafeScheme(string $value): bool
+    {
+        $clean = strtolower((string) preg_replace('/[\x00-\x20]+/', '', html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        return (bool) preg_match('/^[a-z][a-z0-9+.-]*:/', $clean) && !preg_match('/^https?:/', $clean);
     }
 
     private function showlinks(string $html, string $dir, Place $place): string

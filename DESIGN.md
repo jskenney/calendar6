@@ -613,8 +613,8 @@ never sent.
 |---|---|---|
 | `file` | yes | the key of a page (`.html`, `.htm`, `.md`), from `calendar.php` or a rewritten link |
 | `full=1` | no | a whole HTML document (the site's CSS, MathJax, highlight.js) for a new tab or printing, instead of the fragment the front end inserts |
-| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The answer is `303` back to the page (`GET`), so a reload does not resend it. Rate limited per address |
-| any other parameter | no | values for `<url value="...">` tags (HTML-escaped, remembered in the session, as v4) |
+| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The form's `csrf` is a token signed from the page and the hour (valid for up to two hours), so showing a page with `<lock>` creates no session. The answer is `303` back to the page (`GET`), so a reload does not resend it. Rate limited per address |
+| any other parameter | no | values for `<url value="...">` tags (HTML-escaped; a value with a URL scheme other than `http(s):`, such as `javascript:`, is ignored; remembered only in a session that already exists, so a link can not create or replace one) |
 
 **Output:** `text/html; charset=utf-8`, by default an HTML **fragment** (the page's body). The
 same key lookup and access check as `get.php`; unknown or not allowed: `404`. Then the page is
@@ -1001,8 +1001,8 @@ Choices the code made where the design left room (change them here if they are w
   subdirectories (`img/pic.png`) get keys so pages can link to them.
 - **Keys:** 22 characters of base64url HMAC-SHA256.
 - **Sessions:** one cookie per course (`cal6_<hash>`, path = the course's URL), opened by
-  read-only endpoints only when the browser already has it; created by `config.php?csrf=1`,
-  `auth.php`, and `html.php` for pages with `<lock>` or `<url>` tags.
+  read-only endpoints only when the browser already has it; created only by
+  `config.php?csrf=1`, `auth.php`, and a `<lock>` code sent to `html.php` (a POST).
 - **html.php:** links to pages become `#/view/KEY`, other files the absolute path
   `/<course>/calendar/php/get.php?file=KEY`; links to files the viewer may not see keep their
   text but lose their target (`data-cal6-hidden`); links to files that do not exist are left as

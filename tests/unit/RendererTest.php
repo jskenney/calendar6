@@ -316,4 +316,16 @@ final class RendererTest extends TestCase
         $this->assertContains('x%00.png', $this->render($course, 'page/home'), 'the course loads and the link is left alone (L-35)');
         $this->assertContains('z%00.png', $this->render($course, 'class_1/index.html'));
     }
+
+    public function testUrlValuesAndNumericNames(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<a href="<url value="next" default="#">">go</a> <url value="7" default="none">',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['next' => ' JavaScript:alert(1)', '7' => 'seven']))
+            ->render($course->places[$course->keysByEvent['class_1']['index.html']]);
+        $this->assertNotContains('alert', $page, 'no javascript: URLs from <url> (L-39)');
+        $this->assertContains('seven', $page, 'numeric names (L-40)');
+    }
 }
