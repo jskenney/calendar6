@@ -63,6 +63,8 @@ AB123/                        the course's web directory
 │   ├── paths.ini             where the course's own pages are (resources, policy, ...)
 │   ├── virtual.ini           files shown in an event but stored elsewhere
 │   ├── duplicate.ini         events that are used again (class 5 also as class 6)
+│   ├── periods.ini           (proposed) the school's periods, per bell schedule
+│   ├── sections.ini          (proposed) the course's sections: meetings, instructors, rooms
 │   └── auth/
 │       └── <username>.ini    one file per user, instructors included
 ├── class/
@@ -190,6 +192,121 @@ Each line is a window (a day, or several) and what happens then, optionally with
 - A window with times affects only meetings that start inside it.
 - Events are placed on the days that have meetings of their type, in order; a holiday moves the
   following events of that type to the next meeting.
+
+### Sections, periods and bell schedules (Proposed, under discussion)
+
+A course can be one instructor with one section, or a dozen instructors with 30 sections that
+meet on different days and periods. The calendar is about **lessons in order** (class 1, 2, 3,
+...), not about times, so the proposal keeps the course calendar section-neutral and adds times
+only where they help.
+
+#### `periods.ini`: the school's periods, per bell schedule
+
+```ini
+[normal]                 ; the default bell schedule
+X  = 06:45-07:35
+1  = 07:45-08:35
+2  = 08:45-09:35
+3  = 09:45-10:35
+4  = 10:45-11:35
+5  = 13:40-14:30
+6  = 14:40-15:30
+7  = 12:40-13:30
+8  = 07:45-09:00
+9  = 09:45-11:00
+10 = 13:40-14:55
+
+[early]                  ; a period that is not listed does not meet (X here)
+1  = 06:45-07:35
+; ...
+10 = 10:45-12:00
+
+[no_midday_break]
+; ...
+
+[2_hour_delay]
+1  = 09:45-10:35
+; ...
+10 = 14:45-16:00
+
+[4_hour_delay]
+1  = cancelled
+; ... 2, 3, 4, 8, 9 cancelled
+5  = 13:40-14:30
+6  = 14:40-15:30
+7  = 12:40-13:30
+10 = 13:40-14:55
+```
+
+A copy lives in each course (the course directory is the boundary); every course at a school
+uses the same file.
+
+#### `sections.ini`: the course's sections
+
+```ini
+; days: M T W R F S; then periods; several periods on one day are one meeting (R34 = 09:45-11:35)
+[1121]
+meets      = MF1, T12
+instructor = smith           ; usernames in config/auth/ (optional; several: smith, lee)
+room       = HP111
+
+[4345]
+meets      = MF4, R34
+instructor = jones
+room       = HP132
+
+[6541]
+meets      = MF6, R56
+instructor = jones
+room       = HP139
+```
+
+- Periods are read greedily as `X`, `10`, then single digits (there is no period 0, so `T910`
+  is 9 and 10).
+- Optional per meeting type: `meets = MF1 class, T12 lab`; the default is `class`.
+- A one-section course needs no `sections.ini`: `config.ini`'s `[schedule]` (with times) still
+  works, and a course with a `sections.ini` takes its meeting days from it instead.
+
+#### `dates.ini` picks the bell schedule for a day
+
+```ini
+2026-12-03 = bell 2_hour_delay         | 2-hour delay (snow)
+2026-10-13 = mon, bell early           | Monday schedule, early start
+```
+
+A bell schedule changes **times only**: a cancelled period means that meeting does not happen,
+but lessons do not shift (sections would drift apart). Shifting the whole course is still a
+`holiday` / `none` line.
+
+#### How lessons are placed
+
+- **Each section has its own dates:** class *N* is the *N*th meeting of that section. In the
+  example, class 2 is Tuesday for 1121 and Thursday for 4345 and 6541.
+- **The course calendar** (what anonymous viewers see) shows each lesson on its **first** date
+  across all sections, with the span when sections differ ("Class 2, Tue-Thu"). No times, no
+  rooms, no instructors: with a dozen instructors that is noise.
+- **A section view:** a viewer can pick a section (a menu; remembered in the browser, since it is
+  not secret), and a logged-in user or instructor has one by default (`section = 4345` in
+  `auth/<username>.ini`; an instructor with several sees each). Then the calendar shows that
+  section's dates, times and room, and the bell schedule of the day ("2-hour delay: period 6 is
+  15:45-16:35").
+- With one section, the course calendar *is* the section view, so times are shown.
+
+#### Release rules with sections
+
+Anonymous viewers have no section, so release times can not differ by section without letting
+anyone open material early by picking the earliest section. So rules are measured across all
+sections:
+
+| In a rule | With sections means |
+|---|---|
+| `+N`, `-N`, `-monday` | from the lesson's **first** date (the earliest section) |
+| `start` | the earliest section's start of that lesson |
+| `end` | the **last** section's end of that lesson (every section has met) |
+| `last` (new anchor) | the lesson's last date: `class/homework-solution = last +1 17:00` |
+
+`<postmeeting>` opens at `end`, so answers stay hidden until every section has met. Individual
+exceptions remain grants.
 
 ### `paths.ini` (Decided: the course's own pages)
 
