@@ -38,13 +38,25 @@ final class ModelCache
             return null;
         }
         $course = @unserialize(substr($body, strlen($fingerprint) + 1));
-        return $course instanceof Course ? $course : null;
+        if (!$course instanceof Course) {
+            return null;
+        }
+        $course->config->secret = $this->secret; // not stored in the cache (L-15)
+        return $course;
     }
 
     public function put(string $fingerprint, Course $course): void
     {
         if ($this->dir !== null) {
-            $body = $fingerprint . "\n" . serialize($course);
+            // the secret stays in config.ini only: keys are already computed (L-15)
+            // (and the parsed .ini files, which hold it too, are read again when needed)
+            [$secret, $files] = [$course->config->secret, $course->config->files];
+            [$course->config->secret, $course->config->files] = ['', []];
+            try {
+                $body = $fingerprint . "\n" . serialize($course);
+            } finally {
+                [$course->config->secret, $course->config->files] = [$secret, $files];
+            }
             TempDir::write($this->dir . '/model', hash_hmac('sha256', $body, $this->secret) . "\n" . $body);
         }
     }

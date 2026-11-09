@@ -76,6 +76,11 @@ final class Session
         unset($_SESSION[self::KEY][$key]);
     }
 
+    public static function clear(): void
+    {
+        $_SESSION[self::KEY] = [];
+    }
+
     public static function regenerate(): void
     {
         if (PHP_SAPI !== 'cli' && session_status() === PHP_SESSION_ACTIVE) {

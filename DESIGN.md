@@ -696,6 +696,10 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable file** hides everything (fail closed) | |
 | R16 | **Paths with spaces** | tab-separated lines |
 
+Targets are case-sensitive, as in v4: `class_1` is not `Class_1`, and `notes.html` is not
+`Notes.html` (DOC-7). Type names are the directory names from `[types]`; file and box names are
+written exactly as they are on disk and in `[boxes]`.
+
 The order, from strongest to weakest (v4's `get_file_security()`, kept exactly): `T_N/F`, `F`,
 `T_N/C`, `T/C`, `T_N`, `T/*`, `T_N/all`, `T_N/*`, `*/C`, `T`, `*`.
 

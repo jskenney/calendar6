@@ -32,8 +32,11 @@ final class CacheTest extends TestCase
         mkdir($state, 0700);
         $cache = new ModelCache($state, Fixture::SECRET);
         $cache->put('fp1', $course);
+        $this->assertNotContains(Fixture::SECRET, (string) file_get_contents("$state/model"), 'the secret is not cached (L-15)');
+        $this->assertSame(Fixture::SECRET, $course->config->secret, 'and the model keeps it');
         $back = $cache->get('fp1');
         $this->assertTrue($back instanceof Course, 'read back');
+        $this->assertSame(Fixture::SECRET, $back?->config->secret, 'restored from config.ini when read');
         $this->assertSame(array_keys($course->places), array_keys($back?->places ?? []), 'the same keys');
         $this->assertSame(null, $cache->get('fp2'), 'another fingerprint');
         $this->assertSame(null, (new ModelCache($state, 'another-secret-another-secret-123'))->get('fp1'), 'a signature made with another secret is refused');

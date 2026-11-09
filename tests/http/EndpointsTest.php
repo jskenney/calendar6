@@ -268,6 +268,10 @@ HTML;
         $this->assertContains('<!doctype html>', $full);
         $this->assertContains('href="/calendar/php/html.php?file=' . $keys['class_1/notes.md'] . '&amp;full=1#part"', $full);
         $this->assertSame(404, $client->get('calendar/php/html.php?file=' . $keys['class_1/pic.png'])->status, 'only pages');
+        $token = (string) $client->get('calendar/php/config.php')->json()['csrf'];
+        $client->post('calendar/php/auth.php', ['csrf' => $token]);
+        $this->assertNotContains('LOCKED-PART', $client->get("calendar/php/html.php?file=$index")->body, 'logging out forgets unlocked codes (L-17)');
+        $this->assertContains('Hello nobody', $client->get("calendar/php/html.php?file=$index")->body, 'and <url> values');
 
         $this->login($client);
         $prof = $client->get("calendar/php/html.php?file=$index")->body;

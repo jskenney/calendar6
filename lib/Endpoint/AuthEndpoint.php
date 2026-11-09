@@ -33,10 +33,9 @@ final class AuthEndpoint
         $password = (string) $c->post('password');
 
         if ($username === '' && $password === '') {
-            Session::forget('user');
-            Session::forget('login');
+            // logging out clears the whole session: unlocked <lock> codes and <url> values too (L-17)
+            Session::clear();
             Session::regenerate();
-            Session::forget('csrf');
             $csrf = Session::csrf();
             Session::close();
             Response::json(['user' => null, 'instructor' => false, 'csrf' => $csrf]);

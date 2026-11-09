@@ -35,6 +35,9 @@ final class RateLimiter
         if ($this->dir === null) {
             return $this->seconds;
         }
+        if (random_int(1, 100) === 1) {
+            $this->sweep($now);
+        }
         return $this->locked($key, function (array $times) use ($now, $limit): array {
             $times = array_values(array_filter($times, fn (int $t): bool => $t > $now - $this->seconds));
             if (count($times) >= $limit) {
@@ -43,6 +46,34 @@ final class RateLimiter
             $times[] = $now;
             return [$times, 0];
         });
+    }
+
+    private const MAX_FILES = 20000;
+
+    /**
+     * Removes counters with no attempt inside the window, and the oldest ones beyond
+     * MAX_FILES, so trying many addresses or usernames can not fill the disk (L-16).
+     */
+    public function sweep(int $now): void
+    {
+        if ($this->dir === null) {
+            return;
+        }
+        $files = [];
+        foreach (glob($this->dir . '/*.json') ?: [] as $file) {
+            $mtime = (int) @filemtime($file);
+            if ($mtime < $now - $this->seconds) {
+                @unlink($file);
+            } else {
+                $files[$file] = $mtime;
+            }
+        }
+        if (count($files) > self::MAX_FILES) {
+            asort($files);
+            foreach (array_slice(array_keys($files), 0, count($files) - self::MAX_FILES) as $file) {
+                @unlink($file);
+            }
+        }
     }
 
     /** Takes back the latest attempt of $key (a login that succeeded does not count). */

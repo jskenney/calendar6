@@ -36,6 +36,17 @@ final class RateLimiterTest extends TestCase
         $this->assertSame(0, $limiter->hit('other', 1004, 3), 'keys are separate');
     }
 
+    public function testSweepRemovesOldCounters(): void
+    {
+        $limiter = new RateLimiter($this->dir, 900);
+        $limiter->hit('old', 1000, 5);
+        $limiter->hit('new', 5000, 5);
+        touch($this->dir . '/' . sha1('old') . '.json', 1000);
+        touch($this->dir . '/' . sha1('new') . '.json', 5000);
+        $limiter->sweep(5000);
+        $this->assertSame([sha1('new') . '.json'], array_map('basename', glob("$this->dir/*.json") ?: []), 'only counters inside the window stay (L-16)');
+    }
+
     public function testUnavailableFailsClosed(): void
     {
         $limiter = new RateLimiter(null, 900);
