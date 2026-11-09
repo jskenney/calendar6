@@ -39,9 +39,22 @@ Everything else references them, for example `<img src="php/get.php?file=KEY">`.
 
 ## Course layout (Decided)
 
+Every course has this layout, always; nothing about it is configurable:
+
+```
+course_directory/             the course (AB123/); the root of everything the calendar serves
+├── calendar/                 the software: a symbolic link to the calendar6 repo anywhere on the
+│                             server, or the repo cloned right here
+├── config/                   all .ini files; always this directory
+│   └── auth/                 all authentication files
+└── <event_type>/<sort>.<event title>/    the material
+```
+
+In more detail:
+
 ```
 AB123/                        the course's web directory
-├── calendar -> ...           the shared software (a symbolic link to the calendar6 repo)
+├── calendar -> ...           the software (a link, or a clone)
 ├── config/
 │   ├── .htaccess             deny all (config/ is inside the web root)
 │   ├── config.ini            the main configuration
@@ -68,6 +81,25 @@ directory per event, named `<sort>.<Title>` and ordered by natural sort (`01.Int
 
 **Configuration files are INI (Decided)**, so instructors can edit them; JSON is used only
 between the server and the browser.
+
+### The course directory is the boundary (Decided)
+
+- **Everything is relative to the course directory.** Every path in every `.ini` file
+  (`paths.ini` pages, `virtual.ini` real files, `<inject>` / `<calphp>` sources are relative to
+  their page) is relative to `course_directory/`. Absolute paths and `..` are rejected (listed as
+  problems for the instructor).
+- **Nothing outside the course directory is ever served or run.** Each path is resolved with
+  `realpath()` (so symbolic links are followed) and must still be inside `course_directory/`;
+  a link that leads outside is treated as missing. Calendar 4's `$ALLOWED_PATHS` (shared material
+  elsewhere) is **not** kept: share material by copying it in.
+- **Never served, even inside the course:** `config/` (and so `auth/`), `calendar/`, names
+  starting with a dot, `.php` files (only run by `<calphp>`), `.ini` files.
+- **Only known files are served:** `get.php` and `html.php` serve a key, and keys exist only for
+  event files, `virtual.ini` files, `paths.ini` pages and the files their pages link to.
+- **The configuration is always `course_directory/config/`**; there is no setting or pointer that
+  moves it.
+- **The location of calendar6 does not matter.** The only assumption is that
+  `course_directory/calendar` reaches it (a link or a clone).
 
 ### Samples of every `.ini` file
 
@@ -125,7 +157,6 @@ instructor    = instructor.html            | Instructor
 [access]
 lockdown   = 2026-12-18 17:00      ; see default.ini (R12); optional "until ..."
 postmeeting = end                  ; <postmeeting>: end (of the meeting) | HH:MM | off
-allowed_paths = /home/faculty/username/shared   ; outside the course, for links and virtual.ini
 
 [users]
 valid      = 2026-08-24 until 2026-12-18 23:59  ; the default window for auth/*.ini
@@ -188,8 +219,9 @@ lab_2,4,6/checklist.md = shared/checklist.md
   links are rewritten relative to its **real** directory, and it gets its own key.
 - Access is checked under the virtual name (`lab_1/notes.html`) **and** under the real file's
   path; both must allow it (R13).
-- The real file must be inside the course; its directory (`homework/`, `shared/`, ...) needs the
-  same `.htaccess` as the material directories. Later lines win, as everywhere.
+- The real file is relative to the course directory and must be inside it (never in `config/`
+  or `calendar/`); its directory (`homework/`, `shared/`, ...) needs the same `.htaccess` as the
+  material directories. Later lines win, as everywhere.
 
 ### `duplicate.ini` (Decided: an event used again)
 
@@ -362,8 +394,9 @@ viewer may see, with their keys. Things the viewer may not see are left out enti
    asks again each time and gets `304 Not Modified` when nothing changed. (Not `public`: the
    answer depends on the session cookie.)
 4. Not cached: instructors' `as` / `at` previews.
-5. The cache lives outside the web root (proposed: the system temporary directory, in a folder
-   named by a hash of the course path), and is only a speed-up: deleting it is always safe.
+5. The cache is never served and is only a speed-up: deleting it is always safe. Proposed: the
+   system temporary directory, in a folder named by a hash of the course path, so the web server
+   never needs write access to the course directory (the same for the login rate limiter).
 
 ### `get.php` (Decided: one file by key, with the right MIME type)
 
@@ -430,7 +463,7 @@ All are handled in `html.php`, so hidden content never reaches the browser:
 Removed: `<ace>` (and Ace itself), and `<keyword>` / `<search>`, which only made search links
 (search is removed).
 
-`<calphp>` details (Decided: passed through): the file must be inside the course (normally the
+`<calphp>` details (Decided: passed through): the file must be inside the course directory (normally the
 same event directory); it runs with the course directory as its working directory; its output is
 not processed further. Proposed: it only runs if the page itself is visible to the viewer, and a
 fatal error in it replaces the tag with an error note for instructors instead of breaking the
@@ -543,7 +576,7 @@ Notes:
 - Pages from `paths.ini` are targeted as `page/<name>`.
 
 Other v4 security behaviour to keep: names starting with a dot are ignored everywhere; content
-files and link targets must be inside the course (or `$ALLOWED_PATHS`, now `config.ini`);
+files and link targets must be inside the course directory (no `$ALLOWED_PATHS`);
 `.php` files are never sent (only run by `<calphp>`); `config/`, logs and access data are never
 served; passwords and lock codes are removed from any log.
 
@@ -615,11 +648,16 @@ The software is shared by many courses through the `calendar` link, so it can no
 pointer to any one course. Instead:
 
 1. The course directory is found from the request: `$_SERVER['SCRIPT_FILENAME']` keeps the
-   linked path (`.../AB123/calendar/php/get.php`), so the course is two levels above `php/`
-   (`__DIR__` would resolve the link and point into the shared repository).
-2. Its configuration is always `<course>/config/`, and its material is in `<course>/class/`,
+   path the script was reached by (`.../AB123/calendar/php/get.php`), so the course is two levels
+   above `php/`. This works the same for a link and for a clone (`__DIR__` would resolve the
+   link and point into the repository).
+2. **Checked before anything else:** `<course>/calendar` must resolve (`realpath`) to the code
+   that is running, and `<course>/config/config.ini` must exist. Otherwise (for example a server
+   that resolves links in `SCRIPT_FILENAME`), every endpoint answers `500` with a short error and
+   reads nothing.
+3. Its configuration is always `<course>/config/`, and its material is in `<course>/class/`,
    `<course>/lab/`, ... (the types listed in `config.ini`).
-3. Because `config/` and the material are inside the web root, `config/.htaccess` denies all, and
+4. Because `config/` and the material are inside the web root, `config/.htaccess` denies all, and
    each material directory needs the same (proposed: `calendar/` ships an `.htaccess` template,
    and `config.php` reports to the instructor when a material file can be fetched directly).
 
@@ -636,6 +674,9 @@ pointer to any one course. Instead:
 
 ## Security summary (Proposed)
 
+- The course directory is the boundary: nothing outside it is read for serving, served or run;
+  paths are resolved with `realpath()` and checked; `config/`, `calendar/`, dot files, `.php` and
+  `.ini` files are never served.
 - Material directories and `config/` must not be reachable directly: `.htaccess` (Apache) or
   server rules (nginx).
 - Access is checked where files are served (`get.php`, `html.php`), not only in `calendar.php`.
