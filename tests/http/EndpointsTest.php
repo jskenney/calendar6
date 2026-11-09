@@ -144,6 +144,17 @@ final class EndpointsTest extends TestCase
         $this->assertContains('not UTF-8', $client->get('calendar/php/calendar.php')->body, 'reported to instructors');
     }
 
+    public function testNumericNamesDoNotTakeTheCourseDown(): void
+    {
+        $client = $this->start(['class/01.Introduction/1' => 'one', 'class/01.Introduction/2024.pdf' => 'pdf', 'config/paths.ini' => "[pages]\n2027 = pages/home.html\n"]);
+        foreach (['config.php', 'calendar.php'] as $endpoint) {
+            $this->assertSame(200, $client->get("calendar/php/$endpoint")->status, "$endpoint with numeric names (M-17)");
+        }
+        $keys = self::keys($client->get('calendar/php/calendar.php')->json());
+        $this->assertSame('one', $client->get('calendar/php/get.php?file=' . ($keys['class_1/1'] ?? ''))->body);
+        $this->assertSame(200, $client->get('calendar/php/html.php?file=' . ($keys['page/2027'] ?? ''))->status);
+    }
+
     public function testCalendarCacheFollowsChanges(): void
     {
         $client = $this->start();

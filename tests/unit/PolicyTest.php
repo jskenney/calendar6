@@ -214,6 +214,24 @@ INI;
         $this->assertContains('"Notes.md" and "notes.md" differ only in case', $messages, 'a case clash is a problem');
     }
 
+    public function testNamesMadeOfDigits(): void
+    {
+        $course = $this->load([
+            'config/default.ini' => "2024 = never\nlab_1 = always\n",
+            'config/paths.ini' => "[pages]\n2027 = pages/home.html\n",
+            'config/virtual.ini' => "lab_1/42 = shared/checklist.md\n",
+            'lab/01.Setup/2024' => 'old exam',
+            'lab/01.Setup/1' => 'one',
+        ]);
+        $this->assertTrue(isset($course->keysByEvent['lab_1']['2024']), 'a course with numeric names loads (M-17)');
+        $this->assertTrue(isset($course->pageKeys['2027']));
+        $now = self::now($course);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/2024', $now), '2024 = never');
+        $ta = Viewer::account($course->config, 'ta');
+        $this->assertFalse($ta !== null && self::sees($course, $ta, 'lab_1/2024', $now), 'a grant for lab_1 does not drop the rule for 2024 (L-26)');
+        $this->assertTrue(self::sees($course, Viewer::anonymous(), 'page/2027', $now));
+    }
+
     public function testUnreadableRulesHideEverything(): void
     {
         $course = $this->load(['config/default.ini' => null]);

@@ -309,7 +309,7 @@ final class PageRenderer
             'course' => $this->course->config->number,
             'coursename' => $this->course->config->name,
         ];
-        $values = array_merge($values, $this->course->config->replace);
+        $values = $this->course->config->replace + $values; // not array_merge: numeric names (L-26)
         $html = preg_replace_callback('/<replace\b[^>]*>/i', static function (array $m) use ($values): string {
             $name = (string) self::attribute($m[0], 'value');
             return htmlspecialchars($values[$name] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');

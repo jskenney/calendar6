@@ -28,6 +28,7 @@ final class CalendarJson
 
         $pages = [];
         foreach ($this->course->pageKeys as $name => $key) {
+            $name = (string) $name; // names made of digits come back from array keys as integers (M-17)
             $place = $this->course->places[$key];
             $decision = $policy->decide($viewer, $place, $now);
             $this->note($decision->nextChange);
@@ -46,6 +47,7 @@ final class CalendarJson
             $anyVisible = false;
             $opens = null;
             foreach ($event->files as $name => $file) {
+                $name = (string) $name;
                 if (!$file->topLevel) {
                     continue;
                 }

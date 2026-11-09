@@ -104,6 +104,7 @@ final class Course
             ksort($event->files, SORT_STRING);
             [$boxes, $assets] = $this->boxesOf($event);
             foreach ($event->files as $name => $file) {
+                $name = (string) $name; // names made of digits come back from array keys as integers (M-17)
                 $place = new Place(Keys::make($secret, $event->id . '/' . $name), $file, $event, null,
                     $boxes[$name] ?? $assets[$name] ?? null, isset($assets[$name]));
                 $this->places[$place->key] = $place;
@@ -111,6 +112,7 @@ final class Course
             }
         }
         foreach ($this->config->pages as $name => $page) {
+            $name = (string) $name;
             $real = $this->boundary->resolveRelative($page['file']);
             if ($real === null || !is_file($real) || !ContentFile::isPage($real)) {
                 $this->problems[] = new Problem("page \"$name\": missing, outside the course, or not .html/.md: $page[file]", 'paths.ini');
@@ -125,6 +127,7 @@ final class Course
             $this->byRealPath[$place->file->realPath][] = $key;
         }
         foreach ($this->pageKeys as $name => $key) {
+            $name = (string) $name;
             $this->addPageAssets($name, $this->places[$key]->file->realPath);
         }
         foreach (array_values($this->places) as $place) {
@@ -239,15 +242,15 @@ final class Course
         }
         $stems = [];
         foreach ($boxes as $file => $box) {
-            $stems[(string) preg_replace('/\.[^.\/]+$/', '', $file)] = $box;
+            $stems[] = [(string) preg_replace('/\.[^.\/]+$/', '', (string) $file), $box];
         }
-        uksort($stems, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
+        usort($stems, static fn (array $a, array $b): int => strlen($b[0]) <=> strlen($a[0]));
         $assets = [];
-        foreach (array_keys($event->files) as $name) {
+        foreach (array_map('strval', array_keys($event->files)) as $name) {
             if (isset($boxes[$name])) {
                 continue;
             }
-            foreach ($stems as $stem => $box) {
+            foreach ($stems as [$stem, $box]) {
                 if (strlen($name) > strlen($stem) && str_starts_with($name, $stem) && in_array($name[strlen($stem)], ['-', '_', '.', '/'], true)) {
                     $assets[$name] = $box;
                     break;

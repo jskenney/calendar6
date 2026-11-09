@@ -81,7 +81,11 @@ final class Rules
     public function overlay(self $other): self
     {
         $merged = new self();
-        $merged->byTarget = array_merge($this->byTarget, $other->byTarget);
+        // not array_merge: it renumbers targets made of digits ("2024"), losing them (L-26)
+        $merged->byTarget = $this->byTarget;
+        foreach ($other->byTarget as $target => $rule) {
+            $merged->byTarget[$target] = $rule;
+        }
         return $merged;
     }
 }
