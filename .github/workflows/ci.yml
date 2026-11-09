@@ -47,6 +47,20 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q apache2 php-fpm php-cli php-curl php-mbstring
       - name: Serve a course made from the template
-        run: sudo bash tests/deploy/apache-setup.sh
+        run: sudo CI=true bash tests/deploy/apache-setup.sh
       - name: Smoke test
         run: php tests/deploy/smoke.php http://localhost/AB123/ /var/www/html/AB123 smoke-test-password
+
+  nginx:
+    name: Deployment (nginx + PHP-FPM, linked course)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install nginx and PHP-FPM
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q nginx php-fpm php-cli php-curl php-mbstring
+      - name: Serve a course made from the template
+        run: sudo CI=true bash tests/deploy/nginx-setup.sh
+      - name: Smoke test
+        run: php tests/deploy/smoke.php http://localhost:8080/AB123/ /var/www/html/AB123 smoke-test-password

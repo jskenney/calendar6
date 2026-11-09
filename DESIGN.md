@@ -884,7 +884,8 @@ The plan:
   every `.ini` file, anywhere under the course, also through `calendar/`), and the deny-all
   files in `config/`, `pages/`, `shared/` and every event-type directory (add one to each new
   type). They need `AllowOverride AuthConfig` (or `All`) and Apache 2.4 for the dot rule.
-- **nginx:** no `.htaccess`; deny the same directories in the server block, for example
+- **nginx:** no `.htaccess`; `tests/deploy/nginx-site.conf` is a complete, tested server block
+  (CI serves a course with it). In short: deny the same directories in the server block, for example
   `location ~ ^/AB123/(config|pages|shared|class|lab|exam|project)/ { deny all; }`, deny dot
   files and `.ini` files everywhere (`location ~ /\.(?!well-known/) { deny all; }` and
   `location ~ \.ini$ { deny all; }`), and pass only `calendar/php/*.php` to PHP-FPM
@@ -892,7 +893,9 @@ The plan:
 - **Checking a server:** `tests/deploy/smoke.php <course URL> <course directory>` checks a real
   deployment: the endpoints, a login, and that `config/`, the material, `.git/`, `calendar/lib/`,
   `calendar/tests/` and `calendar/template/` can not be fetched directly. CI runs it against
-  Apache + PHP-FPM with a linked course (`tests/deploy/apache-setup.sh`).
+  Apache + PHP-FPM and nginx + PHP-FPM with a linked course (`tests/deploy/apache-setup.sh`,
+  `nginx-setup.sh`). Those setup scripts replace `/opt/calendar6` and `/var/www/html/AB123`, so
+  they run only with `--yes` (or `CI=true`) and never replace a directory they did not make.
 - **Finding the course** relies on `SCRIPT_FILENAME` keeping the linked path; with PHP-FPM set it
   from `$document_root$fastcgi_script_name` (not `$realpath_root`). If it is resolved, every
   endpoint answers `500` instead of guessing.
