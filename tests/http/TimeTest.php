@@ -102,4 +102,36 @@ final class TimeTest extends TestCase
         $csrf = (string) $other->get('calendar/php/config.php?csrf=1')->json()['csrf'];
         $this->assertSame(401, $other->post('calendar/php/auth.php', ['username' => 'short', 'password' => Fixture::PASSWORD, 'csrf' => $csrf])->status, 'and no new login');
     }
+
+    public function testGuessesFromManyAddressesAreGatedButTheInstructorGetsIn(): void
+    {
+        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = str_replace('login_attempts = 5 per 15m', 'login_attempts = 1 per 15m', $config) . "\n[server]\ntrusted_proxies = 127.0.0.1\n";
+        $prof = $this->start(['config/config.ini' => $config], '2026-10-01 10:00');
+        $post = function (HttpClient $c, string $user, string $password, string $from): int {
+            $csrf = (string) $c->get('calendar/php/config.php?csrf=1')->json()['csrf'];
+            return $c->post('calendar/php/auth.php', ['username' => $user, 'password' => $password, 'csrf' => $csrf], ['X-Forwarded-For' => $from])->status;
+        };
+        $this->assertSame(200, $post($prof, 'prof', Fixture::PASSWORD, '198.51.100.7'), 'an earlier login gives this browser a device cookie');
+        $token = (string) $prof->get('calendar/php/config.php')->json()['csrf'];
+        $prof->post('calendar/php/auth.php', ['csrf' => $token]);
+
+        $attacker = new HttpClient($this->server);
+        for ($i = 0; $i < 10; $i++) { // fills the per-username bucket (10 x 1), one address each
+            $this->assertSame(401, $post($attacker, 'prof', "bad$i", "203.0.113.$i"));
+        }
+        $this->assertSame(401, $post($attacker, 'prof', 'bad-a', '203.0.113.50'), 'once full, one attempt passes this second');
+        $this->assertSame(429, $post($attacker, 'prof', 'bad-b', '203.0.113.51'), 'and the next waits: parallel guesses do not get through (M-18)');
+        $this->assertSame(429, $post($attacker, 'prof', 'bad-c', '2001:db8::1'), 'IPv6 too');
+        $this->assertSame(200, $post($prof, 'prof', Fixture::PASSWORD, '198.51.100.8'), 'a browser that logged in before is not gated: no lockout');
+        $this->at('2026-10-01 10:00:01');
+        $this->assertSame(401, $post($attacker, 'prof', 'bad-d', '203.0.113.52'), 'a second later, one more attempt');
+    }
+
+    public function testIpv6AddressesCountPerNetwork(): void
+    {
+        $this->assertSame(\Cal6\Http\RateLimiter::addressKey('2001:db8:1:2::1'), \Cal6\Http\RateLimiter::addressKey('2001:db8:1:2:ffff::9'), 'one /64 (M-18)');
+        $this->assertTrue(\Cal6\Http\RateLimiter::addressKey('2001:db8:1:2::1') !== \Cal6\Http\RateLimiter::addressKey('2001:db8:1:3::1'));
+        $this->assertSame('203.0.113.5', \Cal6\Http\RateLimiter::addressKey('203.0.113.5'));
+    }
 }

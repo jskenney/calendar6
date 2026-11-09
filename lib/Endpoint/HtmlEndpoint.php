@@ -54,7 +54,7 @@ final class HtmlEndpoint
             $code = trim((string) $c->post('lock'));
             if ($code !== '') {
                 $limiter = RateLimiter::forCourse($c->courseDir, $c->config->loginAttempts[1]);
-                $wait = $limiter->hit('lock:' . $c->address(), $c->now, $c->config->loginAttempts[0] * 2);
+                $wait = $limiter->hit('lock:' . RateLimiter::addressKey($c->address()), $c->now, $c->config->loginAttempts[0] * 2);
                 if ($wait > 0) {
                     Session::close();
                     Response::error($limiter->available() ? 429 : 503, 'too many attempts: try again later', ['Retry-After: ' . $wait]);
@@ -64,7 +64,7 @@ final class HtmlEndpoint
                     $unlocked = (array) Session::get('unlocked', []);
                     $unlocked[] = $code;
                     Session::set('unlocked', array_values(array_unique($unlocked)));
-                    $limiter->forgive('lock:' . $c->address());
+                    $limiter->forgive('lock:' . RateLimiter::addressKey($c->address()));
                 }
             }
             // answer with a redirect, so reloading the page does not send the form again (L-6)

@@ -76,6 +76,36 @@ final class RateLimiter
         }
     }
 
+    /**
+     * One attempt per $interval seconds for $key: 0 when this attempt may go ahead (and
+     * the next one must wait), else the seconds to wait.  Nothing sleeps (M-18).
+     */
+    public function gate(string $key, int $now, int $interval): int
+    {
+        if ($this->dir === null) {
+            return $this->seconds;
+        }
+        return $this->locked('gate:' . $key, static function (array $times) use ($now, $interval): array {
+            $next = $times === [] ? 0 : max($times);
+            if ($now < $next) {
+                return [$times, $next - $now];
+            }
+            return [[$now + $interval], 0];
+        });
+    }
+
+    /** The key for a client address: IPv6 addresses count per /64 network (M-18). */
+    public static function addressKey(string $address): string
+    {
+        if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
+            $packed = inet_pton($address);
+            if ($packed !== false) {
+                return bin2hex(substr($packed, 0, 8)) . '::/64';
+            }
+        }
+        return $address;
+    }
+
     /** Takes back the latest attempt of $key (a login that succeeded does not count). */
     public function forgive(string $key): void
     {

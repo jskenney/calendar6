@@ -457,9 +457,12 @@ No `username`/`password`: log out. Any method other than POST: `405`.
   `429` with `Retry-After`. Bad or missing token: `403`. The limiter can not keep count (its
   private directory is unusable): `503`, nobody can log in until it is fixed (fail closed).
 - Attempts are limited per address and username (`[users] login_attempts`, 5 per 15 minutes in
-  the template) and per address (four times that); both block. Per username (ten times that)
-  attempts are only slowed down (one second each), never blocked, so guesses from many
-  addresses can not lock an instructor out. Behind a reverse proxy, list it in
+  the template) and per address (four times that); both block, and an IPv6 address counts per
+  /64 network. Once a username has ten times that many failures from anywhere, its attempts pass
+  **one per second** (others get `429` with `Retry-After` at once; nobody waits on the server),
+  except from a browser that has logged in as that user before: a successful login sets a
+  signed device cookie (`cal6_device_<hash>`, 180 days, `HttpOnly`, `SameSite=Strict`) that skips
+  this gate. So guesses from many addresses neither get far nor lock the instructor out. Behind a reverse proxy, list it in
   `[server] trusted_proxies` so the client's address is used (see "Deploying").
 - Hardening: cookie flags `HttpOnly`, `Secure` (on HTTPS, also behind a trusted proxy that says
   so), `SameSite=Strict`; a session lifetime from `config.ini`; the login ends by itself when the

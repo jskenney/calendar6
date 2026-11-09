@@ -17,6 +17,42 @@ use Cal6\Http\Session;
  */
 final class AuthEndpoint
 {
+    private const DEVICE_DAYS = 180;
+
+    private static function deviceCookie(Context $c): string
+    {
+        return 'cal6_device_' . substr(sha1((string) realpath($c->courseDir)), 0, 12);
+    }
+
+    /** Whether this browser carries a device cookie from an earlier login as $user. */
+    private static function knownDevice(Context $c, string $user): bool
+    {
+        $value = $_COOKIE[self::deviceCookie($c)] ?? '';
+        if (!is_string($value) || substr_count($value, '.') !== 2) {
+            return false;
+        }
+        [$who, $nonce, $mac] = explode('.', $value);
+        return hash_equals(hash_hmac('sha256', "device|$who|$nonce", $c->config->secret), $mac)
+            && hash_equals(bin2hex($user), $who);
+    }
+
+    /** After a successful login: a signed cookie that lets this browser past the per-user gate. */
+    private static function rememberDevice(Context $c, string $user): void
+    {
+        $who = bin2hex($user);
+        $nonce = bin2hex(random_bytes(12));
+        $value = "$who.$nonce." . hash_hmac('sha256', "device|$who|$nonce", $c->config->secret);
+        if (!headers_sent()) {
+            setcookie(self::deviceCookie($c), $value, [
+                'expires' => $c->now + self::DEVICE_DAYS * 86400,
+                'path' => \Cal6\Http\Locator::coursePath($c->server),
+                'secure' => $c->https(),
+                'httponly' => true,
+                'samesite' => 'Strict',
+            ]);
+        }
+    }
+
     public static function handle(Context $c): void
     {
         if ($c->method() !== 'POST') {
@@ -42,9 +78,12 @@ final class AuthEndpoint
             return;
         }
 
-        // Limits (M-7, L-23): per address and username the configured number, and per
-        // address four times that, block; per username (ten times that) only slows down,
-        // so guesses from many addresses can not lock the real instructor out.
+        // Limits (M-7, L-23, M-18): per address and username the configured number, and
+        // per address four times that, block (IPv6 counted per /64). Once a username has
+        // ten times that many failures from anywhere, its attempts pass one per second
+        // (the others get 429 at once, nobody sleeps), except from a browser that has
+        // logged in as that user before (a signed device cookie), so guesses from many
+        // addresses neither get far nor lock the real instructor out.
         [$limit, $seconds] = $c->config->loginAttempts;
         $limiter = RateLimiter::forCourse($c->courseDir, $seconds);
         if (!$limiter->available()) {
@@ -54,7 +93,8 @@ final class AuthEndpoint
             return;
         }
         $user = strtolower($username);
-        $keys = ['pair:' . $c->address() . '|' . $user => $limit, 'address:' . $c->address() => $limit * 4];
+        $address = RateLimiter::addressKey($c->address());
+        $keys = ['pair:' . $address . '|' . $user => $limit, 'address:' . $address => $limit * 4];
         $recorded = [];
         foreach ($keys as $key => $max) {
             $wait = $limiter->hit($key, $c->now, $max);
@@ -70,8 +110,16 @@ final class AuthEndpoint
         }
         if ($limiter->hit('user:' . $user, $c->now, $limit * 10) === 0) {
             $recorded[] = 'user:' . $user;
-        } else {
-            usleep(1_000_000); // many failures for this username from many addresses: slow down, never block
+        } elseif (!self::knownDevice($c, $user)) {
+            $wait = $limiter->gate('user:' . $user, $c->now, 1);
+            if ($wait > 0) {
+                foreach ($recorded as $done) {
+                    $limiter->forgive($done);
+                }
+                Session::close();
+                Response::error(429, 'too many failed logins for this user: try again in a moment', ['Retry-After: ' . $wait]);
+                return;
+            }
         }
 
         $account = Viewer::account($c->config, $username);
@@ -92,6 +140,7 @@ final class AuthEndpoint
         foreach ($recorded as $done) {
             $limiter->forgive($done);
         }
+        self::rememberDevice($c, $user);
         Session::regenerate();
         Session::set('user', $account->user);
         Session::set('login', $c->now);

@@ -348,20 +348,6 @@ HTML;
         $this->assertSame(401, $attacker->post('calendar/php/auth.php', ['username' => 'ta', 'password' => 'bad', 'csrf' => $token], $from('198.51.100.1'))->status, 'another username from the same address is still allowed');
     }
 
-    public function testGuessesFromManyAddressesDoNotLockTheInstructorOut(): void
-    {
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
-        $config = str_replace('login_attempts = 5 per 15m', 'login_attempts = 1 per 15m', $config) . "\n[server]\ntrusted_proxies = 127.0.0.1\n";
-        $client = $this->start(['config/config.ini' => $config]);
-        $attacker = new HttpClient($this->server);
-        $token = (string) $attacker->get('calendar/php/config.php?csrf=1')->json()['csrf'];
-        for ($i = 0; $i < 11; $i++) { // more than the per-username bucket (10 x 1), each from its own address
-            $this->assertSame(401, $attacker->post('calendar/php/auth.php', ['username' => 'prof', 'password' => "bad$i", 'csrf' => $token], ['X-Forwarded-For' => '203.0.113.' . (10 + $i)])->status);
-        }
-        $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
-        $this->assertSame(200, $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf], ['X-Forwarded-For' => '198.51.100.3'])->status, 'the real instructor still gets in (L-23)');
-    }
-
     public function testLoginFailsClosedWithoutRateLimiter(): void
     {
         $client = $this->start();
