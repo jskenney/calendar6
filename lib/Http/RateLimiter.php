@@ -59,6 +59,7 @@ final class RateLimiter
         if ($this->dir === null) {
             return;
         }
+        clearstatcache(); // mtimes read earlier in this request (an earlier sweep) may be stale
         $files = [];
         foreach (glob($this->dir . '/*.json') ?: [] as $file) {
             $mtime = (int) @filemtime($file);

@@ -377,7 +377,9 @@ lab_2,4,6/checklist.md = shared/checklist.md
   links are rewritten relative to its **real** directory, and it gets its own key.
 - Access is checked under the virtual name (`lab_1/notes.html`) **and** under the real file's
   path; both must allow it (R13). When the real file is a `paths.ini` page, its `page/<name>` rule
-  counts; when it belongs to an event on no calendar day, the virtual file is hidden too (R14).
+  counts; when it is a file that `paths.ini` pages link to (`pages/answers.pdf`), each of those
+  pages' rules counts too; when it belongs to an event on no calendar day, the virtual file is
+  hidden too (R14).
 - A virtual file added to an event is also added to that event's `same` repeats and `numbered`
   copies (Decided, L-33).
 - The real file is relative to the course directory and must be inside it (never in `config/`

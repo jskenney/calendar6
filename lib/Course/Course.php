@@ -155,8 +155,8 @@ final class Course
     {
         foreach ($this->byRealPath[$real] ?? [] as $key) {
             $place = $this->places[$key];
-            if ($place->assetOf === null && !($place->asset && $place->event === null)) {
-                return true; // not a page's asset either: those are per page too
+            if ($place->assetOf === null && !($place->asset && $place->event === null) && $place->file->virtualOf === null) {
+                return true; // not a page's asset either: those are per page too; nor a virtual name (L-49)
             }
         }
         return false;

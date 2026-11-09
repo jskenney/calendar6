@@ -164,6 +164,22 @@ INI;
         $this->assertTrue(self::sees($course, Viewer::anonymous(), 'page/resources/pages/logo.png', $now), 'visible with the visible page (L-38)');
     }
 
+    public function testAVirtualNameOfAHiddenPagesAttachmentIsHidden(): void
+    {
+        $course = $this->load([
+            'config/paths.ini' => "[pages]\nhome = pages/home.html\nanswers = pages/answers.html\n",
+            'config/default.ini' => "class_1 = always\npage/answers = never\n",
+            'config/virtual.ini' => "class_1/answers.pdf = pages/answers.pdf\nclass_1/logo.png = pages/logo.png\n",
+            'pages/answers.html' => '<a href="answers.pdf">answers</a>',
+            'pages/answers.pdf' => 'A',
+            'pages/home.html' => '<img src="logo.png">',
+            'pages/logo.png' => 'P',
+        ]);
+        $now = self::now($course);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/answers.pdf', $now), 'the hidden page decides its attachment, also under a virtual name (L-49)');
+        $this->assertTrue(self::sees($course, Viewer::anonymous(), 'class_1/logo.png', $now), 'a visible page\'s attachment stays visible');
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);

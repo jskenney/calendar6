@@ -139,6 +139,13 @@ final class Policy
                 $real !== null => [['page/' . $real->page, 'page', '*'], null], // a paths.ini page keeps its rule (L-31)
                 default => [[$place->file->virtualOf, basename($place->file->virtualOf), '*'], null],
             };
+            // a file that paths.ini pages link to (pages/answers.pdf) also follows each of those
+            // pages' rules, so a virtual name does not publish a hidden page's attachment (L-49)
+            if ($real === null || $real->event === null) {
+                foreach ($this->pageAssetsOf($place->file->realPath) as $page) {
+                    $lists[] = [['page/' . $page, 'page', '*'], null];
+                }
+            }
         }
         return $lists;
     }
@@ -177,6 +184,23 @@ final class Policy
             $this->byRealPath += $pages;
         }
         return $this->byRealPath[$real] ?? null;
+    }
+
+    /** @var array<string, list<string>>|null real path => the paths.ini pages that link to it */
+    private ?array $assetPages = null;
+
+    /** The paths.ini pages whose links give the file at $real a key of its own. @return list<string> */
+    private function pageAssetsOf(string $real): array
+    {
+        if ($this->assetPages === null) {
+            $this->assetPages = [];
+            foreach ($this->course->places as $place) {
+                if ($place->asset && $place->event === null && $place->file->virtualOf === null) {
+                    $this->assetPages[$place->file->realPath][] = (string) $place->page;
+                }
+            }
+        }
+        return array_values(array_unique($this->assetPages[$real] ?? []));
     }
 
     /** A virtual file whose real file belongs to an event on no calendar day is not shown (R14, L-31). */
