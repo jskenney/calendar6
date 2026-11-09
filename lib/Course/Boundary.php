@@ -35,7 +35,7 @@ final class Boundary
     /** The real path of $path when it is inside the course and may be read, else null. */
     public function resolve(string $path): ?string
     {
-        $real = realpath($path);
+        $real = self::realpath($path);
         if ($real === false || !str_starts_with($real, $this->real . '/')) {
             return null;
         }
@@ -55,6 +55,12 @@ final class Boundary
             }
         }
         return $real;
+    }
+
+    /** realpath() that treats a path with a NUL byte (a "%00" in a link) as missing instead of throwing (L-35). */
+    public static function realpath(string $path): string|false
+    {
+        return str_contains($path, "\0") ? false : realpath($path);
     }
 
     /** A course-relative path from an .ini file: no absolute paths, no "..". */

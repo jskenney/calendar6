@@ -501,7 +501,7 @@ final class PageRenderer
         if ($target !== null) {
             return $this->urlFor($target, $element) . $fragment;
         }
-        return realpath($dir . '/' . rawurldecode($path)) !== false ? null : $value . $fragment;
+        return Boundary::realpath($dir . '/' . rawurldecode($path)) !== false ? null : $value . $fragment;
     }
 
     private static function isAbsolute(string $url): bool

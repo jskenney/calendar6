@@ -305,4 +305,15 @@ final class RendererTest extends TestCase
         $after = $classTwo->time->end()->getTimestamp() + 60;
         $this->assertContains('PM-ANSWER', $this->render($course, 'class_1/index.html', [], null, $after), 'and appear after it');
     }
+
+    public function testANulByteInALinkIsAMissingFile(): void
+    {
+        $course = $this->course([
+            'pages/home.html' => '<img src="x%00.png"><a href="y%00.html">y</a>',
+            'class/01.Introduction/index.html' => '<img src="z%00.png">',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $this->assertContains('x%00.png', $this->render($course, 'page/home'), 'the course loads and the link is left alone (L-35)');
+        $this->assertContains('z%00.png', $this->render($course, 'class_1/index.html'));
+    }
 }

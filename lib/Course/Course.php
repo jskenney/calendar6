@@ -320,7 +320,7 @@ final class Course
                 return $this->places[$this->keysByEvent[$event->id][$name]];
             }
         }
-        $real = realpath($fromDir . '/' . $link);
+        $real = Boundary::realpath($fromDir . '/' . $link);
         if ($real === false) {
             return null;
         }
