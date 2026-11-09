@@ -78,7 +78,7 @@ final class HtmlEndpoint
         }
         $renderer = new PageRenderer($course, $policy, $viewer, $c->now, Locator::coursePath($c->server),
             array_map('strval', (array) Session::get('unlocked', [])), array_map('strval', $urlValues),
-            $place->key, $hasLock ? Session::csrf() : '', $full);
+            $place->key, $hasLock ? Session::csrf() : '', $full, PageRenderer::serverNames($c->server));
         $html = $renderer->render($place);
         if ($renderer->usedUrlValues !== []) {
             Session::start($c->courseDir, $c->server, true);

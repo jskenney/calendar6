@@ -40,6 +40,8 @@ final class PageRenderer
         private readonly string $lockKey = '',
         private readonly string $csrf = '',
         private readonly bool $full = false,
+        /** names and addresses <host server="..."> matches: never anything the client chooses */
+        private readonly array $hostNames = [],
     ) {
     }
 
@@ -139,13 +141,29 @@ final class PageRenderer
         return self::block($html, 'postmeeting', static fn (string $inner): string => $show ? $inner : '');
     }
 
+    /**
+     * <host server="a, b">: shown only when served by one of those servers.  Matched
+     * against the host's own name and address, never SERVER_NAME (it comes from the
+     * request's Host header, which anyone can set).
+     */
     private function host(string $html): string
     {
-        $names = array_filter([gethostname() ?: '', (string) ($_SERVER['SERVER_NAME'] ?? '')]);
+        $names = array_map('strtolower', array_filter($this->hostNames, static fn (string $n): bool => $n !== ''));
         return preg_replace_callback('/<host\b([^>]*)>([\s\S]*?)<\/host\s*>/i', static function (array $m) use ($names): string {
-            $server = self::attribute('<host' . $m[1] . '>', 'server');
-            return $server !== null && in_array(strtolower($server), array_map('strtolower', $names), true) ? $m[2] : '';
+            foreach (explode(',', (string) self::attribute('<host' . $m[1] . '>', 'server')) as $server) {
+                if (trim($server) !== '' && in_array(strtolower(trim($server)), $names, true)) {
+                    return $m[2];
+                }
+            }
+            return '';
         }, $html) ?? $html;
+    }
+
+    /** The names <host> may match on this server: its host name and address. @return list<string> */
+    public static function serverNames(array $server): array
+    {
+        $host = (string) (gethostname() ?: '');
+        return array_values(array_filter([$host, explode('.', $host)[0], (string) ($server['SERVER_ADDR'] ?? '')]));
     }
 
     /** <lock code="a,b">: a shared code unlocks the section; otherwise a form takes its place. */
