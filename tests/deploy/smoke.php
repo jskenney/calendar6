@@ -65,8 +65,7 @@ foreach ($calendar['events'] ?? [] as $event) {
 check($status === 200 && $key !== '', 'calendar.php lists a visible page with a key');
 [$status, $body] = request($base . 'calendar/php/html.php?file=' . rawurlencode($key));
 check($status === 200 && $body !== '', 'html.php serves the page');
-[$status, , $headers] = request($base . 'calendar/php/get.php?file=' . rawurlencode($key));
-check($status === 200 && str_contains($headers['content-disposition'] ?? '', 'attachment'), 'get.php serves it (HTML as an attachment)');
+check(request($base . 'calendar/php/get.php?file=' . rawurlencode($key))[0] === 404, "get.php never sends a page's source");
 check(request($base . 'calendar/php/get.php?file=AAAAAAAAAAAAAAAAAAAAAA')[0] === 404, 'an unknown key is 404');
 
 if ($password !== '') {
