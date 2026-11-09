@@ -91,19 +91,60 @@ final class PageRenderer
         if (preg_match('/\.md$/i', $path)) {
             $text = (new Markdown())->text($text);
         }
-        return $text;
+        return self::stripComments($text);
+    }
+
+    /**
+     * HTML comments are removed before anything else (outside <script>/<style> bodies),
+     * so a commented-out <inst>, <lock> or <inject> never reaches the browser (M-23).
+     */
+    public static function stripComments(string $html): string
+    {
+        $out = '';
+        $pos = 0;
+        foreach (self::opaqueRanges($html) as [$start, $end]) {
+            if (substr_compare($html, '<!--', $start, 4) === 0) {
+                $out .= substr($html, $pos, $start - $pos);
+                $pos = $end;
+            }
+        }
+        return $out . substr($html, $pos);
+    }
+
+    /** [start, end) of <script>/<style> bodies. @return list<array{0: int, 1: int}> */
+    private static function scriptRanges(string $html): array
+    {
+        return array_values(array_filter(self::opaqueRanges($html), static fn (array $r): bool =>
+            substr_compare($html, '<!--', $r[0], 4) !== 0 && substr_compare($html, '<![CDATA[', $r[0], 9) !== 0));
+    }
+
+    /** @param list<array{0: int, 1: int}> $ranges */
+    private static function inRanges(int $offset, array $ranges): bool
+    {
+        foreach ($ranges as [$start, $end]) {
+            if ($offset >= $start && $offset < $end) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** <inject src="file"> and <codeinject src="file">: relative to the page, inside the course. */
     private function injects(string $html, string $dir, int $depth, Place $place): string
     {
-        return preg_replace_callback('/<(code)?inject\b[^>]*>/i', function (array $m) use ($dir, $depth, $place): string {
+        $scripts = self::scriptRanges($html);
+        return preg_replace_callback('/<(code)?inject\b[^>]*>/i', function (array $m) use ($dir, $depth, $place, $scripts): string {
+            if (self::inRanges($m[0][1], $scripts)) {
+                return $m[0][0]; // text inside a script or style body, not a tag (M-23)
+            }
+            $code = ($m[1][0] ?? '') !== '' && ($m[1][1] ?? -1) >= 0;
+            $m = [$m[0][0]];
             $src = self::attribute($m[0], 'src');
             $real = $src === null ? null : $this->course->boundary->resolve($dir . '/' . $src);
             if ($real === null || !is_file($real) || Boundary::neverServed($real) || !$this->mayInject($real)) {
                 return '';
             }
-            if (($m[1] ?? '') !== '') {
+            if ($code) {
                 $source = (string) file_get_contents($real);
                 if (ContentFile::isPage($real)) {
                     // the source of a page, shown as code, still loses what this viewer may
@@ -116,12 +157,13 @@ final class PageRenderer
             $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1, $place) : $inner;
             // its links, <calphp> and <showlink> are relative to the injected file, not the page (L-21)
             return dirname($real) === $dir ? $inner : self::rebase($inner, dirname($real), $dir);
-        }, $html) ?? self::failed();
+        }, $html, -1, $count, PREG_OFFSET_CAPTURE) ?? self::failed();
     }
 
     /** A page's source with the blocks this viewer may not see removed (for <codeinject>). */
     private function hideForSource(string $source, Place $place): string
     {
+        $source = self::stripComments($source); // a commented-out block is still hidden content
         $source = $this->postmeeting($source, $place);
         $source = self::block($source, 'inst', fn (string $inner, string $opening): string => $this->viewer->instructor ? $opening . $inner . '</inst>' : '');
         $source = $this->host($source);
@@ -217,7 +259,12 @@ final class PageRenderer
     /** <calphp src="file.php">: runs the course's own PHP file and puts its output in place, as-is. */
     private function calphp(string $html, string $dir, Place $place): string
     {
-        return preg_replace_callback('/<calphp\b[^>]*>/i', function (array $m) use ($dir, $place): string {
+        $scripts = self::scriptRanges($html);
+        return preg_replace_callback('/<calphp\b[^>]*>/i', function (array $m) use ($dir, $place, $scripts): string {
+            if (self::inRanges($m[0][1], $scripts)) {
+                return $m[0][0];
+            }
+            $m = [$m[0][0]];
             $src = self::attribute($m[0], 'src');
             $real = $src === null ? null : $this->course->boundary->resolve($dir . '/' . $src);
             if ($real === null || !is_file($real) || !preg_match('/\.php$/i', $real)) {
@@ -249,7 +296,7 @@ final class PageRenderer
             $placeholder = "\x00cal6-calphp-" . count($this->outputs) . "\x00";
             $this->outputs[$placeholder] = $output;
             return $placeholder;
-        }, $html) ?? self::failed();
+        }, $html, -1, $count, PREG_OFFSET_CAPTURE) ?? self::failed();
     }
 
     /** <postmeeting>: once the last section's meeting that day is over (instructors always). */

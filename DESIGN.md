@@ -641,7 +641,9 @@ processed:
 All are handled in `html.php`, so hidden content never reaches the browser. Blocks
 (`<inst>`, `<student>`, `<postmeeting>`, `<host>`, `<lock>`, `<ace>`) are found by a tag scanner,
 not regular expressions: tag names are not case-sensitive, nested blocks of the same tag are
-matched by depth, tags inside HTML comments, CDATA and `<script>`/`<style>` bodies are not tags,
+matched by depth, **HTML comments are removed** from pages and injected files before anything
+else (outside `<script>`/`<style>` bodies; M-23), tags inside CDATA and `<script>`/`<style>` bodies
+are not tags (an `<inject>`, `<codeinject>` or `<calphp>` there is left as text),
 any size and depth works in linear time, and **a block that is never closed hides the rest of
 the page** (fail closed). (A closing tag written inside another tag's attribute value is still
 seen as a tag.) `<codeinject>` of a page shows its source without the blocks the viewer may not

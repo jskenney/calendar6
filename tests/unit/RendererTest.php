@@ -272,4 +272,20 @@ final class RendererTest extends TestCase
         $this->assertNotContains('data-cal6-hidden', $this->render($course, 'lab_1/lab-solution-part2.html', [], $prof), 'a box-asset page that injects');
         $this->assertNotContains('data-cal6-hidden', $this->render($course, 'class_2/index.html'), 'a numbered copy, while its source is hidden');
     }
+
+    public function testCommentsAndScriptsDoNotCarryHiddenContent(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => 'A <!-- <inject src="../../shared/part.html"> --> <!-- <inst>COMMENTED-INST</inst> --><script>var t = `<inject src="../../shared/part.html">`; // <!-- kept --></script><p>END</p>',
+            'shared/part.html' => '<inst>INJ-SECRET</inst><postmeeting>PM</postmeeting>',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/index.html', [], null, 0);
+        foreach (['INJ-SECRET', 'COMMENTED-INST', '<!-- <inst>'] as $hidden) {
+            $this->assertNotContains($hidden, $page, "comments are removed, injects in comments and scripts are not expanded (M-23): $hidden");
+        }
+        $this->assertContains('`<inject src="../../shared/part.html">`', $page, 'text in a script stays as written');
+        $this->assertContains('// <!-- kept -->', $page, 'comments inside scripts are part of the script');
+        $this->assertContains('END', $page);
+    }
 }
