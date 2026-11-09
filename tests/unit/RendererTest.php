@@ -255,4 +255,21 @@ final class RendererTest extends TestCase
         }
         $this->assertContains('INST-TEXT', $this->render($course, 'class_1/index.html', [], Viewer::account($course->config, 'prof')), 'instructors see all of it');
     }
+
+    public function testInjectedImagesInPagesBoxAssetsAndCopies(): void
+    {
+        $course = $this->course([
+            'pages/home.html' => '<inject src="../shared/frag.html">',
+            'shared/frag.html' => '<img src="pic.png">',
+            'shared/pic.png' => 'P',
+            'lab/01.Setup/lab-solution-part2.html' => '<inject src="../../shared/frag.html">',
+            'config/duplicate.ini' => "class_2 = class_1\n",
+            'class/01.Introduction/index.html' => '<inject src="../../shared/frag.html">',
+            'config/default.ini' => "class_1 = never\nclass_2 = always\nlab = always\n",
+        ]);
+        $this->assertNotContains('data-cal6-hidden', $this->render($course, 'page/home'), 'a paths.ini page that injects (L-32)');
+        $prof = Viewer::account($course->config, 'prof');
+        $this->assertNotContains('data-cal6-hidden', $this->render($course, 'lab_1/lab-solution-part2.html', [], $prof), 'a box-asset page that injects');
+        $this->assertNotContains('data-cal6-hidden', $this->render($course, 'class_2/index.html'), 'a numbered copy, while its source is hidden');
+    }
 }

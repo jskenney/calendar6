@@ -90,7 +90,8 @@ final class Course
                 }
                 foreach (Target::expand(substr($line->key, 0, $slash)) as $target) {
                     foreach ($this->events as $event) {
-                        if (strcasecmp($event->target(), $target) === 0) {
+                        // the event, its "same" repeats, and its numbered copies (L-33)
+                        if (strcasecmp($event->target(), $target) === 0 || ($event->copyOf !== null && strcasecmp($event->copyOf, $target) === 0)) {
                             $event->files[$name] = new ContentFile($name, $real, (int) filesize($real), (int) filemtime($real),
                                 !str_contains($name, '/'), $this->boundary->relative($real));
                         }
@@ -136,7 +137,8 @@ final class Course
             $this->addPageAssets($name, $this->places[$key]->file->realPath);
         }
         foreach (array_values($this->places) as $place) {
-            if ($place->event === null || $place->asset || $place->file->kind() !== 'page') {
+            // event pages, box-asset pages included (L-32), but not linked assets
+            if ($place->event === null || $place->assetOf !== null || $place->file->kind() !== 'page') {
                 continue;
             }
             if ($place->file->virtualOf !== null) {
@@ -146,6 +148,17 @@ final class Course
                 $this->addLinkedAssets($place, $injected); // L-21
             }
         }
+    }
+
+    /** Whether a file already has a place of its own (an event's file or a page), not just a linked one. */
+    private function hasOwnPlace(string $real): bool
+    {
+        foreach ($this->byRealPath[$real] ?? [] as $key) {
+            if ($this->places[$key]->assetOf === null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** The pages a page injects (<inject src>, a few levels deep), as real paths. @return list<string> */
@@ -179,8 +192,13 @@ final class Course
         }
         foreach (PageRenderer::linkTargets($html) as $link) {
             $target = $this->boundary->resolve(dirname($htmlReal) . '/' . rawurldecode($link));
-            if ($target === null || !is_file($target) || Boundary::neverServed($target) || isset($this->byRealPath[$target])) {
+            if ($target === null || !is_file($target) || Boundary::neverServed($target) || $this->hasOwnPlace($target)) {
                 continue;
+            }
+            foreach ($this->byRealPath[$target] ?? [] as $existing) {
+                if ($this->places[$existing]->assetOf === $page->key) {
+                    continue 2; // already linked from this page
+                }
             }
             $relative = $this->boundary->relative($target);
             $file = new ContentFile($relative, $target, (int) filesize($target), (int) filemtime($target), false);
@@ -221,6 +239,12 @@ final class Course
                 $this->byRealPath[$target][] = $place->key;
                 if ($depth < 3 && ContentFile::isPage($target)) {
                     $queue[] = [$target, $depth + 1];
+                }
+            }
+            foreach ($this->injectedFiles($real, 2) as $injected) { // what it injects links to files too (L-32)
+                if (!isset($seen[$injected])) {
+                    $seen[$injected] = true;
+                    $queue[] = [$injected, $depth + 1];
                 }
             }
         }
@@ -299,7 +323,7 @@ final class Course
             $place = $this->places[$key];
             $score = match (true) {
                 $place->assetOf !== null && $place->assetOf === $from->key => 5,
-                $place->asset && $place->page === $from->page && $place->assetOf === null => 4,
+                $place->asset && $place->event === null && $place->page === $from->page && $place->assetOf === null => 4,
                 $place->page !== null && !$place->asset => 3,
                 $place->event !== null && $place->event->mode === null => 2,
                 default => 1,

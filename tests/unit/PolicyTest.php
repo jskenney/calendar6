@@ -122,6 +122,21 @@ INI;
         $this->assertTrue(self::sees($course, Viewer::anonymous(), 'class_1/index.html', $now));
     }
 
+    public function testVirtualFilesKeepTheirRealFilesRules(): void
+    {
+        $course = $this->load([
+            'config/paths.ini' => "[pages]\nhome = pages/home.html\nsolutions = pages/syllabus.html\n",
+            'config/default.ini' => "class_1 = always\npage/solutions = never\nexam_2/answers.pdf = always\n",
+            'config/virtual.ini' => "class_1/sol.html = pages/syllabus.html\nclass_1/final.pdf = exam/02.Final/answers.pdf\nclass_1/handout.md = shared/checklist.md\n",
+            'config/duplicate.ini' => "class_2 = class_1\n",
+            'exam/02.Final/answers.pdf' => 'answers',
+        ]);
+        $now = self::now($course);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/sol.html', $now), 'a virtual copy of a page keeps page/solutions = never (L-31)');
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/final.pdf', $now), 'a virtual copy of a file of an event on no day is hidden (R14)');
+        $this->assertTrue(isset($course->keysByEvent['class_2']['handout.md']), 'numbered copies carry the virtual files of their source (L-33)');
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);

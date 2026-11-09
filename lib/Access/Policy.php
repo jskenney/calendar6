@@ -39,7 +39,7 @@ final class Policy
             [$visibleAnon, $opens, $next] = $this->anonymous($lists, $now);
             return new Decision(true, $anonRule, $visibleAnon ? null : $opens, $next);
         }
-        if (($place->event !== null && $place->event->date === null) || $this->course->rulesUnreadable) {
+        if (($place->event !== null && $place->event->date === null) || $this->course->rulesUnreadable || $this->realUnscheduled($place)) {
             return new Decision(false, $anonRule);
         }
         [$visible, $opens, $next] = $this->anonymous($lists, $now);
@@ -134,9 +134,11 @@ final class Policy
         $lists = [[self::eventTargets($place->event->type, $place->event->number, $place->file->name, $place->box), $place->event->time]];
         if ($place->file->virtualOf !== null) {
             $real = $this->realPlace($place->file->realPath);
-            $lists[] = $real !== null
-                ? [self::eventTargets($real->event->type, $real->event->number, $real->file->name, $real->box), $real->event->time]
-                : [[$place->file->virtualOf, basename($place->file->virtualOf), '*'], null];
+            $lists[] = match (true) {
+                $real !== null && $real->event !== null => [self::eventTargets($real->event->type, $real->event->number, $real->file->name, $real->box), $real->event->time],
+                $real !== null => [['page/' . $real->page, 'page', '*'], null], // a paths.ini page keeps its rule (L-31)
+                default => [[$place->file->virtualOf, basename($place->file->virtualOf), '*'], null],
+            };
         }
         return $lists;
     }
@@ -159,17 +161,32 @@ final class Policy
         return $targets;
     }
 
+    /** The place that owns a virtual file's real file: an event's file, else a paths.ini page. */
     private function realPlace(string $real): ?Place
     {
         if ($this->byRealPath === null) {
             $this->byRealPath = [];
+            $pages = [];
             foreach ($this->course->places as $place) {
-                if ($place->event !== null && $place->file->virtualOf === null && $place->event->mode === null) {
+                if ($place->event !== null && $place->file->virtualOf === null && $place->event->mode === null && $place->assetOf === null) {
                     $this->byRealPath[$place->file->realPath] ??= $place;
+                } elseif ($place->event === null && !$place->asset) {
+                    $pages[$place->file->realPath] ??= $place;
                 }
             }
+            $this->byRealPath += $pages;
         }
         return $this->byRealPath[$real] ?? null;
+    }
+
+    /** A virtual file whose real file belongs to an event on no calendar day is not shown (R14, L-31). */
+    private function realUnscheduled(Place $place): bool
+    {
+        if ($place->file->virtualOf === null) {
+            return false;
+        }
+        $real = $this->realPlace($place->file->realPath);
+        return $real !== null && $real->event !== null && $real->event->date === null;
     }
 
     public static function min(?int $a, ?int $b): ?int
