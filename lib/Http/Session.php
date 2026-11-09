@@ -26,6 +26,7 @@ final class Session
         }
         if (PHP_SAPI === 'cli') {
             $_SESSION ??= [];
+            self::bind($c->courseDir);
             return self::$open = true;
         }
         ini_set('session.use_strict_mode', '1');
@@ -47,7 +48,25 @@ final class Session
             'samesite' => 'Strict',
         ]);
         self::$open = session_start();
+        if (self::$open) {
+            self::bind($c->courseDir);
+        }
         return self::$open;
+    }
+
+    /**
+     * A session belongs to one course: it records the real path of the course directory,
+     * and a session that names another course is emptied, not trusted.  The cookie name,
+     * cookie path and storage are per course already; this also covers a misconfigured
+     * shared session directory or a name collision (former M-16, L-25).
+     */
+    private static function bind(string $courseDir): void
+    {
+        $course = (string) realpath($courseDir);
+        if (isset($_SESSION[self::KEY]['course']) && $_SESSION[self::KEY]['course'] !== $course) {
+            $_SESSION[self::KEY] = [];
+        }
+        $_SESSION[self::KEY]['course'] = $course;
     }
 
     public static function isOpen(): bool
@@ -78,7 +97,7 @@ final class Session
 
     public static function clear(): void
     {
-        $_SESSION[self::KEY] = [];
+        $_SESSION[self::KEY] = ['course' => $_SESSION[self::KEY]['course'] ?? ''];
     }
 
     public static function regenerate(): void

@@ -921,6 +921,14 @@ The plan:
   to match and keeps the course's sessions in its private directory
   (`<temp>/cal6-<uid>-<hash>/sessions`) when it can, so another application's cleanup does not
   end them early.
+- **One origin, many courses:** courses on one host (`/~bob/AB123/`, `/~ann/CD456/`) each have
+  their own login: the session cookie is named after the course directory and limited to its
+  URL, sessions are stored per course, and a session records the course directory's real path
+  and is ignored by any other course. What a cookie can not separate is JavaScript: a course
+  page's scripts run with the whole host's origin, so they could call another course's endpoints
+  as an instructor who is logged in there. That is acceptable while only faculty can publish on
+  the server; if students (or anyone else) can, give each course or faculty member its own host
+  name.
 - **Shared hosting:** the private directory (sessions, caches, rate limits) must belong to the
   PHP user and be closed to others, or Calendar 6 does not use it (logins are then refused, as a
   safe default). Courses that run as the **same** PHP user can read each other's files anyway:
