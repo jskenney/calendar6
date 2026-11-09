@@ -645,15 +645,17 @@ attribute values and `<script>`/`<style>` bodies are not tags; tag names are not
 nested blocks of the same tag are matched with a stack; and **a block that is never closed hides
 the rest of the page** (fail closed). **HTML comments are removed** from pages and injected files
 before anything else (outside `<script>`/`<style>` bodies), abrupt comments (`<!-->`) end where a
-browser ends them, and a CDATA section is removed whole. Every other tag (`<inject>`,
-`<codeinject>`, `<calphp>`, `<replace>`, `<url>`, `<showlink>`, `<lock>` codes, and the links that
-are rewritten) is found by the same lexer, so inside a quoted attribute value or a script or style
-body it is text: `<button onclick="f('<url value=x>')">` and `<script>var n = <url value=n>;</script>`
-are sent as written (HTML escaping does not make a value safe in JavaScript, so `<url>` works only
-in text and ordinary attribute values written as real tags). **Block tags inside a `<script>` or
-`<style>` body are sent as written too**: an `<inst>` there is script text, not hidden, so keep
-hidden material out of scripts. A `<script>` or `<style>` that is never closed is not raw text: the
-rest of the page is read as markup, so the blocks after it are still hidden. Processing is linear in the size of the page;
+browser ends them, and a CDATA section is removed whole. `<inject>`, `<codeinject>`, `<calphp>`,
+`<showlink>`, `<lock>` codes and the links that are rewritten are found by the same lexer, so
+inside a quoted attribute value or a script or style body they are text. The value tags `<replace>`
+and `<url>` are also found inside other tags' attribute values, as in v4 (`<a href="<url
+value=next>">`); `<replace>` works anywhere (its values are the course's own), but **`<url>` is
+left as written inside a `<script>` or `<style>` body (also one never closed) and inside `on*` and
+`style` attributes**, because HTML escaping does not make a value from a link safe in JavaScript
+or CSS. **Block tags inside a `<script>` or `<style>` body are sent as written too**: an `<inst>`
+there is script text, not hidden, so keep hidden material out of scripts. A `<script>` or `<style>`
+that is never closed is not raw text for hiding: the rest of the page is read as markup, so the
+blocks after it are still hidden. Processing is linear in the size of the page;
 `<inject>` does not follow cycles and stops after about 4 MB of injected text; the Markdown
 converter nests quotes and lists at most 16 deep and emphasis spans at most 1000 characters.
 `<codeinject>` of a page shows its source without what the viewer may not see. If any other
@@ -669,7 +671,7 @@ pattern fails on a page, the request fails rather than sending the page half pro
 | `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`) |
 | `<codeinject src="file">` | another file, escaped so it shows as source code |
 | `<replace value="name">` | a value from `config.ini` (`[replace]`) or a built-in one (`type`, `ctype`, `event`, `zevent`, `title`, `course`, `coursename`) |
-| `<url value="name" default="x">` | a value from the page's URL, **HTML-escaped** (remembered in the session, as v4); not substituted inside script bodies or attribute values (see above) |
+| `<url value="name" default="x">` | a value from the page's URL, **HTML-escaped** (remembered in the session, as v4); not substituted inside script or style bodies or `on*`/`style` attributes (see above) |
 | `<showlink src="file">` | a link to another file of the event, by key |
 | `<calphp src="file.php">` | runs that PHP file and puts its output in place, passed through as-is |
 

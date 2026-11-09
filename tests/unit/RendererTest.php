@@ -357,7 +357,8 @@ final class RendererTest extends TestCase
     public function testTagsAreProcessedOnlyWhereTheBrowserSeesTags(): void
     {
         $course = $this->course([
-            'class/01.Introduction/url.html' => '<button onclick="show(\'<url value="n" default="1">\')">x</button><script>var n = <url value="n" default="1">;</script><p><url value="n" default="1"></p>',
+            'class/01.Introduction/url.html' => '<button onclick="show(\'<url value="n" default="1">\')">x</button><script>var n = <url value="n" default="1">;</script><p><url value="n" default="1"></p><a href="?x=<url value="n" default="1">" title="<replace value="course">">a</a><p style="color:<url value="n">" onmouseover=\'f("<url value="n">")\'>s</p><script>x</script>',
+            'class/01.Introduction/open.html' => '<p><url value="n"></p><script>var n = <url value="n">;',
             'class/01.Introduction/attr.html' => '<img alt="<inject src=\'secret.txt\'>" src="a.png"><p>A-END</p>',
             'class/01.Introduction/secret.txt' => 'INJECTED',
             'class/01.Introduction/lock.html' => '<lock code="a>b">LOCKED</lock>',
@@ -366,7 +367,11 @@ final class RendererTest extends TestCase
         ]);
         $place = static fn (string $f) => $course->places[$course->keysByEvent['class_1'][$f]];
         $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['n' => 'EVIL']))->render($place('url.html'));
-        $this->assertSame(1, substr_count($page, 'EVIL'), '<url> is substituted only in text, not in handlers or scripts (M-28): ' . $page);
+        $this->assertSame(2, substr_count($page, 'EVIL'), '<url> is substituted in text and ordinary attributes (as v4), not in handlers, style or scripts (M-28): ' . $page);
+        $this->assertContains('href="?x=EVIL"', $page, 'as v4');
+        $this->assertNotContains('<replace', $page, '<replace> anywhere');
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['n' => 'EVIL']))->render($place('open.html'));
+        $this->assertSame(1, substr_count($page, 'EVIL'), 'not in a script that is never closed: ' . $page);
         $this->assertNotContains('INJECTED', $this->render($course, 'class_1/attr.html'), 'an <inject> inside an attribute value is text (L-47)');
         $this->assertSame(['a>b'], PageRenderer::lockCodes('<lock code="a>b">x</lock>'), 'a lock code may contain > (L-45)');
         $unlocked = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', ['a>b']))->render($place('lock.html'));

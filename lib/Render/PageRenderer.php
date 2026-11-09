@@ -424,29 +424,92 @@ final class PageRenderer
             'coursename' => $this->course->config->name,
         ];
         $values = $this->course->config->replace + $values; // not array_merge: numeric names (L-26)
-        return self::replaceTags($html, ['replace'], static function (string $name, string $tag) use ($values): string {
+        // anywhere, also inside attribute values and scripts, as v4: the values are the course's own
+        return self::valueTags($html, 'replace', false, static function (string $tag) use ($values): string {
             return htmlspecialchars($values[(string) self::attribute($tag, 'value')] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        }, ['replace']);
+        });
     }
 
     /**
      * <url value="name" default="x">: from the page's URL (remembered in an existing session),
-     * HTML-escaped.  Only a real tag in the page's text is replaced: one inside a script or
-     * style body or an attribute value (onclick, style, href) is not (M-28).
+     * HTML-escaped.  In text and in ordinary attribute values (`href="<url ...>"`, as v4), but
+     * not inside a script or style body or an on* or style attribute, where HTML escaping does
+     * not protect (M-28).
      */
     private function url(string $html): string
     {
-        return self::replaceTags($html, ['url'], function (string $tagName, string $tag): string {
-            $m = [$tag];
-            $name = (string) self::attribute($m[0], 'value');
+        return self::valueTags($html, 'url', true, function (string $tag): string {
+            $name = (string) self::attribute($tag, 'value');
             if (isset($this->urlValues[$name]) && !self::hasUnsafeScheme($this->urlValues[$name])) {
                 $this->usedUrlValues[] = $name;
                 $value = $this->urlValues[$name];
             } else {
-                $value = (string) self::attribute($m[0], 'default');
+                $value = (string) self::attribute($tag, 'default');
             }
             return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        }, ['url']);
+        });
+    }
+
+    /**
+     * Value tags (<url>, <replace>) are written inside other tags' attribute values in v4 pages
+     * (`<a href="<url value=next>">`), where the lexer does not see them, so they are found by
+     * pattern; their closing tags are removed.  With $guarded, a tag inside a script or style
+     * body, or inside an on* or style attribute of the tag around it, is left as written.  One
+     * pass with moving pointers (L-44).
+     *
+     * @param callable(string): string $fn
+     */
+    private static function valueTags(string $html, string $name, bool $guarded, callable $fn): string
+    {
+        if (preg_match_all('/<' . $name . '\b[^>]*>|<\/' . $name . '\s*>/i', $html, $matches, PREG_OFFSET_CAPTURE) === false) {
+            self::failed();
+        }
+        if ($matches[0] === []) {
+            return $html;
+        }
+        $raw = [];
+        $opens = [];
+        if ($guarded) {
+            $tokens = HtmlLexer::scan($html);
+            foreach ($tokens as $i => $token) {
+                if ($token[0] === 'raw') {
+                    $raw[] = [$token[1], $token[2]];
+                } elseif ($token[0] === 'tag' && !$token[4] && in_array($token[3], ['script', 'style'], true)
+                    && ($tokens[$i + 1][0] ?? '') !== 'raw') {
+                    // never closed: a browser runs the rest of the page as script, so no values there
+                    $raw[] = [$token[2], strlen($html)];
+                    break;
+                }
+            }
+            // where the other tags start: the tag around a value tag is the last of these before it
+            if (preg_match_all('/<(?!\/?(?:url|replace)\b)/i', $html, $starts, PREG_OFFSET_CAPTURE) === false) {
+                self::failed();
+            }
+            $opens = array_column($starts[0], 1);
+        }
+        $out = '';
+        $pos = 0;
+        $r = 0;
+        $o = -1;
+        foreach ($matches[0] as [$tag, $start]) {
+            $replacement = $tag[1] === '/' ? '' : null;
+            if ($guarded) {
+                while ($r < count($raw) && $raw[$r][1] <= $start) {
+                    $r++;
+                }
+                while ($o + 1 < count($opens) && $opens[$o + 1] < $start) {
+                    $o++;
+                }
+                $inRaw = $r < count($raw) && $raw[$r][0] <= $start;
+                $before = $o >= 0 ? substr($html, $opens[$o], $start - $opens[$o]) : '';
+                if ($inRaw || preg_match('/\s(?:on[a-z]+|style)\s*=\s*(?:"[^"]*|\'[^\']*|[^\s"\'>]*)$/i', $before)) {
+                    continue;
+                }
+            }
+            $out .= substr($html, $pos, $start - $pos) . ($replacement ?? $fn($tag));
+            $pos = $start + strlen($tag);
+        }
+        return $out . substr($html, $pos);
     }
 
     /** A value that would make a link run script (javascript:, data:, vbscript:, ...): only http(s) and plain text pass (L-39). */
