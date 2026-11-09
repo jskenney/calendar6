@@ -75,7 +75,7 @@ final class Context
 
     public function fingerprint(): string
     {
-        return $this->fingerprint ??= Fingerprint::of($this->courseDir);
+        return $this->fingerprint ??= Fingerprint::key($this->courseDir);
     }
 
     /** The logged-in account (read from config/auth/ now), or anonymous. */

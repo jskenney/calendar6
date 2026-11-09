@@ -13,6 +13,41 @@ final class Fingerprint
 {
     private const MAX_DEPTH = 7;
 
+    private static ?string $software = null;
+
+    /**
+     * The version of the running software: a hash of the names, sizes and times of
+     * its PHP files.  Part of every cache key, so caches do not outlive an update (M-11).
+     */
+    public static function software(): string
+    {
+        if (self::$software === null) {
+            $context = hash_init('sha1');
+            $root = dirname(__DIR__, 2);
+            foreach (['lib', 'php'] as $dir) {
+                $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator("$root/$dir", \FilesystemIterator::SKIP_DOTS));
+                $list = [];
+                foreach ($files as $file) {
+                    if ($file->isFile() && str_ends_with($file->getFilename(), '.php')) {
+                        $list[substr($file->getPathname(), strlen($root))] = $file->getSize() . ':' . $file->getMTime();
+                    }
+                }
+                ksort($list);
+                foreach ($list as $name => $stat) {
+                    hash_update($context, "$name\0$stat\n");
+                }
+            }
+            self::$software = hash_final($context);
+        }
+        return self::$software;
+    }
+
+    /** The cache key for a course: its fingerprint and the software's. */
+    public static function key(string $courseDir): string
+    {
+        return sha1(self::software() . "\0" . self::of($courseDir));
+    }
+
     public static function of(string $courseDir): string
     {
         $context = hash_init('sha1');

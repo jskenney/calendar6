@@ -56,4 +56,17 @@ final class CacheTest extends TestCase
         file_put_contents("$this->dir/class/01.Introduction/new.txt", 'x');
         $this->assertTrue($before !== Fingerprint::of($this->dir), 'changes inside are seen');
     }
+
+    public function testCacheKeysChangeWithTheSoftware(): void
+    {
+        $this->dir = Fixture::course();
+        $key = Fingerprint::key($this->dir);
+        $this->assertSame($key, Fingerprint::key($this->dir), 'stable');
+        $this->assertTrue($key !== Fingerprint::of($this->dir), 'not the course fingerprint alone');
+        $software = new \ReflectionProperty(Fingerprint::class, 'software');
+        $before = $software->getValue();
+        $software->setValue(null, 'another-version');
+        $this->assertTrue(Fingerprint::key($this->dir) !== $key, 'another software version misses every cache (M-11, T-7)');
+        $software->setValue(null, $before);
+    }
 }
