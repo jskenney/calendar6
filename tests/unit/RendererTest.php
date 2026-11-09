@@ -87,4 +87,18 @@ final class RendererTest extends TestCase
         $prof = Viewer::account($course->config, 'prof');
         $this->assertContains('HIDDEN-ANSWERS', $this->render($course, 'class_1/index.html', [], $prof), 'instructors');
     }
+
+    public function testInjectAndCalphpStayInsideTheCourse(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<inject src="../../config/config.ini"><codeinject src="../../config/auth/prof.ini"><inject src="../../../../etc/hostname"><calphp src="../../config/x.php"><calphp src="../../calendar/php/get.php">',
+            'config/x.php' => '<?php echo "CONFIG-SCRIPT";',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/index.html');
+        $this->assertNotContains('secret', $page, 'no config.ini (T-1)');
+        $this->assertNotContains('password_hash', $page, 'no accounts');
+        $this->assertNotContains('CONFIG-SCRIPT', $page, 'no scripts from config/');
+        $this->assertSame('', trim($page), 'nothing from outside the course or the software');
+    }
 }
