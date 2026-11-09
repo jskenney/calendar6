@@ -6,7 +6,8 @@ A running list of code and security findings for the whole project, and their hi
   **C** critical, **H** high, **M** medium, **L** low, **DOC** documentation, **T** testing,
   **E** enhancement.
 - The tables below list the **open** items. Fixed items move to "Fixed items" at the end, with
-  the commit that fixed them; withdrawn items would be listed there too, with the reason.
+  the commit that fixed them; withdrawn items are listed there too, with the reason (an item
+  whose severity changes is withdrawn and gets a new ID in its new category).
 - **Found** is the review that found the item (see "Reviews" at the end). Locations are
   `file:line` at the commit that review read; later commits may move them.
 
@@ -14,11 +15,10 @@ A running list of code and security findings for the whole project, and their hi
 
 No critical or high item is open.
 
-1. **M-14, M-15**: page-name case, and `duplicate.ini` sources by calendar number.
-2. **M-16**: a deployment warning about shared origins (documentation).
-3. **L-20, L-21, L-23, L-24**.
-4. **DOC-11, DOC-12, DOC-13**.
-5. **E** items; E-1 (the front end) is the next big piece of work.
+1. **M-15**: `duplicate.ini` sources by calendar number (the last medium item).
+2. **L-20, L-21, L-23, L-24**.
+3. **DOC-11, DOC-12, DOC-13**.
+4. **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -32,9 +32,7 @@ None open.
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| M-14 | 5 | `lib/Course/CourseConfig.php:168` | **Page names are lowercased but rules are case-sensitive:** with `Solutions = pages/x.html` in `paths.ini`, `page/Solutions = never` matches nothing and the page stays visible, with no problem listed. Confirmed. | Keep the name as written (or refuse names that are not lower case); list rules whose target matches nothing as problems. |
 | M-15 | 5 | `lib/Schedule/CalendarBuilder.php:225,230` | **`duplicate.ini` copies the wrong event:** the source `class_N` is used as a directory index, not as the number the calendar shows (DESIGN), so after an earlier numbered copy the wrong material is copied while `copy_of` names the right event; a source not placed yet can be copied, and "a copy of a copy is not allowed" is not enforced. Confirmed (`class_3 = class_1`, `class_6 = class_5`: class_6 gets directory 5, which is class_7). | Map the source event number to its directory; report sources not placed yet, or copies, as problems. |
-| M-16 | 5 | `DESIGN.md` ("Deploying") | (suspected, design analysis) **Same-origin pages can act as a logged-in instructor:** courses served as `/~user/AB123/` share an origin with every other course and personal page on the host; their JavaScript (passed through by design) can call another course's `calendar.php` with a visiting instructor's cookie (`SameSite=Strict` and the cookie path do not stop same-origin requests), read keys and fetch a CSRF token. | Document that each course (or each faculty member) should have its own origin, or at least warn under "Shared hosting"; E-3 (CSP) helps only partly. |
 
 ## Low
 
@@ -89,6 +87,8 @@ None open.
 | M-11 | 2 | `0118054` | The fingerprint skips `calendar/`, so after the software is updated (`git pull`) the caches keep serving what the old code built: a stale model is unserialised into changed classes (wrong results, or errors until the course changes), and `calendar.php` answers keep the old shape. | Cache keys combine the course fingerprint with `Fingerprint::software()`, a hash of the software's PHP files. |
 | M-12 | 2 | `8ff3e50` | Apache serves dot files and directories by default, and the template has no rule at the course root. An instructor who keeps the course in git exposes `course/.git/`: the history of `config/auth/*.ini` (password hashes), `config.ini` (the secret) and every hidden solution. Calendar 6 itself never serves them, but the web server does. | `template/.htaccess` at the course root refuses dot names and `.ini` files everywhere (needs only `AllowOverride AuthConfig`); nginx equivalents documented; `tests/deploy/` serves a template course with Apache + PHP-FPM through a `calendar` link and checks it, in CI. |
 | M-13 | 5 | `4c14a1b` | **Nested blocks leak:** `<inst>A<inst>B</inst>SECRET</inst>` closes at the first `</inst>`, so `SECRET` reaches anonymous viewers; nested `<lock>` and `<host>` the same. Confirmed. | The tag scanner matches nested blocks by depth; an unclosed block hides the rest of the page. |
+| M-14 | 5 | `aab2cb9` | **Page names are lowercased but rules are case-sensitive:** with `Solutions = pages/x.html` in `paths.ini`, `page/Solutions = never` matches nothing and the page stays visible, with no problem listed. Confirmed. | Targets (and type names in every `.ini` file) are not case-sensitive any more; two names in one place that differ only in case are listed as problems. This replaces the case-sensitive note of DOC-7. |
+| M-16 | 5 | Withdrawn: reclassified as L-25 | (suspected, design analysis) **Same-origin pages can act as a logged-in instructor:** courses served as `/~user/AB123/` share an origin with every other course and personal page on the host; their JavaScript (passed through by design) can call another course's `calendar.php` with a visiting instructor's cookie (`SameSite=Strict` and the cookie path do not stop same-origin requests), read keys and fetch a CSRF token. | Only faculty can publish on the server, so the scripts that could do this are other instructors' course pages: low, not medium. See L-25. |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -109,6 +109,7 @@ None open.
 | L-18 | 3 | `f87fe96` | The software version is a hash of the names, sizes and modification times of `lib/` and `php/` files; a deployment that keeps times and sizes (`rsync -t` of a same-size edit, or files restored from an archive) would not invalidate the caches. | The software version hashes the contents of the `lib/` and `php/` files, not their times or sizes. |
 | L-19 | 3 | `f3ae06e` | The script removes `/opt/calendar6` and `/var/www/html/AB123` and rewrites Apache's configuration without asking; it says "CI, or a throwaway machine", but run by mistake on a real server it deletes a course called AB123. | `tests/deploy/course-setup.sh` (used by both setup scripts) runs only with `--yes` or `CI=true` and never replaces a directory without its marker file; a unit test checks the refusal. |
 | L-22 | 5 | `72580cf` | A symbolic link `view.html -> db.php` inside an event is listed as a page and `html.php` shows the PHP source: the scanner checks the link's name, not the real file, and `html.php` does not re-check (`get.php` does). Confirmed. | The scanner and `html.php` check the real file behind a link (`Boundary::neverServed($real)`); a page is decided by name and real file. |
+| L-25 | 5 | `792e74f` | (from M-16) Courses on one host share an origin; a course page's JavaScript could call another course's endpoints as an instructor logged in there. Acceptable while only faculty can publish on the server. | Sessions record the course directory's real path and are ignored by other courses (on top of the per-course cookie name, path and storage); DESIGN.md "Deploying" explains the shared origin and when to give courses their own host names. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
