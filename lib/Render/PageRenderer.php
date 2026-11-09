@@ -106,7 +106,9 @@ final class PageRenderer
                 return htmlspecialchars((string) file_get_contents($real), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
             $inner = $this->load($real);
-            return $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1) : $inner;
+            $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1) : $inner;
+            // its links, <calphp> and <showlink> are relative to the injected file, not the page (L-21)
+            return dirname($real) === $dir ? $inner : self::rebase($inner, dirname($real), $dir);
         }, $html) ?? self::failed();
     }
 
@@ -128,6 +130,64 @@ final class PageRenderer
         }
         $first = explode('/', $this->course->boundary->relative($real))[0];
         return !isset($this->course->config->types[$first]);
+    }
+
+    /** Rewrites relative URLs written for $fromDir so they mean the same from $toDir. */
+    private static function rebase(string $html, string $fromDir, string $toDir): string
+    {
+        $fix = static function (string $url) use ($fromDir, $toDir): string {
+            if ($url === '' || self::isAbsolute($url)) {
+                return $url;
+            }
+            $suffix = '';
+            if (($cut = strcspn($url, '?#')) < strlen($url)) {
+                [$url, $suffix] = [substr($url, 0, $cut), substr($url, $cut)];
+            }
+            return self::relativePath($toDir, $fromDir . '/' . $url) . $suffix;
+        };
+        $html = preg_replace_callback(self::LINK_ELEMENTS, static function (array $tag) use ($fix): string {
+            return preg_replace_callback(self::LINK_ATTRIBUTES, static function (array $m) use ($fix): string {
+                $value = self::attributeValue($m);
+                if (strtolower($m[2]) === 'srcset') {
+                    $value = implode(', ', array_map(static function (string $candidate) use ($fix): string {
+                        $parts = preg_split('/\s+/', trim($candidate), 2) ?: [''];
+                        return trim($fix($parts[0]) . ' ' . ($parts[1] ?? ''));
+                    }, explode(',', $value)));
+                } else {
+                    $value = $fix($value);
+                }
+                return $m[1] . $m[2] . '="' . htmlspecialchars($value) . '"';
+            }, $tag[0]) ?? self::failed();
+        }, $html) ?? self::failed();
+        return preg_replace_callback('/<(calphp|showlink)\b[^>]*>/i', static function (array $m) use ($fix): string {
+            $src = self::attribute($m[0], 'src');
+            return $src === null ? $m[0] : '<' . $m[1] . ' src="' . htmlspecialchars($fix($src)) . '">';
+        }, $html) ?? self::failed();
+    }
+
+    /** The relative path from directory $from to $to (both absolute, not resolved). */
+    private static function relativePath(string $from, string $to): string
+    {
+        $normal = static function (string $path): array {
+            $parts = [];
+            foreach (explode('/', $path) as $part) {
+                if ($part === '' || $part === '.') {
+                    continue;
+                }
+                if ($part === '..') {
+                    array_pop($parts);
+                } else {
+                    $parts[] = $part;
+                }
+            }
+            return $parts;
+        };
+        [$a, $b] = [$normal($from), $normal($to)];
+        $common = 0;
+        while ($common < count($a) && $common < count($b) - 1 && $a[$common] === $b[$common]) {
+            $common++;
+        }
+        return str_repeat('../', count($a) - $common) . implode('/', array_slice($b, $common));
     }
 
     /** <calphp src="file.php">: runs the course's own PHP file and puts its output in place, as-is. */

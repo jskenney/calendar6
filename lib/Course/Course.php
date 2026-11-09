@@ -127,25 +127,50 @@ final class Course
         foreach ($this->pageKeys as $name => $key) {
             $this->addPageAssets($name, $this->places[$key]->file->realPath);
         }
-        foreach ($this->places as $place) {
-            if ($place->event !== null && $place->file->virtualOf !== null && $place->file->kind() === 'page') {
-                $this->addVirtualAssets($place);
+        foreach (array_values($this->places) as $place) {
+            if ($place->event === null || $place->asset || $place->file->kind() !== 'page') {
+                continue;
+            }
+            if ($place->file->virtualOf !== null) {
+                $this->addLinkedAssets($place, $place->file->realPath); // L-20
+            }
+            foreach ($this->injectedFiles($place->file->realPath, 0) as $injected) {
+                $this->addLinkedAssets($place, $injected); // L-21
             }
         }
     }
 
-    /**
-     * Files a virtual page links to (relative to its real file, L-20) get keys of their
-     * own, decided by that virtual page's rules; files that already have a key keep it.
-     */
-    private function addVirtualAssets(Place $page): void
+    /** The pages a page injects (<inject src>, a few levels deep), as real paths. @return list<string> */
+    private function injectedFiles(string $real, int $depth): array
     {
-        $html = (string) @file_get_contents($page->file->realPath);
-        if (preg_match('/\.md$/i', $page->file->realPath)) {
+        $found = [];
+        preg_match_all('/<inject\b[^>]*>/i', (string) @file_get_contents($real), $m);
+        foreach ($m[0] as $tag) {
+            $src = PageRenderer::attribute($tag, 'src');
+            $target = $src === null ? null : $this->boundary->resolve(dirname($real) . '/' . $src);
+            if ($target !== null && is_file($target) && ContentFile::isPage($target) && dirname($target) !== dirname($real)) {
+                $found[] = $target;
+                if ($depth < 3) {
+                    array_push($found, ...$this->injectedFiles($target, $depth + 1));
+                }
+            }
+        }
+        return $found;
+    }
+
+    /**
+     * Files that $htmlReal (a virtual page's real file, or a file a page injects) links
+     * to, relative to its own directory, get keys decided by $page's rules; files that
+     * already have a key keep it.
+     */
+    private function addLinkedAssets(Place $page, string $htmlReal): void
+    {
+        $html = (string) @file_get_contents($htmlReal);
+        if (preg_match('/\.md$/i', $htmlReal)) {
             $html = (new Markdown())->text($html);
         }
         foreach (PageRenderer::linkTargets($html) as $link) {
-            $target = $this->boundary->resolve(dirname($page->file->realPath) . '/' . rawurldecode($link));
+            $target = $this->boundary->resolve(dirname($htmlReal) . '/' . rawurldecode($link));
             if ($target === null || !is_file($target) || Boundary::neverServed($target) || isset($this->byRealPath[$target])) {
                 continue;
             }

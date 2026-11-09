@@ -203,4 +203,20 @@ final class RendererTest extends TestCase
             }
         }
     }
+
+    public function testInjectedFilesKeepTheirOwnRelativePaths(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<inject src="../../shared/footer.html">',
+            'shared/footer.html' => '<img src="logo.png"><calphp src="c.php"><showlink src="logo.png"><a href="../class/01.Introduction/notes.md#x">notes</a>',
+            'shared/logo.png' => 'LOGO',
+            'shared/c.php' => '<?php echo "FOOTER-SCRIPT";',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/index.html');
+        $this->assertContains('FOOTER-SCRIPT', $page, '<calphp> relative to the injected file (L-21)');
+        $this->assertNotContains('data-cal6-hidden', $page, 'its image has a key');
+        $this->assertSame(2, substr_count($page, 'get.php?file='), 'the image and <showlink>');
+        $this->assertContains('href="#/view/' . $course->keysByEvent['class_1']['notes.md'] . '#x"', $page, 'and its link back into the event');
+    }
 }
