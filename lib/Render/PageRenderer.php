@@ -20,6 +20,9 @@ use Throwable;
 final class PageRenderer
 {
     private const MAX_INJECT_DEPTH = 5;
+    private const MAX_INJECT_BYTES = 4_000_000;
+
+    private int $injectedBytes = 0;
 
     /** @var list<string> <url> values that were used, to remember in the session */
     public array $usedUrlValues = [];
@@ -102,10 +105,10 @@ final class PageRenderer
     {
         $out = '';
         $pos = 0;
-        foreach (self::opaqueRanges($html) as [$start, $end]) {
-            if (substr_compare($html, '<!--', $start, 4) === 0) {
-                $out .= substr($html, $pos, $start - $pos);
-                $pos = $end;
+        foreach (HtmlLexer::scan($html) as $token) {
+            if ($token[0] === 'comment') {
+                $out .= substr($html, $pos, $token[1] - $pos);
+                $pos = $token[2];
             }
         }
         return $out . substr($html, $pos);
@@ -114,8 +117,13 @@ final class PageRenderer
     /** [start, end) of <script>/<style> bodies. @return list<array{0: int, 1: int}> */
     private static function scriptRanges(string $html): array
     {
-        return array_values(array_filter(self::opaqueRanges($html), static fn (array $r): bool =>
-            substr_compare($html, '<!--', $r[0], 4) !== 0 && substr_compare($html, '<![CDATA[', $r[0], 9) !== 0));
+        $ranges = [];
+        foreach (HtmlLexer::scan($html) as $token) {
+            if ($token[0] === 'raw') {
+                $ranges[] = [$token[1], $token[2]];
+            }
+        }
+        return $ranges;
     }
 
     /** @param list<array{0: int, 1: int}> $ranges */
@@ -130,10 +138,11 @@ final class PageRenderer
     }
 
     /** <inject src="file"> and <codeinject src="file">: relative to the page, inside the course. */
-    private function injects(string $html, string $dir, int $depth, Place $place): string
+    private function injects(string $html, string $dir, int $depth, Place $place, array $ancestors = []): string
     {
         $scripts = self::scriptRanges($html);
-        return preg_replace_callback('/<(code)?inject\b[^>]*>/i', function (array $m) use ($dir, $depth, $place, $scripts): string {
+        $ancestors[] = $place->file->realPath;
+        return preg_replace_callback('/<(code)?inject\b[^>]*>/i', function (array $m) use ($dir, $depth, $place, $scripts, $ancestors): string {
             if (self::inRanges($m[0][1], $scripts)) {
                 return $m[0][0]; // text inside a script or style body, not a tag (M-23)
             }
@@ -144,6 +153,12 @@ final class PageRenderer
             if ($real === null || !is_file($real) || Boundary::neverServed($real) || !$this->mayInject($real)) {
                 return '';
             }
+            // no cycles (a page injecting itself or an ancestor), and at most MAX_INJECT_BYTES
+            // of injected text per page, so injects can not multiply a page without end (L-37)
+            if (in_array($real, $ancestors, true) || $this->injectedBytes > self::MAX_INJECT_BYTES) {
+                return '';
+            }
+            $this->injectedBytes += (int) filesize($real);
             // the injected file's own place decides its <postmeeting> (M-24); a file without
             // a key (shared/) belongs to the page that injects it
             $owner = $this->injectOwner($real) ?? $place;
@@ -157,7 +172,7 @@ final class PageRenderer
                 return htmlspecialchars($source, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
             $inner = $this->postmeeting($this->load($real), $owner);
-            $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1, $owner) : $inner;
+            $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1, $owner, [...$ancestors, $real]) : $inner;
             // its links, <calphp> and <showlink> are relative to the injected file, not the page (L-21)
             return dirname($real) === $dir ? $inner : self::rebase($inner, dirname($real), $dir);
         }, $html, -1, $count, PREG_OFFSET_CAPTURE) ?? self::failed();
@@ -556,134 +571,47 @@ final class PageRenderer
 
     /**
      * Replaces each <tag ...>inner</tag> block with $replace(inner, openingTag), without
-     * regular expressions (H-4, M-13, L-29, L-34):
+     * regular expressions (H-4, M-13, L-29, L-34, L-36, L-37):
      *
-     * - one linear pass finds every opening and closing tag; nested blocks of the same tag
-     *   are matched by depth and the inner content is processed first, so
-     *   <inst>A<inst>B</inst>C</inst> is one block;
-     * - tags inside HTML comments, CDATA sections and <script>/<style> bodies are not tags,
-     *   so a "</inst>" in a comment does not end the block early;
-     * - a block that is never closed runs to the end of the page (fail closed);
-     * - a closing tag with no opening one is left as text;
-     * - any size and any depth of nesting works in linear time.
+     * - tags come from HtmlLexer, so tags inside comments, quoted attribute values and
+     *   <script>/<style> bodies are not tags, as in a browser;
+     * - nested blocks of the same tag are matched with a stack and the inner content is
+     *   processed first, so <inst>A<inst>B</inst>C</inst> is one block;
+     * - a block that is never closed runs to the end of the page (fail closed); a closing
+     *   tag with no opening one is left as text;
+     * - linear time and no recursion, at any size and depth.
      *
      * @param callable(string, string): string $replace
      */
     public static function block(string $html, string $tag, callable $replace): string
     {
-        $tokens = self::tagTokens($html, $tag, self::opaqueRanges($html));
-        $match = [];
-        $stack = [];
-        foreach ($tokens as $i => [$kind]) {
-            if ($kind === 'open') {
-                $stack[] = $i;
-            } elseif ($stack !== []) {
-                $match[array_pop($stack)] = $i;
-            }
-        }
-        return self::renderBlocks($html, $tokens, $match, 0, count($tokens), 0, strlen($html), $replace);
-    }
-
-    /**
-     * @param list<array{0: string, 1: int, 2: int}> $tokens [kind, start, end]
-     * @param array<int, int> $match opening token => closing token
-     */
-    private static function renderBlocks(string $html, array $tokens, array $match, int $from, int $to, int $start, int $end, callable $replace): string
-    {
-        $out = '';
-        $pos = $start;
-        $i = $from;
-        while ($i < $to) {
-            [$kind, $tokenStart, $tokenEnd] = $tokens[$i];
-            if ($kind !== 'open') {
-                $i++; // a closing tag with no opening one: left as text
+        $tag = strtolower($tag);
+        $buffers = [''];
+        $openings = [];
+        $pos = 0;
+        foreach (HtmlLexer::scan($html) as $token) {
+            if ($token[0] !== 'tag' || $token[3] !== $tag) {
                 continue;
             }
-            $out .= substr($html, $pos, $tokenStart - $pos);
-            $opening = substr($html, $tokenStart, $tokenEnd - $tokenStart);
-            $close = $match[$i] ?? null;
-            [$innerEnd, $after, $innerTo] = $close === null ? [$end, $end, $to] : [$tokens[$close][1], $tokens[$close][2], $close];
-            $inner = self::renderBlocks($html, $tokens, $match, $i + 1, $innerTo, $tokenEnd, $innerEnd, $replace);
-            $out .= $replace($inner, $opening);
-            $pos = $after;
-            $i = $close === null ? $to : $close + 1;
-        }
-        return $out . substr($html, $pos, max(0, $end - $pos));
-    }
-
-    /**
-     * Every "<tag ...>" and "</tag>" outside the opaque ranges, in order.
-     *
-     * @param list<array{0: int, 1: int}> $opaque
-     * @return list<array{0: string, 1: int, 2: int}>
-     */
-    private static function tagTokens(string $html, string $tag, array $opaque): array
-    {
-        $tokens = [];
-        $length = strlen($html);
-        $name = strlen($tag);
-        $r = 0;
-        $from = 0;
-        while (($at = stripos($html, '<', $from)) !== false) {
-            $from = $at + 1;
-            while ($r < count($opaque) && $opaque[$r][1] <= $at) {
-                $r++;
-            }
-            if ($r < count($opaque) && $opaque[$r][0] <= $at) {
-                $from = $opaque[$r][1];
-                continue; // inside a comment, CDATA or script/style body
-            }
-            $closing = ($html[$at + 1] ?? '') === '/';
-            $nameAt = $at + ($closing ? 2 : 1);
-            if (strncasecmp(substr($html, $nameAt, $name), $tag, $name) !== 0) {
-                continue;
-            }
-            $next = $html[$nameAt + $name] ?? '';
-            if ($closing) {
-                $endAt = $nameAt + $name;
-                while ($endAt < $length && ctype_space($html[$endAt])) {
-                    $endAt++;
-                }
-                if (($html[$endAt] ?? '') === '>') {
-                    $tokens[] = ['close', $at, $endAt + 1];
-                    $from = $endAt + 1;
-                }
-            } elseif ($next === '>' || $next === '/' || ($next !== '' && ctype_space($next))) {
-                $gt = strpos($html, '>', $nameAt);
-                $tokens[] = ['open', $at, $gt === false ? $length : $gt + 1];
-                $from = $gt === false ? $length : $gt + 1;
-            }
-        }
-        return $tokens;
-    }
-
-    /** [start, end) of HTML comments, CDATA sections and <script>/<style> bodies. @return list<array{0: int, 1: int}> */
-    private static function opaqueRanges(string $html): array
-    {
-        $ranges = [];
-        $from = 0;
-        $length = strlen($html);
-        while (($at = strpos($html, '<', $from)) !== false) {
-            if (substr_compare($html, '<!--', $at, 4) === 0) {
-                $end = strpos($html, '-->', $at + 4);
-                $stop = $end === false ? $length : $end + 3;
-            } elseif (substr_compare($html, '<![CDATA[', $at, 9) === 0) {
-                $end = strpos($html, ']]>', $at + 9);
-                $stop = $end === false ? $length : $end + 3;
-            } elseif (preg_match('/\G<(script|style)\b[^>]*>/Ai', $html, $m, 0, $at)) {
-                $body = $at + strlen($m[0]);
-                $end = stripos($html, '</' . $m[1], $body);
-                $ranges[] = [$body, $end === false ? $length : $end];
-                $from = $end === false ? $length : $end + 2;
-                continue;
+            [, $start, $end, , $closing] = $token;
+            $buffers[count($buffers) - 1] .= substr($html, $pos, $start - $pos);
+            if (!$closing) {
+                $openings[] = substr($html, $start, $end - $start);
+                $buffers[] = '';
+            } elseif ($openings !== []) {
+                $inner = array_pop($buffers);
+                $buffers[count($buffers) - 1] .= $replace($inner, array_pop($openings));
             } else {
-                $from = $at + 1;
-                continue;
+                $buffers[count($buffers) - 1] .= substr($html, $start, $end - $start);
             }
-            $ranges[] = [$at, $stop];
-            $from = $stop;
+            $pos = $end;
         }
-        return $ranges;
+        $buffers[count($buffers) - 1] .= substr($html, $pos);
+        while ($openings !== []) { // never closed: to the end of the page
+            $inner = array_pop($buffers);
+            $buffers[count($buffers) - 1] .= $replace($inner, array_pop($openings));
+        }
+        return $buffers[0];
     }
 
     /** A pattern that failed (backtracking or another PCRE limit): never send the page half processed. */

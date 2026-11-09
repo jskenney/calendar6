@@ -328,4 +328,47 @@ final class RendererTest extends TestCase
         $this->assertNotContains('alert', $page, 'no javascript: URLs from <url> (L-39)');
         $this->assertContains('seven', $page, 'numeric names (L-40)');
     }
+
+    public function testTheScannerFollowsTheBrowser(): void
+    {
+        $cases = [
+            'cdata' => '<![CDATA[ <inst>S1</inst> ]]>',
+            'abrupt' => '<!--> <inst>S2</inst> <!-- x -->',
+            'abrupt2' => '<!---> <inst>S3</inst>',
+            'custom' => '<script-x> <inst>S4</inst> </script-x><style-guide><inst>S5</inst></style-guide>',
+            'attribute' => '<img alt="<!--"> <inst>S6</inst> <img alt="-->"><a title="<script>"><inst>S7</inst></a><a title="</inst>"><inst>S8</inst></a>',
+        ];
+        $files = ['config/default.ini' => "class_1 = always\n"];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html . '<p>END</p>';
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $page = $this->render($course, "class_1/$name.html");
+            $this->assertSame(0, preg_match('/S[1-8]/', $page), "hidden as a browser would parse it (L-36): $name: " . $page);
+            $this->assertContains('END', $page, $name);
+        }
+    }
+
+    public function testExtremeInputStaysFastAndSmall(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/deep.html' => str_repeat('<inst>', 70000) . 'X' . str_repeat('</inst>', 70000) . '<p>DEEP-END</p>',
+            'class/01.Introduction/scripts.html' => str_repeat('<script ', 80000),
+            'class/01.Introduction/self.html' => str_repeat('<inject src="self.html">', 8) . 'SELF',
+            'class/01.Introduction/emph.md' => str_repeat('_a ', 50000),
+            'class/01.Introduction/list.md' => implode("\n", array_map(static fn (int $i): string => str_repeat('  ', $i) . '- item', range(0, 3000))),
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        foreach (['deep.html' => 'DEEP-END', 'scripts.html' => '', 'self.html' => 'SELF', 'emph.md' => 'a', 'list.md' => 'item'] as $file => $expect) {
+            $start = microtime(true);
+            $memory = memory_get_usage();
+            $page = $this->render($course, "class_1/$file");
+            $this->assertTrue(microtime(true) - $start < 3.0, "$file renders quickly (L-37)");
+            $this->assertTrue(memory_get_peak_usage() < 256 * 1024 * 1024, "$file within memory");
+            $this->assertContains($expect, $page, $file);
+            unset($memory);
+        }
+        $this->assertTrue(substr_count($this->render($course, 'class_1/self.html'), 'SELF') <= 1, 'a page does not inject itself (L-37)');
+    }
 }

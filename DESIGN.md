@@ -639,16 +639,18 @@ processed:
 ### Tags (Decided: every Calendar 4 tag except `<ace>`)
 
 All are handled in `html.php`, so hidden content never reaches the browser. Blocks
-(`<inst>`, `<student>`, `<postmeeting>`, `<host>`, `<lock>`, `<ace>`) are found by a tag scanner,
-not regular expressions: tag names are not case-sensitive, nested blocks of the same tag are
-matched by depth, **HTML comments are removed** from pages and injected files before anything
-else (outside `<script>`/`<style>` bodies; M-23), tags inside CDATA and `<script>`/`<style>` bodies
-are not tags (an `<inject>`, `<codeinject>` or `<calphp>` there is left as text),
-any size and depth works in linear time, and **a block that is never closed hides the rest of
-the page** (fail closed). (A closing tag written inside another tag's attribute value is still
-seen as a tag.) `<codeinject>` of a page shows its source without the blocks the viewer may not
-see. If any other pattern fails on a page, the request fails rather than sending
-the page half processed.
+(`<inst>`, `<student>`, `<postmeeting>`, `<host>`, `<lock>`, `<ace>`) are found by a small HTML
+lexer, not regular expressions, that reads markup the way a browser does: tags inside quoted
+attribute values and `<script>`/`<style>` bodies are not tags; tag names are not case-sensitive;
+nested blocks of the same tag are matched with a stack; and **a block that is never closed hides
+the rest of the page** (fail closed). **HTML comments are removed** from pages and injected files
+before anything else (outside `<script>`/`<style>` bodies), abrupt comments (`<!-->`) end where a
+browser ends them, and a CDATA section is removed whole. An `<inject>`, `<codeinject>` or
+`<calphp>` inside a script or style body is text. Processing is linear in the size of the page;
+`<inject>` does not follow cycles and stops after about 4 MB of injected text; the Markdown
+converter nests quotes and lists at most 16 deep and emphasis spans at most 1000 characters.
+`<codeinject>` of a page shows its source without what the viewer may not see. If any other
+pattern fails on a page, the request fails rather than sending the page half processed.
 
 | Tag | Meaning |
 |---|---|

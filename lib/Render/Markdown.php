@@ -34,6 +34,7 @@ final class Markdown
     private $slugs = array();
     private $holds = array();
     private $quoteDepth = 0;
+    private $listDepth = 0;
 
     # Elements that start an inline run rather than an HTML block
     private static $inlineTags = array('a', 'abbr', 'b', 'bdi', 'bdo', 'br', 'cite', 'code', 'data', 'dfn', 'em', 'i', 'img',
@@ -344,8 +345,13 @@ final class Markdown
             }
 
             # List
-            if (($lm = $this->listMarker($line)) !== False) {
-                list($html, $i) = $this->parseList($lines, $i, $lm);
+            if ($this->listDepth < 16 && ($lm = $this->listMarker($line)) !== False) { # at most 16 deep (L-37)
+                $this->listDepth++;
+                try {
+                    list($html, $i) = $this->parseList($lines, $i, $lm);
+                } finally {
+                    $this->listDepth--;
+                }
                 $out[] = $html;
                 continue;
             }
@@ -560,14 +566,15 @@ final class Markdown
         }, $text);
     }
 
+    # Emphasis spans are at most 1000 characters, so long runs of markers stay fast (L-37)
     private function emphasis($text) {
-        $text = preg_replace('/~~(?=\S)(.+?)(?<=\S)~~/s', '<del>$1</del>', $text);
-        $text = preg_replace('/\*\*\*(?=\S)(.+?)(?<=\S)\*\*\*/s', '<strong><em>$1</em></strong>', $text);
-        $text = preg_replace('/(?<![A-Za-z0-9])___(?=\S)(.+?)(?<=\S)___(?![A-Za-z0-9])/s', '<strong><em>$1</em></strong>', $text);
-        $text = preg_replace('/\*\*(?=\S)(.+?)(?<=\S)\*\*/s', '<strong>$1</strong>', $text);
-        $text = preg_replace('/(?<![A-Za-z0-9])__(?=\S)(.+?)(?<=\S)__(?![A-Za-z0-9])/s', '<strong>$1</strong>', $text);
-        $text = preg_replace('/(?<![*\\\\])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?!\*)/s', '<em>$1</em>', $text);
-        $text = preg_replace('/(?<![A-Za-z0-9_])_(?=[^\s_])(.+?)(?<=[^\s_])_(?![A-Za-z0-9_])/s', '<em>$1</em>', $text);
+        $text = preg_replace('/~~(?=\S)(.{1,1000}?)(?<=\S)~~/s', '<del>$1</del>', $text) ?? $text;
+        $text = preg_replace('/\*\*\*(?=\S)(.{1,1000}?)(?<=\S)\*\*\*/s', '<strong><em>$1</em></strong>', $text) ?? $text;
+        $text = preg_replace('/(?<![A-Za-z0-9])___(?=\S)(.{1,1000}?)(?<=\S)___(?![A-Za-z0-9])/s', '<strong><em>$1</em></strong>', $text) ?? $text;
+        $text = preg_replace('/\*\*(?=\S)(.{1,1000}?)(?<=\S)\*\*/s', '<strong>$1</strong>', $text) ?? $text;
+        $text = preg_replace('/(?<![A-Za-z0-9])__(?=\S)(.{1,1000}?)(?<=\S)__(?![A-Za-z0-9])/s', '<strong>$1</strong>', $text) ?? $text;
+        $text = preg_replace('/(?<![*\\\\])\*(?=[^\s*])(.{1,1000}?)(?<=[^\s*])\*(?!\*)/s', '<em>$1</em>', $text) ?? $text;
+        $text = preg_replace('/(?<![A-Za-z0-9_])_(?=[^\s_])(.{1,1000}?)(?<=[^\s_])_(?![A-Za-z0-9_])/s', '<em>$1</em>', $text) ?? $text;
         return $text;
     }
 
