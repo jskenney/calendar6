@@ -1,0 +1,8 @@
+# The calendar6 repository, served as course_directory/calendar/: only php/ is meant to be
+# requested. lib/ and tests/ have their own deny-all files; this also refuses template/ (the
+# sample course, L-24). Needs only AllowOverride AuthConfig. Not copied into courses.
+<IfModule mod_authz_core.c>
+    <If "%{REQUEST_URI} =~ m#/template(/|$)#">
+        Require all denied
+    </If>
+</IfModule>

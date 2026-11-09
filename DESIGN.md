@@ -903,7 +903,9 @@ The plan:
   refuses every name that starts with a dot, such as `.git/` when the course is kept in git, and
   every `.ini` file, anywhere under the course, also through `calendar/`), and the deny-all
   files in `config/`, `pages/`, `shared/` and every event-type directory (add one to each new
-  type). They need `AllowOverride AuthConfig` (or `All`) and Apache 2.4 for the dot rule.
+  type). They need `AllowOverride AuthConfig` (or `All`) and Apache 2.4 for the dot rule. The
+  repository's own `.htaccess` (in `calendar/`) refuses `calendar/template/`; `calendar/lib/` and
+  `calendar/tests/` have their own.
 - **nginx:** no `.htaccess`; `tests/deploy/nginx-site.conf` is a complete, tested server block
   (CI serves a course with it). In short: deny the same directories in the server block, for example
   `location ~ ^/AB123/(config|pages|shared|class|lab|exam|project)/ { deny all; }`, deny dot
