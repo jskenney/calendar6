@@ -144,17 +144,20 @@ final class PageRenderer
             if ($real === null || !is_file($real) || Boundary::neverServed($real) || !$this->mayInject($real)) {
                 return '';
             }
+            // the injected file's own place decides its <postmeeting> (M-24); a file without
+            // a key (shared/) belongs to the page that injects it
+            $owner = $this->injectOwner($real) ?? $place;
             if ($code) {
                 $source = (string) file_get_contents($real);
                 if (ContentFile::isPage($real)) {
                     // the source of a page, shown as code, still loses what this viewer may
                     // not see: raw page source never leaves the server (L-30, C-1)
-                    $source = $this->hideForSource($source, $place);
+                    $source = $this->hideForSource($source, $owner);
                 }
                 return htmlspecialchars($source, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
-            $inner = $this->load($real);
-            $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1, $place) : $inner;
+            $inner = $this->postmeeting($this->load($real), $owner);
+            $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1, $owner) : $inner;
             // its links, <calphp> and <showlink> are relative to the injected file, not the page (L-21)
             return dirname($real) === $dir ? $inner : self::rebase($inner, dirname($real), $dir);
         }, $html, -1, $count, PREG_OFFSET_CAPTURE) ?? self::failed();
@@ -196,6 +199,20 @@ final class PageRenderer
         }
         $first = explode('/', $this->course->boundary->relative($real))[0];
         return !isset($this->course->config->types[$first]);
+    }
+
+    /** The visible place an injected file belongs to (an event's file before a page), or null. */
+    private function injectOwner(string $real): ?Place
+    {
+        $owner = null;
+        foreach ($this->course->byRealPath[$real] ?? [] as $key) {
+            $candidate = $this->course->places[$key];
+            if ($candidate->assetOf === null && $this->policy->decide($this->viewer, $candidate, $this->now)->visible
+                && ($owner === null || ($owner->event === null && $candidate->event !== null))) {
+                $owner = $candidate;
+            }
+        }
+        return $owner;
     }
 
     /** Rewrites relative URLs written for $fromDir so they mean the same from $toDir. */

@@ -288,4 +288,21 @@ final class RendererTest extends TestCase
         $this->assertContains('// <!-- kept -->', $page, 'comments inside scripts are part of the script');
         $this->assertContains('END', $page);
     }
+
+    public function testPostmeetingOfAnInjectedPageFollowsItsOwnEvent(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => 'C1 <inject src="../02.Two/index.html"> <pre><codeinject src="../02.Two/index.html"></pre>',
+            'class/02.Two/index.html' => 'C2 <postmeeting>PM-ANSWER</postmeeting>',
+            'pages/home.html' => '<inject src="../class/02.Two/index.html">',
+            'config/default.ini' => "class = always\n",
+        ]);
+        $classTwo = $course->events['class_2'];
+        $before = $classTwo->time->start()->getTimestamp() - 60; // class 1 is long over, class 2 not yet
+        foreach (['class_1/index.html', 'page/home'] as $page) {
+            $this->assertNotContains('PM-ANSWER', $this->render($course, $page, [], null, $before), "class 2's answers wait for class 2 (M-24): $page");
+        }
+        $after = $classTwo->time->end()->getTimestamp() + 60;
+        $this->assertContains('PM-ANSWER', $this->render($course, 'class_1/index.html', [], null, $after), 'and appear after it');
+    }
 }

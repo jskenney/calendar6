@@ -654,7 +654,7 @@ the page half processed.
 |---|---|
 | `<inst>` ... `</inst>` | only for instructors (`instructor = true`) |
 | `<student>` ... `</student>` | answers behind a "reveal" icon (sent to everyone, hidden only visually, as v4) |
-| `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times) |
+| `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times). In an injected or codeinjected page, that page's own event decides (a file without an event, such as `shared/`, follows the page that injects it) |
 | `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it) |
 | `<host server="name">` ... `</host>` | shown only when served by that server |
 | `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`) |
