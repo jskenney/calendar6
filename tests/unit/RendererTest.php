@@ -141,4 +141,39 @@ final class RendererTest extends TestCase
         $course = Course::load($this->dir);
         $this->assertFalse(isset($course->keysByEvent['class_1']['view.html']), 'a link to a .php file is not listed (L-22)');
     }
+
+    public function testHiddenBlocksStayHiddenWhenLargeNestedOrUnclosed(): void
+    {
+        $big = str_repeat('A', 1_200_000);
+        $image = '<img src="data:image/png;base64,' . str_repeat('QUFB', 300_000) . '">';
+        $course = $this->course([
+            'class/01.Introduction/index.html' => "<p>START</p><inst>SECRET-BIG $big</inst><lock code=\"s3cret\">$image LOCKED-BIG</lock>"
+                . '<postmeeting>' . $big . 'AFTER-BIG</postmeeting><host server="nowhere">' . $big . 'HOST-BIG</host><p>VISIBLE-END</p>',
+            'class/01.Introduction/nested.html' => '<inst>A<inst>B</inst>SECRET-NESTED</inst><lock code="x">L1<lock code="y">L2</lock>LOCK-NESTED</lock>'
+                . '<host server="nowhere">H1<host server="nowhere">H2</host>HOST-NESTED</host><INST >UPPER-CASE</Inst ><p>AFTER-NESTED</p>',
+            'class/01.Introduction/unclosed.html' => '<p>BEFORE</p><inst>NEVER-CLOSED <p>everything after</p>',
+            'class/01.Introduction/photo.html' => "<p>PHOTO</p>$image",
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/index.html', [], null, 0);
+        foreach (['SECRET-BIG', 'LOCKED-BIG', 's3cret', 'AFTER-BIG', 'HOST-BIG'] as $hidden) {
+            $this->assertNotContains($hidden, $page, "large blocks stay hidden (H-4): $hidden");
+        }
+        $this->assertContains('START', $page);
+        $this->assertContains('VISIBLE-END', $page, 'and the rest of the page is still there');
+        $nested = $this->render($course, 'class_1/nested.html');
+        foreach (['SECRET-NESTED', 'LOCK-NESTED', 'L2', 'HOST-NESTED', 'H2', 'UPPER-CASE', '</inst>', '</lock>', '</host>'] as $hidden) {
+            $this->assertNotContains($hidden, $nested, "nested blocks stay hidden (M-13): $hidden");
+        }
+        $this->assertContains('AFTER-NESTED', $nested);
+        $prof = Viewer::account($course->config, 'prof');
+        $instructor = $this->render($course, 'class_1/nested.html', [], $prof);
+        $this->assertContains('ABSECRET-NESTED', $instructor, 'instructors see nested content, without the tags');
+        $this->assertNotContains('<inst>', $instructor);
+        $unclosed = $this->render($course, 'class_1/unclosed.html');
+        $this->assertContains('BEFORE', $unclosed);
+        $this->assertNotContains('NEVER-CLOSED', $unclosed, 'an unclosed block hides the rest of the page (fail closed)');
+        $this->assertNotContains('everything after', $unclosed);
+        $this->assertContains('base64,QUFB', $this->render($course, 'class_1/photo.html'), 'a large inline image still renders');
+    }
 }

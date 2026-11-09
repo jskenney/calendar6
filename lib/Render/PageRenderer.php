@@ -77,7 +77,7 @@ final class PageRenderer
         $html = $this->replace($html, $place);
         $html = $this->url($html);
         $html = self::block($html, 'ace', static fn (string $inner): string => '<pre class="cal6-ace"><code>' . $inner . '</code></pre>');
-        $html = preg_replace('/<\/?(keyword|search)\b[^>]*>/i', '', $html) ?? $html;
+        $html = preg_replace('/<\/?(keyword|search)\b[^>]*>/i', '', $html) ?? self::failed();
         $html = $this->showlinks($html, $dir, $place);
         $html = $this->links($html, $dir, $place);
         $html = $this->anchors($html);
@@ -107,7 +107,7 @@ final class PageRenderer
             }
             $inner = $this->load($real);
             return $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1) : $inner;
-        }, $html) ?? $html;
+        }, $html) ?? self::failed();
     }
 
     /**
@@ -165,7 +165,7 @@ final class PageRenderer
             $placeholder = "\x00cal6-calphp-" . count($this->outputs) . "\x00";
             $this->outputs[$placeholder] = $output;
             return $placeholder;
-        }, $html) ?? $html;
+        }, $html) ?? self::failed();
     }
 
     /** <postmeeting>: once the last section's meeting that day is over (instructors always). */
@@ -185,14 +185,14 @@ final class PageRenderer
     private function host(string $html): string
     {
         $names = array_map('strtolower', array_filter($this->hostNames, static fn (string $n): bool => $n !== ''));
-        return preg_replace_callback('/<host\b([^>]*)>([\s\S]*?)<\/host\s*>/i', static function (array $m) use ($names): string {
-            foreach (explode(',', (string) self::attribute('<host' . $m[1] . '>', 'server')) as $server) {
+        return self::block($html, 'host', static function (string $inner, string $opening) use ($names): string {
+            foreach (explode(',', (string) self::attribute($opening, 'server')) as $server) {
                 if (trim($server) !== '' && in_array(strtolower(trim($server)), $names, true)) {
-                    return $m[2];
+                    return $inner;
                 }
             }
             return '';
-        }, $html) ?? $html;
+        });
     }
 
     /** The names <host> may match on this server: its host name and address. @return list<string> */
@@ -205,21 +205,21 @@ final class PageRenderer
     /** <lock code="a,b">: a shared code unlocks the section; otherwise a form takes its place. */
     private function lock(string $html): string
     {
-        return preg_replace_callback('/<lock\b([^>]*)>([\s\S]*?)<\/lock\s*>/i', function (array $m): string {
-            $codes = array_filter(array_map('trim', explode(',', (string) self::attribute('<lock' . $m[1] . '>', 'code'))), static fn (string $c): bool => $c !== '');
+        return self::block($html, 'lock', function (string $inner, string $opening): string {
+            $codes = array_filter(array_map('trim', explode(',', (string) self::attribute($opening, 'code'))), static fn (string $c): bool => $c !== '');
             foreach ($this->unlocked as $entered) {
                 if (self::codeMatches($entered, array_values($codes))) {
-                    return $m[2];
+                    return $inner;
                 }
             }
             if ($this->viewer->instructor) {
-                return $m[2];
+                return $inner;
             }
             return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($this->lockKey) . ($this->full ? '&full=1' : '')) . '">'
                 . '<input type="hidden" name="csrf" value="' . htmlspecialchars($this->csrf) . '">'
                 . '<label>Enter the code to see this section <input type="password" name="lock" autocomplete="off"></label>'
                 . '<button type="submit">Unlock</button></form>';
-        }, $html) ?? $html;
+        });
     }
 
     /** All lock codes on a page (to check a code that was sent). @return list<string> */
@@ -253,8 +253,8 @@ final class PageRenderer
         $html = preg_replace_callback('/<replace\b[^>]*>/i', static function (array $m) use ($values): string {
             $name = (string) self::attribute($m[0], 'value');
             return htmlspecialchars($values[$name] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        }, $html) ?? $html;
-        return preg_replace('/<\/replace\s*>/i', '', $html) ?? $html;
+        }, $html) ?? self::failed();
+        return preg_replace('/<\/replace\s*>/i', '', $html) ?? self::failed();
     }
 
     /** <url value="name" default="x">: from the page's URL (remembered in the session), HTML-escaped. */
@@ -269,8 +269,8 @@ final class PageRenderer
                 $value = (string) self::attribute($m[0], 'default');
             }
             return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        }, $html) ?? $html;
-        return preg_replace('/<\/url\s*>/i', '', $html) ?? $html;
+        }, $html) ?? self::failed();
+        return preg_replace('/<\/url\s*>/i', '', $html) ?? self::failed();
     }
 
     private function showlinks(string $html, string $dir, Place $place): string
@@ -280,7 +280,7 @@ final class PageRenderer
             $target = $this->visiblePlace($place, $dir, $src);
             $text = htmlspecialchars(basename($src), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             return $target === null ? $text : '<a href="' . htmlspecialchars($this->urlFor($target, 'a')) . '">' . $text . '</a>';
-        }, $html) ?? $html;
+        }, $html) ?? self::failed();
     }
 
     private const LINK_ELEMENTS = '/<(a|img|source|video|audio|track|iframe|embed|object|script|link)\b[^>]*>/i';
@@ -330,8 +330,8 @@ final class PageRenderer
                 }
                 $url = $this->rewrite($value, $dir, $place, $element);
                 return $url === null ? $m[1] . 'data-cal6-hidden="1"' : ($url === $value ? $m[0] : $m[1] . $m[2] . '="' . htmlspecialchars($url) . '"');
-            }, $tag[0]) ?? $tag[0];
-        }, $html) ?? $html;
+            }, $tag[0]) ?? self::failed();
+        }, $html) ?? self::failed();
     }
 
     /** The URL to use for a link: unchanged, a key URL, or null when it leads to a file the viewer may not see. */
@@ -396,13 +396,96 @@ final class PageRenderer
     {
         return preg_replace_callback('/<a\b[^>]*\bname\s*=\s*"([^"]*)"[^>]*>/i', static function (array $m): string {
             return preg_match('/\sid\s*=/i', $m[0]) ? $m[0] : substr($m[0], 0, 2) . ' id="' . $m[1] . '"' . substr($m[0], 2);
-        }, $html) ?? $html;
+        }, $html) ?? self::failed();
     }
 
-    /** @param callable(string): string $replace */
+    /**
+     * Replaces each <tag ...>inner</tag> block with $replace(inner, openingTag), without
+     * regular expressions (H-4, M-13):
+     *
+     * - nested blocks of the same tag are matched by depth, and the inner content is
+     *   processed first, so <inst>A<inst>B</inst>C</inst> is one block;
+     * - a block that is never closed runs to the end of the page (fail closed: the rest
+     *   is treated as inside it);
+     * - it works on any size of content (no backtracking limit).
+     *
+     * @param callable(string, string): string $replace
+     */
     public static function block(string $html, string $tag, callable $replace): string
     {
-        return preg_replace_callback('/<' . $tag . '\b[^>]*>([\s\S]*?)<\/' . $tag . '\s*>/i', static fn (array $m): string => $replace($m[1]), $html) ?? $html;
+        $out = '';
+        $pos = 0;
+        while (($start = self::findOpen($html, $tag, $pos)) !== null) {
+            $out .= substr($html, $pos, $start - $pos);
+            $openEnd = strpos($html, '>', $start);
+            if ($openEnd === false) {
+                return $out; // an opening tag that never ends: drop the rest
+            }
+            $opening = substr($html, $start, $openEnd - $start + 1);
+            $depth = 1;
+            $cursor = $openEnd + 1;
+            $innerEnd = strlen($html);
+            $after = strlen($html);
+            while ($depth > 0) {
+                $close = self::findClose($html, $tag, $cursor);
+                $open = self::findOpen($html, $tag, $cursor);
+                if ($close === null) {
+                    break; // never closed: the block runs to the end
+                }
+                if ($open !== null && $open < $close[0]) {
+                    $depth++;
+                    $openEndInner = strpos($html, '>', $open);
+                    $cursor = $openEndInner === false ? strlen($html) : $openEndInner + 1;
+                    continue;
+                }
+                $depth--;
+                $cursor = $close[1];
+                if ($depth === 0) {
+                    [$innerEnd, $after] = $close;
+                }
+            }
+            $inner = substr($html, $openEnd + 1, $innerEnd - $openEnd - 1);
+            $out .= $replace(self::block($inner, $tag, $replace), $opening);
+            $pos = $after;
+        }
+        return $out . substr($html, $pos);
+    }
+
+    /** The position of the next "<tag" followed by a space, ">" or "/", or null. */
+    private static function findOpen(string $html, string $tag, int $from): ?int
+    {
+        $length = strlen($tag) + 1;
+        while (($at = stripos($html, '<' . $tag, $from)) !== false) {
+            $next = $html[$at + $length] ?? '';
+            if ($next === '>' || $next === '/' || ctype_space($next)) {
+                return $at;
+            }
+            $from = $at + $length;
+        }
+        return null;
+    }
+
+    /** [start, end] of the next "</tag>" (spaces allowed before ">"), or null. @return array{0: int, 1: int}|null */
+    private static function findClose(string $html, string $tag, int $from): ?array
+    {
+        $length = strlen($tag) + 2;
+        while (($at = stripos($html, '</' . $tag, $from)) !== false) {
+            $end = $at + $length;
+            while ($end < strlen($html) && ctype_space($html[$end])) {
+                $end++;
+            }
+            if (($html[$end] ?? '') === '>') {
+                return [$at, $end + 1];
+            }
+            $from = $at + $length;
+        }
+        return null;
+    }
+
+    /** A pattern that failed (backtracking or another PCRE limit): never send the page half processed. */
+    private static function failed(): never
+    {
+        throw new \RuntimeException('the page could not be processed: ' . preg_last_error_msg());
     }
 
     public static function attribute(string $tag, string $name): ?string
