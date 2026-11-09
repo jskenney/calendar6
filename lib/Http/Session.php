@@ -15,12 +15,12 @@ final class Session
 
     private static bool $open = false;
 
-    public static function start(string $courseDir, array $server, bool $create): bool
+    public static function start(Context $c, bool $create): bool
     {
         if (self::$open) {
             return true;
         }
-        $name = 'cal6_' . substr(sha1((string) realpath($courseDir)), 0, 12);
+        $name = 'cal6_' . substr(sha1((string) realpath($c->courseDir)), 0, 12);
         if (!$create && !isset($_COOKIE[$name])) {
             return false;
         }
@@ -31,11 +31,18 @@ final class Session
         ini_set('session.use_strict_mode', '1');
         ini_set('session.use_only_cookies', '1');
         ini_set('session.use_trans_sid', '0');
+        // a login lasts [users] session; PHP's own cleanup must not end it sooner, and
+        // the course keeps its sessions in its private directory when it can (DOC-4)
+        ini_set('session.gc_maxlifetime', (string) max(1440, $c->config->sessionSeconds));
+        $path = TempDir::for($c->courseDir, 'sessions');
+        if ($path !== null) {
+            session_save_path($path);
+        }
         session_name($name);
         session_set_cookie_params([
             'lifetime' => 0,
-            'path' => Locator::coursePath($server),
-            'secure' => self::https($server),
+            'path' => Locator::coursePath($c->server),
+            'secure' => $c->https(),
             'httponly' => true,
             'samesite' => 'Strict',
         ]);

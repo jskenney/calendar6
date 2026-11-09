@@ -16,6 +16,7 @@ final class EndpointsTest extends TestCase
 {
     private string $dir = '';
     private ?Server $server = null;
+    private bool $ignoreServerErrors = false;
 
     /** @param array<string, string|null> $extra */
     private function start(array $extra = []): HttpClient
@@ -27,7 +28,7 @@ final class EndpointsTest extends TestCase
 
     public function tearDown(): void
     {
-        if ($this->server !== null) {
+        if ($this->server !== null && !$this->ignoreServerErrors) {
             $errors = $this->server->phpErrors();
             $this->assertSame([], $errors, 'no PHP errors or warnings on the server');
         }
@@ -292,6 +293,36 @@ HTML;
         $limited = $attacker->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $token]);
         $this->assertSame(429, $limited->status, 'rate limited');
         $this->assertTrue((int) $limited->header('retry-after') > 0);
+    }
+
+    public function testRateLimitsAndProxies(): void
+    {
+        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $client = $this->start(['config/config.ini' => $config . "\n[server]\ntrusted_proxies = 127.0.0.1\n"]);
+        $from = fn (string $ip): array => ['X-Forwarded-For' => "203.0.113.9, $ip"];
+        $attacker = new HttpClient($this->server);
+        $token = (string) $attacker->get('calendar/php/config.php?csrf=1')->json()['csrf'];
+        for ($i = 0; $i < 5; $i++) {
+            $this->assertSame(401, $attacker->post('calendar/php/auth.php', ['username' => 'prof', 'password' => "bad$i", 'csrf' => $token], $from('198.51.100.1'))->status);
+        }
+        $this->assertSame(429, $attacker->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $token], $from('198.51.100.1'))->status, 'that address and username');
+        $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
+        $this->assertSame(200, $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf], $from('198.51.100.2'))->status, 'the instructor is not locked out from elsewhere (M-7)');
+        $this->assertSame(401, $attacker->post('calendar/php/auth.php', ['username' => 'ta', 'password' => 'bad', 'csrf' => $token], $from('198.51.100.1'))->status, 'another username from the same address is still allowed');
+    }
+
+    public function testLoginFailsClosedWithoutRateLimiter(): void
+    {
+        $client = $this->start();
+        $uid = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
+        $state = sys_get_temp_dir() . "/cal6-$uid-" . substr(sha1((string) realpath($this->dir)), 0, 16);
+        @mkdir($state, 0700);
+        chmod($state, 0777); // as if someone else had made it: not ours to trust
+        $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
+        $response = $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf]);
+        $this->assertSame(503, $response->status, 'no limiter, no login (H-3)');
+        chmod($state, 0700);
+        $this->ignoreServerErrors = true;
     }
 
     public function testCourseMustBeReachedThroughCalendarLink(): void

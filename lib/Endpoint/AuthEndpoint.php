@@ -17,16 +17,13 @@ use Cal6\Http\Session;
  */
 final class AuthEndpoint
 {
-    /** A hash to verify against when there is no such account, so both take as long. */
-    private const DUMMY_HASH = '$2y$10$jtpPieyUAx2tDNdeJvSM9O8ud08uvRx6UATZrw6R/NUWfxie13XTm';
-
     public static function handle(Context $c): void
     {
         if ($c->method() !== 'POST') {
             Response::error(405, 'POST only', ['Allow: POST']);
             return;
         }
-        Session::start($c->courseDir, $c->server, true);
+        Session::start($c, true);
         if (!Session::checkCsrf($c->post('csrf'))) {
             Session::close();
             Response::error(403, 'the form has expired: reload the page');
@@ -46,30 +43,51 @@ final class AuthEndpoint
             return;
         }
 
+        // Limits (M-7): per address and username the configured number; per address
+        // four times that; per username ten times that, so one person can not keep an
+        // account locked by guessing from a single address.
         [$limit, $seconds] = $c->config->loginAttempts;
-        $limiter = RateLimiter::forCourse($c->courseDir, $limit, $seconds);
-        $keys = ['address:' . $c->address(), 'user:' . strtolower($username)];
-        $wait = max(array_map(static fn (string $k): int => $limiter->wait($k, $c->now), $keys));
-        if ($wait > 0) {
+        $limiter = RateLimiter::forCourse($c->courseDir, $seconds);
+        if (!$limiter->available()) {
+            error_log('calendar6: logins are refused: the private temporary directory can not be used (' . sys_get_temp_dir() . ')');
             Session::close();
-            Response::error(429, 'too many failed logins: try again later', ['Retry-After: ' . $wait]);
+            Response::error(503, 'Logging in is not possible right now: the server can not keep track of failed attempts.');
             return;
+        }
+        $user = strtolower($username);
+        $keys = ['pair:' . $c->address() . '|' . $user => $limit, 'address:' . $c->address() => $limit * 4, 'user:' . $user => $limit * 10];
+        $recorded = [];
+        foreach ($keys as $key => $max) {
+            $wait = $limiter->hit($key, $c->now, $max);
+            if ($wait > 0) {
+                foreach ($recorded as $done) {
+                    $limiter->forgive($done);
+                }
+                Session::close();
+                Response::error(429, 'too many failed logins: try again later', ['Retry-After: ' . $wait]);
+                return;
+            }
+            $recorded[] = $key;
         }
 
         $account = Viewer::account($c->config, $username);
         $hash = $account?->passwordHash ?? '';
-        $ok = password_verify($password, $hash !== '' && str_starts_with($hash, '$') ? $hash : self::DUMMY_HASH)
-            && $account !== null && $hash !== ''
-            && $account->isValidAt($c->now, $c->config->zone);
+        $usable = $account !== null && str_starts_with($hash, '$');
+        if ($usable) {
+            $ok = password_verify($password, $hash) && $account->isValidAt($c->now, $c->config->zone);
+        } else {
+            // no such account: spend the time a real check takes at today's default cost (L-7)
+            password_hash($password, PASSWORD_DEFAULT);
+            $ok = false;
+        }
         if (!$ok) {
-            foreach ($keys as $k) {
-                $limiter->fail($k, $c->now);
-            }
             Session::close();
             Response::error(401, 'Wrong username or password.');
             return;
         }
-        $limiter->clear('user:' . strtolower($username));
+        foreach ($recorded as $done) {
+            $limiter->forgive($done);
+        }
         Session::regenerate();
         Session::set('user', $account->user);
         Session::set('login', $c->now);

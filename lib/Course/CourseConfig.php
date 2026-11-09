@@ -43,6 +43,8 @@ final class CourseConfig
     public array $loginAttempts = [5, 900];
     /** @var array<string, string> */
     public array $replace = [];
+    /** @var list<string> [server] trusted_proxies: addresses whose X-Forwarded-For / -Proto are believed */
+    public array $trustedProxies = [];
     /** @var array<string, array{file: string, label: string}> paths.ini pages */
     public array $pages = [];
     public Periods $periods;
@@ -151,6 +153,7 @@ final class CourseConfig
         if ($attempts !== null && preg_match('/^(\d+)\s+per\s+(\d+)\s*([mh])$/i', $attempts, $m)) {
             $config->loginAttempts = [(int) $m[1], (int) $m[2] * (strtolower($m[3]) === 'h' ? 3600 : 60)];
         }
+        $config->trustedProxies = array_values(array_filter(array_map('trim', explode(',', (string) $ini->get('server', 'trusted_proxies', ''))), static fn (string $p): bool => $p !== ''));
         foreach ($ini->section('replace') as $line) {
             $config->replace[$line->key] = $line->value;
         }

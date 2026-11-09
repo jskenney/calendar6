@@ -70,7 +70,7 @@ final class Context
             return $this->viewer;
         }
         $viewer = Viewer::anonymous();
-        if (Session::start($this->courseDir, $this->server, $createSession)) {
+        if (Session::start($this, $createSession)) {
             $user = Session::get('user');
             $login = (int) Session::get('login', 0);
             if (is_string($user)) {
@@ -86,9 +86,35 @@ final class Context
         return $this->viewer = $viewer;
     }
 
+    /**
+     * The client's address.  Behind a reverse proxy listed in [server] trusted_proxies,
+     * the right-most address in X-Forwarded-For that is not a trusted proxy.
+     */
     public function address(): string
     {
-        return (string) ($this->server['REMOTE_ADDR'] ?? '');
+        $remote = (string) ($this->server['REMOTE_ADDR'] ?? '');
+        if (!$this->fromTrustedProxy()) {
+            return $remote;
+        }
+        $hops = array_reverse(array_map('trim', explode(',', (string) ($this->server['HTTP_X_FORWARDED_FOR'] ?? ''))));
+        foreach ($hops as $hop) {
+            if (filter_var($hop, FILTER_VALIDATE_IP) !== false && !in_array($hop, $this->config->trustedProxies, true)) {
+                return $hop;
+            }
+        }
+        return $remote;
+    }
+
+    /** HTTPS, also when a trusted proxy terminates TLS and says so in X-Forwarded-Proto. */
+    public function https(): bool
+    {
+        return Session::https($this->server)
+            || ($this->fromTrustedProxy() && strtolower((string) ($this->server['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
+    }
+
+    private function fromTrustedProxy(): bool
+    {
+        return in_array((string) ($this->server['REMOTE_ADDR'] ?? ''), $this->config->trustedProxies, true);
     }
 
     public function iso(?int $timestamp): ?string

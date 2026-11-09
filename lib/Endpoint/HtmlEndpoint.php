@@ -48,19 +48,18 @@ final class HtmlEndpoint
             }
             $code = trim((string) $c->post('lock'));
             if ($code !== '') {
-                $limiter = RateLimiter::forCourse($c->courseDir, $c->config->loginAttempts[0], $c->config->loginAttempts[1]);
-                $wait = $limiter->wait('lock:' . $c->address(), $c->now);
+                $limiter = RateLimiter::forCourse($c->courseDir, $c->config->loginAttempts[1]);
+                $wait = $limiter->hit('lock:' . $c->address(), $c->now, $c->config->loginAttempts[0] * 2);
                 if ($wait > 0) {
                     Session::close();
-                    Response::error(429, 'too many attempts: try again later', ['Retry-After: ' . $wait]);
+                    Response::error($limiter->available() ? 429 : 503, 'too many attempts: try again later', ['Retry-After: ' . $wait]);
                     return;
                 }
                 if (in_array($code, PageRenderer::lockCodes($source), true)) {
                     $unlocked = (array) Session::get('unlocked', []);
                     $unlocked[] = $code;
                     Session::set('unlocked', array_values(array_unique($unlocked)));
-                } else {
-                    $limiter->fail('lock:' . $c->address(), $c->now);
+                    $limiter->forgive('lock:' . $c->address());
                 }
             }
         }
@@ -74,14 +73,14 @@ final class HtmlEndpoint
         $full = $c->query('full') === '1';
         $hasLock = PageRenderer::lockCodes($source) !== [];
         if ($hasLock) {
-            Session::start($c->courseDir, $c->server, true);
+            Session::start($c, true);
         }
         $renderer = new PageRenderer($course, $policy, $viewer, $c->now, Locator::coursePath($c->server),
             array_map('strval', (array) Session::get('unlocked', [])), array_map('strval', $urlValues),
             $place->key, $hasLock ? Session::csrf() : '', $full, PageRenderer::serverNames($c->server));
         $html = $renderer->render($place);
         if ($renderer->usedUrlValues !== []) {
-            Session::start($c->courseDir, $c->server, true);
+            Session::start($c, true);
             $remember = (array) Session::get('url', []);
             foreach ($renderer->usedUrlValues as $name) {
                 $remember[$name] = $urlValues[$name];
