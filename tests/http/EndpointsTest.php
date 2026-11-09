@@ -348,6 +348,92 @@ HTML;
         $this->ignoreServerErrors = true;
     }
 
+    public function testSameCopiesNestedFilesAndLockLimit(): void
+    {
+        $client = $this->start([
+            'config/duplicate.ini' => "class_2 = class_1 same\n",
+            'class/01.Introduction/img/pic.png' => 'PNG',
+            'class/01.Introduction/index.html' => '<img src="img/pic.png"><lock code="sesame">LOCKED</lock>',
+        ]);
+        $data = $client->get('calendar/php/calendar.php')->json();
+        $this->assertSame(['class_1@2026-08-25'], $data['days'][1]['events'] ?? null, 'a "same" repeat on day two (T-4)');
+        $repeat = $data['events']['class_1@2026-08-25'] ?? [];
+        $this->assertSame(1, $repeat['number'] ?? null);
+        $this->assertSame('same', $repeat['mode'] ?? null);
+        $first = $data['events']['class_1']['boxes'][0]['files'][0]['key'];
+        $second = $repeat['boxes'][0]['files'][0]['key'] ?? '';
+        $this->assertTrue($first !== $second && $second !== '', 'its own keys');
+        $page = $client->get("calendar/php/html.php?file=$second")->body;
+        $this->assertSame(1, preg_match('/get\.php\?file=([A-Za-z0-9_-]{22})/', $page, $m), 'a nested file gets a key');
+        $this->assertSame('PNG', $client->get('calendar/php/get.php?file=' . ($m[1] ?? ''))->body);
+        $this->assertNotContains('img/pic.png', json_encode($data['events']['class_1']['files']), 'nested files are not listed');
+
+        preg_match('/name="csrf" value="([^"]+)"/', $client->get("calendar/php/html.php?file=$first")->body, $t);
+        for ($i = 0; $i < 10; $i++) {
+            $this->assertSame(303, $client->post("calendar/php/html.php?file=$first", ['lock' => "wrong$i", 'csrf' => $t[1] ?? ''])->status);
+        }
+        $limited = $client->post("calendar/php/html.php?file=$first", ['lock' => 'sesame', 'csrf' => $t[1] ?? '']);
+        $this->assertSame(429, $limited->status, 'lock codes are rate limited per address');
+    }
+
+    public function testConfigShapeAndMarkdown(): void
+    {
+        $client = $this->start([
+            'config/dates.ini' => (string) file_get_contents(__DIR__ . '/../../template/config/dates.ini'), // the template's own
+            'class/01.Introduction/notes.md' => "# Notes\n\n## First part\n\nText with **bold** and [index](index.html).\n",
+        ]);
+        $data = $client->get('calendar/php/config.php')->json();
+        $this->assertSame(['number' => 'AB123', 'name' => 'Web and Internet Programming', 'timezone' => 'America/New_York'], $data['course'] ?? null);
+        $this->assertSame(['start' => '2026-08-24', 'end' => '2026-12-18', 'weekends' => false], $data['semester'] ?? null);
+        $this->assertSame(['mon' => 'class', 'tue' => 'class', 'wed' => 'lab', 'fri' => 'class'], $data['schedule'] ?? null);
+        $this->assertSame([
+            ['date' => '2026-09-07', 'events' => [], 'kind' => 'holiday', 'label' => 'Labor Day'],
+            ['date' => '2026-10-12', 'events' => [], 'kind' => 'holiday', 'label' => 'Columbus Day'],
+            ['date' => '2026-10-13', 'events' => ['class'], 'as' => 'mon', 'label' => 'Monday schedule'],
+            ['date' => '2026-10-14', 'events' => ['lab'], 'label' => 'Lab day'],
+            ['date' => '2026-11-11', 'events' => [], 'kind' => 'holiday', 'label' => 'Veterans Day'],
+            ['date' => '2026-11-25', 'events' => [], 'kind' => 'holiday', 'label' => 'Thanksgiving'],
+            ['date' => '2026-11-26', 'events' => [], 'kind' => 'holiday', 'label' => 'Thanksgiving'],
+            ['date' => '2026-11-27', 'events' => [], 'kind' => 'holiday', 'label' => 'Thanksgiving'],
+        ], $data['days'] ?? null, 'the days of dates.ini (T-6)');
+        $this->assertSame('normal', $data['period'] ?? null);
+        $this->assertSame(['label' => '2 Hour Delay', 'times' => ['1' => '09:45-10:35', '2' => '10:45-11:35', '3' => '12:45-13:35', '4' => '13:45-14:35', '5' => '14:45-15:35', '6' => '15:45-16:35', '7' => '16:45-17:35', '8' => '09:45-11:00', '9' => '12:45-14:00', '10' => '14:45-16:00']], $data['periods']['2_hour_delay'] ?? null);
+        $this->assertSame([
+            ['section' => '1121', 'meetings' => [['meets' => 'MF1', 'type' => 'class', 'room' => 'HP111'], ['meets' => 'T12', 'type' => 'class', 'room' => 'HP111']], 'instructor' => 'SMITH'],
+            ['section' => '4345', 'meetings' => [['meets' => 'MF4', 'type' => 'class', 'room' => 'HP132'], ['meets' => 'R34', 'type' => 'class', 'room' => 'HP301']], 'instructor' => 'JONES'],
+            ['section' => '6541', 'meetings' => [['meets' => 'MF6', 'type' => 'class', 'room' => 'HP139'], ['meets' => 'R56', 'type' => 'class', 'room' => 'HP139']], 'instructor' => 'JONES'],
+        ], $data['sections'] ?? null);
+        $this->assertSame(['class', 'lab', 'project', 'exam'], array_keys($data['types'] ?? []));
+        $this->assertSame(['box' => 'title', 'label' => 'Lecture'], $data['boxes'][0] ?? null);
+        $this->assertSame(['classyear' => '27', 'office' => 'Michelson 342'], $data['replace'] ?? null);
+
+        $keys = self::keys($client->get('calendar/php/calendar.php')->json());
+        $markdown = $client->get('calendar/php/html.php?file=' . $keys['class_1/notes.md'])->body;
+        $this->assertContains('<h1>Notes</h1>', $markdown, 'Markdown');
+        $this->assertContains('<h2 id="first-part">First part</h2>', $markdown, 'level-2 headings get ids for the menu');
+        $this->assertContains('<strong>bold</strong>', $markdown);
+        $this->assertContains('href="#/view/' . $keys['class_1/index.html'] . '"', $markdown, 'Markdown links become keys');
+    }
+
+    public function testProxyHeadersOnlyFromTrustedProxies(): void
+    {
+        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $client = $this->start(['config/config.ini' => $config . "\n[server]\ntrusted_proxies = 127.0.0.1\n"]);
+        $secure = $client->get('calendar/php/config.php?csrf=1', ['X-Forwarded-Proto' => 'https']);
+        $this->assertContains('secure', strtolower($secure->header('set-cookie')), 'Secure behind a trusted proxy that says https (T-8)');
+        $this->server?->stop();
+        Fixture::remove($this->dir);
+
+        $client = $this->start();
+        $plain = $client->get('calendar/php/config.php?csrf=1', ['X-Forwarded-Proto' => 'https']);
+        $this->assertNotContains('secure', strtolower($plain->header('set-cookie')), 'not from anyone else');
+        $token = (string) $plain->json()['csrf'];
+        for ($i = 0; $i < 5; $i++) {
+            $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => "bad$i", 'csrf' => $token], ['X-Forwarded-For' => "198.51.100.$i"]);
+        }
+        $this->assertSame(429, $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $token], ['X-Forwarded-For' => '198.51.100.99'])->status, 'a forged X-Forwarded-For does not get around the limit');
+    }
+
     public function testCourseMustBeReachedThroughCalendarLink(): void
     {
         $client = $this->start();

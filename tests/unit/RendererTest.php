@@ -101,4 +101,19 @@ final class RendererTest extends TestCase
         $this->assertNotContains('CONFIG-SCRIPT', $page, 'no scripts from config/');
         $this->assertSame('', trim($page), 'nothing from outside the course or the software');
     }
+
+    public function testPagesInSubdirectories(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/part2/page.html' => '<img src="fig.png"><img src="../top.png"><a href="../index.html">up</a><a href="../../02.Two/index.html">other</a>',
+            'class/01.Introduction/part2/fig.png' => 'P',
+            'class/01.Introduction/top.png' => 'P',
+            'class/02.Two/index.html' => 'two',
+            'config/default.ini' => "class_1 = always\nclass_2 = never\n",
+        ]);
+        $page = $this->render($course, 'class_1/part2/page.html');
+        $this->assertSame(2, substr_count($page, 'get.php?file='), 'files next to it and above it get keys (T-4)');
+        $this->assertContains('href="#/view/' . $course->keysByEvent['class_1']['index.html'] . '"', $page, 'the event\'s own page');
+        $this->assertContains('data-cal6-hidden="1">other', $page, 'another event\'s hidden page');
+    }
 }

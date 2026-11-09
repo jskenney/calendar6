@@ -113,6 +113,15 @@ INI;
         $this->assertTrue(self::sees($course, $anon, 'lab_1/index.html', $now));
     }
 
+    public function testAVirtualFileBorrowedFromAnotherEventObeysThatEvent(): void
+    {
+        $course = $this->load(['config/virtual.ini' => "class_1/borrowed.html = lab/01.Setup/lab-solution.html\nclass_1/shared.md = shared/checklist.md\n"]);
+        $now = self::now($course);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/borrowed.html', $now), 'its real file is a hidden lab solution (T-4)');
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/shared.md', $now), 'shared/checklist.md = never');
+        $this->assertTrue(self::sees($course, Viewer::anonymous(), 'class_1/index.html', $now));
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);
