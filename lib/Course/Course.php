@@ -260,18 +260,24 @@ final class Course
      */
     public function boxesOf(ScheduledEvent $event): array
     {
+        // box files and asset names are matched without case, like rules (M-25)
+        $byLower = [];
+        foreach (array_map('strval', array_keys($event->files)) as $name) {
+            $byLower[mb_strtolower($name, 'UTF-8')] ??= $name;
+        }
         $boxes = [];
         foreach ($this->config->boxes as $box) {
             foreach ($box['files'] as $candidate) {
-                if (isset($event->files[$candidate]) && !isset($boxes[$candidate])) {
-                    $boxes[$candidate] = $box['box'];
+                $name = $byLower[mb_strtolower($candidate, 'UTF-8')] ?? null;
+                if ($name !== null && !isset($boxes[$name])) {
+                    $boxes[$name] = $box['box'];
                     break;
                 }
             }
         }
         $stems = [];
         foreach ($boxes as $file => $box) {
-            $stems[] = [(string) preg_replace('/\.[^.\/]+$/', '', (string) $file), $box];
+            $stems[] = [mb_strtolower((string) preg_replace('/\.[^.\/]+$/', '', (string) $file), 'UTF-8'), $box];
         }
         usort($stems, static fn (array $a, array $b): int => strlen($b[0]) <=> strlen($a[0]));
         $assets = [];
@@ -279,8 +285,9 @@ final class Course
             if (isset($boxes[$name])) {
                 continue;
             }
+            $lower = mb_strtolower($name, 'UTF-8');
             foreach ($stems as [$stem, $box]) {
-                if (strlen($name) > strlen($stem) && str_starts_with($name, $stem) && in_array($name[strlen($stem)], ['-', '_', '.', '/'], true)) {
+                if (strlen($lower) > strlen($stem) && str_starts_with($lower, $stem) && in_array($lower[strlen($stem)], ['-', '_', '.', '/'], true)) {
                     $assets[$name] = $box;
                     break;
                 }

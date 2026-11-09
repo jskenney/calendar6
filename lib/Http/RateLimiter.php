@@ -94,12 +94,18 @@ final class RateLimiter
         });
     }
 
-    /** The key for a client address: IPv6 addresses count per /64 network (M-18). */
+    /**
+     * The key for a client address: IPv6 addresses count per /64 network (M-18); an
+     * IPv4-mapped address (::ffff:1.2.3.4) counts as its IPv4 address (M-26).
+     */
     public static function addressKey(string $address): string
     {
         if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
             $packed = inet_pton($address);
             if ($packed !== false) {
+                if (str_starts_with($packed, str_repeat("\0", 10) . "\xff\xff")) {
+                    return (string) inet_ntop(substr($packed, 12));
+                }
                 return bin2hex(substr($packed, 0, 8)) . '::/64';
             }
         }

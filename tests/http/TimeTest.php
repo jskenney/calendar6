@@ -133,5 +133,7 @@ final class TimeTest extends TestCase
         $this->assertSame(\Cal6\Http\RateLimiter::addressKey('2001:db8:1:2::1'), \Cal6\Http\RateLimiter::addressKey('2001:db8:1:2:ffff::9'), 'one /64 (M-18)');
         $this->assertTrue(\Cal6\Http\RateLimiter::addressKey('2001:db8:1:2::1') !== \Cal6\Http\RateLimiter::addressKey('2001:db8:1:3::1'));
         $this->assertSame('203.0.113.5', \Cal6\Http\RateLimiter::addressKey('203.0.113.5'));
+        $this->assertSame('1.2.3.4', \Cal6\Http\RateLimiter::addressKey('::ffff:1.2.3.4'), 'an IPv4-mapped address is its IPv4 address (M-26)');
+        $this->assertTrue(\Cal6\Http\RateLimiter::addressKey('::ffff:1.2.3.4') !== \Cal6\Http\RateLimiter::addressKey('::ffff:9.8.7.6'));
     }
 }

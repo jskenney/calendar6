@@ -137,6 +137,19 @@ INI;
         $this->assertTrue(isset($course->keysByEvent['class_2']['handout.md']), 'numbered copies carry the virtual files of their source (L-33)');
     }
 
+    public function testBoxNamesAreNotCaseSensitive(): void
+    {
+        $course = $this->load([
+            'lab/01.Setup/lab-solution.html' => null,
+            'lab/01.Setup/Lab-Solution.HTML' => 'SOL',
+            'lab/01.Setup/LAB-SOLUTION-fig.png' => 'P',
+        ]);
+        $now = self::now($course);
+        $this->assertSame('lab-solution', $course->places[$course->keysByEvent['lab_1']['Lab-Solution.HTML']]->box, 'Lab-Solution.HTML fills the box (M-25)');
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/Lab-Solution.HTML', $now), 'lab/lab-solution = never');
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/LAB-SOLUTION-fig.png', $now), 'and its asset');
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);
