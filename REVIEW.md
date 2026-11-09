@@ -14,8 +14,19 @@ A running list of code and security findings for the whole project, and their hi
 |---|---|---|---|---|
 | 1 | 2026-11-09 | `ca77445` | everything: `lib/`, `php/`, `tests/`, `template/`, `DESIGN.md` | H-1..H-3, M-1..M-10, L-1..L-14, DOC-1..DOC-6, T-1..T-6, E-1..E-7 |
 | 2 | 2026-11-09 | `467a23d` | everything again, after fixing every H, M, L and DOC item of review 1 (`29ca3f2`..`467a23d`) | M-11, M-12, L-15..L-17, DOC-7, DOC-8, T-7, T-8 |
+| 3 | 2026-11-09 | `78086bf` | everything again, after fixing every M, L, DOC and T item of review 2 (`0118054`..`8cb4efd`); the dot-file rule probed on a real Apache with encoded paths (`%2egit`, `.%67it`, `config%2eini`, `..%2f`): all refused | L-18, L-19, DOC-9, T-9 |
 
-## Suggested order (after review 2)
+## Suggested order (after review 3)
+
+No critical, high or medium item is open. Open now:
+
+1. **L-19**: the deployment setup script deletes fixed paths; guard it before anyone runs it on a
+   real server.
+2. **L-18**, then **DOC-9**.
+3. **T-9** (an nginx deployment job), when nginx deployments matter.
+4. **E** items as the front end (E-1) needs them; E-1 is the next big piece of work.
+
+## Suggested order (after review 2, kept for history)
 
 All H, M, L and DOC items of review 1 are fixed. Open now:
 
@@ -72,8 +83,8 @@ None found.
 | M-8 | Fixed in `73e5799` | `lib/Http/RateLimiter.php:29` | Read-modify-write without a lock: parallel requests all read the same count, so many guesses in parallel get past the limit. | Use `flock()` on the counter file for the whole check-and-record, and record the attempt before verifying the password. |
 | M-9 | Fixed in `a6c0b7f` | `lib/Endpoint/GetEndpoint.php:29`, `lib/Endpoint/HtmlEndpoint.php`, `lib/Endpoint/ConfigEndpoint.php` | `get.php`, `html.php` and `config.php` rebuild the whole course model (walk of every directory, calendar, rules) on every request. A page with 40 images makes 40 full walks; a large course can be slow enough to matter. | Cache the model (E-2), keyed by the same fingerprint as `calendar.php`'s answers; `config.php` needs only the days, not the walk. |
 | M-10 | Fixed in `a6c0b7f` | `lib/Http/Fingerprint.php:37` | The fingerprint follows symbolic links to directories, also links that lead outside the course (up to depth 7), on every `calendar.php` request; a link to a large tree (or `/`) makes every request slow. The scanner itself stays inside the boundary. | Skip links that resolve outside the course (the same `Boundary` check), and do not descend into `config/auth` contents beyond their stat. |
-| M-11 | Open | `lib/Http/Fingerprint.php`, `lib/Http/ModelCache.php`, `lib/Http/AnswerCache.php` | (review 2) The fingerprint skips `calendar/`, so after the software is updated (`git pull`) the caches keep serving what the old code built: a stale model is unserialised into changed classes (wrong results, or errors until the course changes), and `calendar.php` answers keep the old shape. | Add a software version to the cache keys (a `Version` constant bumped with each change, or a hash of `lib/` file times computed once per request). |
-| M-12 | Open | `template/` | (review 2) Apache serves dot files and directories by default, and the template has no rule at the course root. An instructor who keeps the course in git exposes `course/.git/`: the history of `config/auth/*.ini` (password hashes), `config.ini` (the secret) and every hidden solution. Calendar 6 itself never serves them, but the web server does. | Ship a `template/.htaccess` at the course root that denies names starting with a dot (and `*.ini`) everywhere, without affecting `calendar/php/`; document the nginx equivalent (DOC-8). |
+| M-11 | Fixed in `0118054` | `lib/Http/Fingerprint.php`, `lib/Http/ModelCache.php`, `lib/Http/AnswerCache.php` | (review 2) The fingerprint skips `calendar/`, so after the software is updated (`git pull`) the caches keep serving what the old code built: a stale model is unserialised into changed classes (wrong results, or errors until the course changes), and `calendar.php` answers keep the old shape. | Add a software version to the cache keys (a `Version` constant bumped with each change, or a hash of `lib/` file times computed once per request). |
+| M-12 | Fixed in `8ff3e50` | `template/` | (review 2) Apache serves dot files and directories by default, and the template has no rule at the course root. An instructor who keeps the course in git exposes `course/.git/`: the history of `config/auth/*.ini` (password hashes), `config.ini` (the secret) and every hidden solution. Calendar 6 itself never serves them, but the web server does. | Ship a `template/.htaccess` at the course root that denies names starting with a dot (and `*.ini`) everywhere, without affecting `calendar/php/`; document the nginx equivalent (DOC-8). |
 
 ## Low
 
@@ -93,9 +104,11 @@ None found.
 | L-12 | Fixed in `8be0d30` | `lib/Endpoint/ConfigEndpoint.php:24` | `config.php` creates a session for every visitor (to hand out the CSRF token), so every student leaves a session file. | Hand out the token only when a login form needs it (`config.php?csrf=1`, or in `auth.php`'s own GET-free flow). |
 | L-13 | Fixed in `73e5799` | `lib/Http/Session.php:49` | HTTPS is detected only from `HTTPS` and port 443; behind a TLS-terminating proxy the session cookie is sent without `Secure`. | Optional trusted proxy setting (`X-Forwarded-Proto`), and document it (DOC-4). |
 | L-14 | Fixed in `49d9e43`, `628734a` | `lib/Access/Rules.php:35`, `lib/Access/Policy.php`, `lib/Render/PageRenderer.php:144` | Code quality: the "overridden by" message re-parses the line number out of the source string; `Policy::open()` has a parameter that is always `true`; `PageRenderer::host()` reads `$_SERVER` directly (hard to test). | Keep the previous line number in the rule; drop the parameter; pass the server names in. |
-| L-15 | Open | `lib/Http/ModelCache.php` | (review 2) The cached model contains the course configuration, including `[course] secret` (confirmed), in the private temporary directory. It is protected like the sessions (owner-only directory), but the secret now exists in a second place. | Blank the secret in the cached copy (keys are computed when the model is built), and keep using the configuration's secret for the signature. |
-| L-16 | Open | `lib/Http/RateLimiter.php` | (review 2) One counter file per address, address+username and username, never removed: someone trying many usernames or addresses grows the directory without limit. | Remove counter files whose newest attempt is older than the window (occasionally, e.g. 1 request in 100), and cap the number of files. |
-| L-17 | Open | `lib/Endpoint/AuthEndpoint.php:36` | (review 2) Logging out removes the login but keeps the session's unlocked `<lock>` codes and `<url>` values, so the next person at a shared computer still sees unlocked sections. | Clear the whole session on logout (keep only a fresh CSRF token). |
+| L-15 | Fixed in `b07f6bf` | `lib/Http/ModelCache.php` | (review 2) The cached model contains the course configuration, including `[course] secret` (confirmed), in the private temporary directory. It is protected like the sessions (owner-only directory), but the secret now exists in a second place. | Blank the secret in the cached copy (keys are computed when the model is built), and keep using the configuration's secret for the signature. |
+| L-16 | Fixed in `b07f6bf` | `lib/Http/RateLimiter.php` | (review 2) One counter file per address, address+username and username, never removed: someone trying many usernames or addresses grows the directory without limit. | Remove counter files whose newest attempt is older than the window (occasionally, e.g. 1 request in 100), and cap the number of files. |
+| L-17 | Fixed in `b07f6bf` | `lib/Endpoint/AuthEndpoint.php:36` | (review 2) Logging out removes the login but keeps the session's unlocked `<lock>` codes and `<url>` values, so the next person at a shared computer still sees unlocked sections. | Clear the whole session on logout (keep only a fresh CSRF token). |
+| L-18 | Open | `lib/Http/Fingerprint.php` | (review 3) The software version is a hash of the names, sizes and modification times of `lib/` and `php/` files; a deployment that keeps times and sizes (`rsync -t` of a same-size edit, or files restored from an archive) would not invalidate the caches. | Add a `Version` constant to the hash (bumped by each release), or hash file contents when the stat data is unchanged since a recorded deploy. |
+| L-19 | Open | `tests/deploy/apache-setup.sh` | (review 3) The script removes `/opt/calendar6` and `/var/www/html/AB123` and rewrites Apache's configuration without asking; it says "CI, or a throwaway machine", but run by mistake on a real server it deletes a course called AB123. | Refuse to run unless `CI=true` or `--yes` is given, and refuse when the target exists and was not made by the script (a marker file). |
 
 ## Documentation
 
@@ -107,8 +120,9 @@ None found.
 | DOC-4 | Fixed in `f686841` | `DESIGN.md`, `template/README.md` | No deployment notes: nginx rules equivalent to the `.htaccess` files, reverse proxies (client address, HTTPS), PHP session settings (M-6), and that courses served by the same PHP user can read each other's sessions and cache on shared hosting. | A "Deploying" section. |
 | DOC-5 | Fixed in `f686841` | `DESIGN.md` (front end) | The contract `html.php` imposes on the front end is spread out: `#/view/KEY` routes, intercepting the `<lock>` form, `data-cal6-hidden`, absolute `get.php` URLs, running scripts after insertion. | Collect it under "The front end". |
 | DOC-6 | Fixed in `f686841` | `template/index.html`, `README.md` | The template's `index.html` redirects to `calendar/app/`, which does not exist yet. | Say so in the template README until E-1 exists. |
-| DOC-7 | Open | `DESIGN.md` (`default.ini`) | (review 2) Targets are case-sensitive (`Class_1` is not `class_1`, `Notes.html` is not `notes.html`), as in v4; not written down. | One line under `default.ini`; `bin/cal6 check` (E-5) could warn about targets that match nothing. |
-| DOC-8 | Open | `DESIGN.md` ("Deploying") | (review 2) The nginx notes deny `calendar/lib/` and `calendar/tests/` but not `calendar/template/` or dot files (`.git`) anywhere under the course. | Add both, together with M-12. |
+| DOC-7 | Fixed in `b07f6bf` | `DESIGN.md` (`default.ini`) | (review 2) Targets are case-sensitive (`Class_1` is not `class_1`, `Notes.html` is not `notes.html`), as in v4; not written down. | One line under `default.ini`; `bin/cal6 check` (E-5) could warn about targets that match nothing. |
+| DOC-8 | Fixed in `8ff3e50` | `DESIGN.md` ("Deploying") | (review 2) The nginx notes deny `calendar/lib/` and `calendar/tests/` but not `calendar/template/` or dot files (`.git`) anywhere under the course. | Add both, together with M-12. |
+| DOC-9 | Open | `README.md` | (review 3) The README's test section does not mention the deployment smoke test (`tests/deploy/`) or the test clock (`CAL6_TEST_CLOCK`, built-in server only). | Two short paragraphs. |
 
 ## Testing
 
@@ -116,12 +130,13 @@ None found.
 |---|---|---|---|---|
 | T-1 | Fixed in `628734a`, `467a23d` | `tests/` | No tests for the course boundary: a material link that leads outside the course or into `config/`, `virtual.ini` with `..` or an absolute path, `paths.ini` outside the course, `<inject src="../../config/config.ini">`, `<calphp>` outside. These are the core security promises. | A `BoundaryTest` (unit and HTTP). |
 | T-2 | Fixed in `467a23d` | `tests/` | Nothing checks that `template/` itself loads without problems, although every new course starts from it. | Load the template (with a secret) and assert no problems, every sample event and page present. |
-| T-3 | Open | `tests/`, `lib/Http/Context.php` | Time-dependent behaviour is only tested in unit tests: the HTTP tests can not move the clock, so the cache expiring at `next_change`, `<postmeeting>` before the meeting ends, session expiry and an account window ending during a session are untested end to end. | A test-only clock (an environment variable read only when a test marker file exists in the course, or a `Clock` injected through `Context`). |
-| T-4 | Open (partly: `<host>` in `29ca3f2`, a lock in an injected file in `628734a`) | `tests/` | Untested: `<host>` matching, the lock-code rate limit, nested files (`img/pic.png`) and links from pages in subdirectories, a virtual file whose real file is in another event, `same` copies in `calendar.php` and their keys. | Add cases to the existing tests. |
-| T-5 | Open | `tests/lib/Server.php` | Only PHP's built-in server is tested; `SCRIPT_FILENAME` (which finding the course depends on) differs under Apache with mod_php or PHP-FPM, and with symbolic links. | A CI job with Apache + PHP-FPM serving a linked course, or at least a documented manual check. |
-| T-6 | Open (partly: `config.php` without a session in `8be0d30`) | `tests/http/EndpointsTest.php` | `config.php` `days` and `sections`, and Markdown pages, are only checked lightly. | Assert the full shape for the template course. |
-| T-7 | Open | `tests/` | (review 2) Nothing checks that the caches are dropped when the software changes (M-11). | Test that a different software version misses both caches. |
-| T-8 | Open | `tests/http/EndpointsTest.php` | (review 2) `X-Forwarded-For` from a trusted proxy is tested, `X-Forwarded-Proto` (the `Secure` cookie behind a proxy) and an untrusted sender of both headers are not. | Add both cases. |
+| T-3 | Fixed in `9870c0b` | `tests/`, `lib/Http/Context.php` | Time-dependent behaviour is only tested in unit tests: the HTTP tests can not move the clock, so the cache expiring at `next_change`, `<postmeeting>` before the meeting ends, session expiry and an account window ending during a session are untested end to end. | A test-only clock (an environment variable read only when a test marker file exists in the course, or a `Clock` injected through `Context`). |
+| T-4 | Fixed in `29ca3f2`, `628734a`, `8cb4efd` | `tests/` | Untested: `<host>` matching, the lock-code rate limit, nested files (`img/pic.png`) and links from pages in subdirectories, a virtual file whose real file is in another event, `same` copies in `calendar.php` and their keys. | Add cases to the existing tests. |
+| T-5 | Fixed in `8ff3e50` | `tests/lib/Server.php` | Only PHP's built-in server is tested; `SCRIPT_FILENAME` (which finding the course depends on) differs under Apache with mod_php or PHP-FPM, and with symbolic links. | A CI job with Apache + PHP-FPM serving a linked course, or at least a documented manual check. |
+| T-6 | Fixed in `8be0d30`, `8cb4efd` | `tests/http/EndpointsTest.php` | `config.php` `days` and `sections`, and Markdown pages, are only checked lightly. | Assert the full shape for the template course. |
+| T-7 | Fixed in `0118054` | `tests/` | (review 2) Nothing checks that the caches are dropped when the software changes (M-11). | Test that a different software version misses both caches. |
+| T-8 | Fixed in `8cb4efd` | `tests/http/EndpointsTest.php` | (review 2) `X-Forwarded-For` from a trusted proxy is tested, `X-Forwarded-Proto` (the `Secure` cookie behind a proxy) and an untrusted sender of both headers are not. | Add both cases. |
+| T-9 | Open | `.github/workflows/ci.yml` | (review 3) Only Apache is tested as a real deployment; the nginx rules in "Deploying" (dot files, `.ini`, the protected directories, `SCRIPT_FILENAME` from `$document_root$fastcgi_script_name`) are untested. | A second deployment job with nginx + PHP-FPM running `tests/deploy/smoke.php`. |
 
 ## Enhancements
 
@@ -152,3 +167,23 @@ None found.
 | L-12 | `config.php` creates a session only with `?csrf=1`. |
 | DOC-1..DOC-6 | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | T-1, T-2 | `BoundaryTest`, renderer boundary cases, `TemplateTest`. |
+
+## How review 2's items were fixed
+
+| Item | Fix |
+|---|---|
+| M-11, T-7 | Cache keys combine the course fingerprint with `Fingerprint::software()`, a hash of the software's PHP files. |
+| M-12, DOC-8, T-5 | `template/.htaccess` at the course root refuses dot names and `.ini` files everywhere (needs only `AllowOverride AuthConfig`); nginx equivalents documented; `tests/deploy/` serves a template course with Apache + PHP-FPM through a `calendar` link and checks it, in CI. |
+| L-15 | The model cache stores neither the secret nor the parsed `.ini` files; the secret comes back from `config.ini`. |
+| L-16 | The rate limiter sweeps old counters (1 request in 100) and keeps at most 20000 files. |
+| L-17 | Logging out clears the whole session. |
+| DOC-7 | Targets are case-sensitive: in `DESIGN.md` and the template. |
+| T-3 | `CAL6_TEST_CLOCK` (built-in server only) and `tests/http/TimeTest.php`. |
+| T-4, T-6, T-8 | New cases in `PolicyTest`, `RendererTest` and `EndpointsTest`. |
+
+## CI notes
+
+- Several runs on 2026-11-09 were marked failed with "Internal server error" annotations from
+  GitHub: some jobs were never created, and every job that started passed. `a139cc1` cancels
+  superseded runs; `78086bf` moved to `actions/checkout@v5` and a pinned `ubuntu-24.04` image
+  after GitHub's warnings about Node 20 and the `ubuntu-latest` migration.
