@@ -48,4 +48,26 @@ final class RendererTest extends TestCase
         $this->assertNotContains('ONLY-INTRANET', $this->render($course, 'class_1/index.html', PageRenderer::serverNames(['SERVER_ADDR' => '127.0.0.1'])), 'never the Host header (H-1)');
         unset($_SERVER['SERVER_NAME']);
     }
+
+    public function testScriptsStylesSrcsetAndPageAssets(): void
+    {
+        $course = $this->course([
+            'pages/home.html' => '<img src="logo.png"><a href="more.html">more</a><link rel="stylesheet" href="site.css">',
+            'pages/logo.png' => 'PNG', 'pages/site.css' => 'p{}', 'pages/more.html' => '<img src="img/deep.png">', 'pages/img/deep.png' => 'P',
+            'class/01.Introduction/index.html' => '<script src="x.js"></script><link href="s.css" rel="stylesheet"><img srcset="a.png 1x, instructor.png 2x, b.png 3x">',
+            'class/01.Introduction/x.js' => 'var a;', 'class/01.Introduction/s.css' => 'p{}', 'class/01.Introduction/a.png' => 'P',
+            'class/01.Introduction/b.png' => 'P', 'class/01.Introduction/instructor.png' => 'P',
+            'config/default.ini' => "class_1 = always\nclass_1/instructor.png = never\n",
+        ]);
+        $home = $this->render($course, 'page/home');
+        $this->assertNotContains('data-cal6-hidden', $home, 'files next to a page get keys (M-5)');
+        $this->assertContains('/calendar/php/get.php?file=', $home);
+        $this->assertContains('href="#/view/', $home, 'a page next to it');
+        $this->assertNotContains('data-cal6-hidden', $this->render($course, 'page/home/pages/more.html'), 'and the files that page links to');
+        $class = $this->render($course, 'class_1/index.html');
+        $this->assertContains('<script src="/calendar/php/get.php?file=', $class, 'scripts (M-4)');
+        $this->assertContains('<link href="/calendar/php/get.php?file=', $class, 'style sheets (M-4)');
+        $this->assertSame(2, substr_count($class, 'get.php?file=', strpos($class, 'srcset')), 'srcset: the hidden candidate is dropped (L-9)');
+        $this->assertContains(' 3x"', $class);
+    }
 }

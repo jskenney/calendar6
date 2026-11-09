@@ -8,6 +8,8 @@ use Cal6\Access\Rules;
 use Cal6\Access\Target;
 use Cal6\Content\ContentFile;
 use Cal6\Content\Scanner;
+use Cal6\Render\Markdown;
+use Cal6\Render\PageRenderer;
 use Cal6\Schedule\CalendarBuilder;
 use Cal6\Schedule\Day;
 use Cal6\Schedule\ScheduledEvent;
@@ -32,6 +34,8 @@ final class Course
     public array $keysByEvent = [];
     /** @var array<string, string> page name => key */
     public array $pageKeys = [];
+    /** @var array<string, list<string>> real path => keys of the places that serve it */
+    public array $byRealPath = [];
     public Rules $rules;
     public bool $rulesUnreadable = false;
     /** @var list<Problem> */
@@ -116,6 +120,48 @@ final class Course
             $this->places[$place->key] = $place;
             $this->pageKeys[$name] = $place->key;
         }
+        foreach ($this->places as $key => $place) {
+            $this->byRealPath[$place->file->realPath][] = $key;
+        }
+        foreach ($this->pageKeys as $name => $key) {
+            $this->addPageAssets($name, $this->places[$key]->file->realPath);
+        }
+    }
+
+    /**
+     * Files a paths.ini page links to (images, style sheets, other pages next to it)
+     * get keys of their own, decided by that page's rule (M-5).  Linked pages are
+     * followed a few levels; files that already belong to an event keep the event's key.
+     */
+    private function addPageAssets(string $name, string $pageReal): void
+    {
+        $queue = [[$pageReal, 0]];
+        $seen = [$pageReal => true];
+        while ($queue !== []) {
+            [$real, $depth] = array_shift($queue);
+            $html = (string) @file_get_contents($real);
+            if (preg_match('/\.md$/i', $real)) {
+                $html = (new Markdown())->text($html);
+            }
+            foreach (PageRenderer::linkTargets($html) as $link) {
+                $target = $this->boundary->resolve(dirname($real) . '/' . rawurldecode($link));
+                if ($target === null || isset($seen[$target]) || !is_file($target) || Boundary::neverServed($target)) {
+                    continue;
+                }
+                $seen[$target] = true;
+                if (isset($this->byRealPath[$target])) {
+                    continue; // an event's file or a page of its own
+                }
+                $relative = $this->boundary->relative($target);
+                $file = new ContentFile($relative, $target, (int) filesize($target), (int) filemtime($target), false);
+                $place = new Place(Keys::make($this->config->secret, "page/$name/$relative"), $file, null, $name, null, true);
+                $this->places[$place->key] = $place;
+                $this->byRealPath[$target][] = $place->key;
+                if ($depth < 3 && ContentFile::isPage($target)) {
+                    $queue[] = [$target, $depth + 1];
+                }
+            }
+        }
     }
 
     /** @return array<string, string> file name => box: the first candidate found fills each box */
@@ -138,10 +184,15 @@ final class Course
         return Keys::looksValid($key) ? ($this->places[$key] ?? null) : null;
     }
 
-    /** The place a page links to: a file of the same event (by name), or another known file. */
-    public function placeForPath(?ScheduledEvent $event, string $fromDir, string $link): ?Place
+    /**
+     * The place a page links to: a file of the same event (by name), else another
+     * known file with that real path (preferring the linking page's own assets, then
+     * pages, then events that are not copies).
+     */
+    public function placeForPath(Place $from, string $fromDir, string $link): ?Place
     {
         $link = rawurldecode($link);
+        $event = $from->event;
         if ($event !== null) {
             $base = $event->folder?->path;
             $name = $link;
@@ -157,16 +208,21 @@ final class Course
         if ($real === false) {
             return null;
         }
-        $fallback = null;
-        foreach ($this->places as $place) {
-            if ($place->file->realPath === $real) {
-                if ($place->page !== null || $place->event?->mode === null) {
-                    return $place;
-                }
-                $fallback ??= $place;
+        $best = null;
+        $bestScore = -1;
+        foreach ($this->byRealPath[$real] ?? [] as $key) {
+            $place = $this->places[$key];
+            $score = match (true) {
+                $place->asset && $place->page === $from->page => 4,
+                $place->page !== null && !$place->asset => 3,
+                $place->event !== null && $place->event->mode === null => 2,
+                default => 1,
+            };
+            if ($score > $bestScore) {
+                [$best, $bestScore] = [$place, $score];
             }
         }
-        return $fallback;
+        return $best;
     }
 
     private static function normalize(string $path): ?string

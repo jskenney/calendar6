@@ -157,7 +157,7 @@ final class EndpointsTest extends TestCase
 
     public function testGet(): void
     {
-        $client = $this->start(['class/01.Introduction/data.txt' => "0123456789", 'class/01.Introduction/run.php' => '<?php echo 1;', 'class/01.Introduction/page2.html' => '<p>x</p>']);
+        $client = $this->start(['class/01.Introduction/data.txt' => "0123456789", 'class/01.Introduction/run.php' => '<?php echo 1;', 'class/01.Introduction/page2.html' => '<p>x</p>', 'class/01.Introduction/app.js' => 'var a = 1;']);
         $keys = self::keys($client->get('calendar/php/calendar.php')->json());
         $this->assertFalse(isset($keys['class_1/run.php']), '.php files are never listed');
         $data = $client->get('calendar/php/get.php?file=' . $keys['class_1/data.txt']);
@@ -173,6 +173,8 @@ final class EndpointsTest extends TestCase
         $this->assertSame(304, $client->get('calendar/php/get.php?file=' . $keys['class_1/data.txt'], ['If-None-Match' => $data->header('etag')])->status);
         $head = $client->get('calendar/php/get.php?file=' . $keys['class_1/data.txt'], [], 'HEAD');
         $this->assertSame('10', $head->header('content-length'));
+        $this->assertSame('text/javascript; charset=utf-8', $client->get('calendar/php/get.php?file=' . $keys['class_1/app.js'])->header('content-type'), 'scripts can run (M-4)');
+        $this->assertContains('inline', $client->get('calendar/php/get.php?file=' . $keys['class_1/app.js'])->header('content-disposition'));
         $html = $client->get('calendar/php/get.php?file=' . $keys['class_1/page2.html']);
         $this->assertContains('attachment', $html->header('content-disposition'), 'HTML is never sent inline');
         $this->assertContains('attachment', $client->get('calendar/php/get.php?download=1&file=' . $keys['class_1/data.txt'])->header('content-disposition'));

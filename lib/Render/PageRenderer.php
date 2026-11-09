@@ -247,33 +247,85 @@ final class PageRenderer
         }, $html) ?? $html;
     }
 
+    private const LINK_ELEMENTS = '/<(a|img|source|video|audio|track|iframe|embed|object|script|link)\b[^>]*>/i';
+    private const LINK_ATTRIBUTES = '/(\s)(href|src|poster|data|srcset)\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i';
+
+    /** The relative URLs a page links to (without #fragment or ?query). @return list<string> */
+    public static function linkTargets(string $html): array
+    {
+        $links = [];
+        preg_match_all(self::LINK_ELEMENTS, $html, $tags);
+        foreach ($tags[0] as $tag) {
+            preg_match_all(self::LINK_ATTRIBUTES, $tag, $attributes, PREG_SET_ORDER);
+            foreach ($attributes as $m) {
+                $value = self::attributeValue($m);
+                $values = strtolower($m[2]) === 'srcset' ? array_map(static fn (string $c): string => preg_split('/\s+/', trim($c))[0] ?? '', explode(',', $value)) : [$value];
+                foreach ($values as $url) {
+                    if ($url !== '' && !self::isAbsolute($url)) {
+                        $links[] = explode('?', explode('#', $url, 2)[0], 2)[0];
+                    }
+                }
+            }
+        }
+        return array_values(array_unique(array_filter($links, static fn (string $l): bool => $l !== '')));
+    }
+
     /**
      * Relative links to files become keys: pages to the front end's #/view/KEY, other
-     * files to get.php.  Links to files the viewer may not see lose their target.
+     * files (images, scripts, style sheets, srcset candidates) to get.php.  Links to
+     * files the viewer may not see lose their target.
      */
     private function links(string $html, string $dir, Place $place): string
     {
-        return preg_replace_callback('/<(a|img|source|video|audio|track|iframe|embed|object)\b[^>]*>/i', function (array $tag) use ($dir, $place): string {
+        return preg_replace_callback(self::LINK_ELEMENTS, function (array $tag) use ($dir, $place): string {
             $element = strtolower($tag[1]);
-            return preg_replace_callback('/(\s)(href|src|poster|data)\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', function (array $m) use ($dir, $place, $element): string {
-                $value = html_entity_decode($m[4] !== '' ? $m[4] : (($m[5] ?? '') !== '' ? $m[5] : ($m[6] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                if ($value === '' || preg_match('#^([a-z][a-z0-9+.-]*:|/|\#|\?)#i', $value)) {
-                    return $m[0];
+            return preg_replace_callback(self::LINK_ATTRIBUTES, function (array $m) use ($dir, $place, $element): string {
+                $value = self::attributeValue($m);
+                if (strtolower($m[2]) === 'srcset') {
+                    $kept = [];
+                    foreach (explode(',', $value) as $candidate) {
+                        $parts = preg_split('/\s+/', trim($candidate), 2) ?: [''];
+                        $url = $this->rewrite($parts[0], $dir, $place, $element);
+                        if ($url !== null) {
+                            $kept[] = trim($url . ' ' . ($parts[1] ?? ''));
+                        }
+                    }
+                    return $m[1] . 'srcset="' . htmlspecialchars(implode(', ', $kept)) . '"';
                 }
-                $fragment = '';
-                if (($hash = strpos($value, '#')) !== false) {
-                    $fragment = substr($value, $hash);
-                    $value = substr($value, 0, $hash);
-                }
-                $value = explode('?', $value, 2)[0];
-                $target = $this->visiblePlace($place, $dir, $value);
-                if ($target !== null) {
-                    return $m[1] . $m[2] . '="' . htmlspecialchars($this->urlFor($target, $element) . $fragment) . '"';
-                }
-                $exists = realpath($dir . '/' . rawurldecode($value)) !== false;
-                return $exists ? $m[1] . 'data-cal6-hidden="1"' : $m[0];
+                $url = $this->rewrite($value, $dir, $place, $element);
+                return $url === null ? $m[1] . 'data-cal6-hidden="1"' : ($url === $value ? $m[0] : $m[1] . $m[2] . '="' . htmlspecialchars($url) . '"');
             }, $tag[0]) ?? $tag[0];
         }, $html) ?? $html;
+    }
+
+    /** The URL to use for a link: unchanged, a key URL, or null when it leads to a file the viewer may not see. */
+    private function rewrite(string $value, string $dir, Place $place, string $element): ?string
+    {
+        if ($value === '' || self::isAbsolute($value)) {
+            return $value;
+        }
+        $fragment = '';
+        if (($hash = strpos($value, '#')) !== false) {
+            $fragment = substr($value, $hash);
+            $value = substr($value, 0, $hash);
+        }
+        $path = explode('?', $value, 2)[0];
+        $target = $this->visiblePlace($place, $dir, $path);
+        if ($target !== null) {
+            return $this->urlFor($target, $element) . $fragment;
+        }
+        return realpath($dir . '/' . rawurldecode($path)) !== false ? null : $value . $fragment;
+    }
+
+    private static function isAbsolute(string $url): bool
+    {
+        return (bool) preg_match('#^([a-z][a-z0-9+.-]*:|/|\#|\?)#i', $url);
+    }
+
+    /** @param array<int, string> $m a LINK_ATTRIBUTES match */
+    private static function attributeValue(array $m): string
+    {
+        return html_entity_decode($m[4] !== '' ? $m[4] : (($m[5] ?? '') !== '' ? $m[5] : ($m[6] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     private function visiblePlace(Place $from, string $dir, string $link): ?Place
@@ -281,7 +333,7 @@ final class PageRenderer
         if ($link === '') {
             return null;
         }
-        $target = $this->course->placeForPath($from->event, $dir, $link);
+        $target = $this->course->placeForPath($from, $dir, $link);
         if ($target === null || !$this->policy->decide($this->viewer, $target, $this->now)->visible) {
             return null;
         }

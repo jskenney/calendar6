@@ -14,10 +14,10 @@ final class Download
 {
     /** extension => [content type, inline] */
     private const TYPES = [
-        'bz2' => ['application/x-bzip2', false], 'css' => ['text/css', false], 'gz' => ['application/gzip', false],
+        'bz2' => ['application/x-bzip2', false], 'css' => ['text/css', true], 'gz' => ['application/gzip', false],
         'tgz' => ['application/gzip', false], 'zip' => ['application/zip', false], 'java' => ['text/plain', true],
         'py' => ['text/plain', true], 'c' => ['text/plain', true], 'h' => ['text/plain', true], 'cpp' => ['text/plain', true],
-        'js' => ['text/plain', true], 'json' => ['application/json', true], 'csv' => ['text/csv', true],
+        'js' => ['text/javascript', true], 'mjs' => ['text/javascript', true], 'json' => ['application/json', true], 'csv' => ['text/csv', true],
         'sql' => ['text/plain', true], 'txt' => ['text/plain', true], 'md' => ['text/plain', true], 'tex' => ['text/plain', true],
         'pdf' => ['application/pdf', true],
         'doc' => ['application/msword', false],

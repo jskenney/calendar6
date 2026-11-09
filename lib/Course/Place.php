@@ -16,12 +16,16 @@ final class Place
         public readonly ?ScheduledEvent $event,   // null for pages
         public readonly ?string $page = null,     // paths.ini name
         public readonly ?string $box = null,
+        public readonly bool $asset = false,      // a file a paths.ini page links to (decided by the page's rule)
     ) {
     }
 
-    /** "class_6/notes.html", "class_5@2026-11-11/notes.html", "page/policy" */
+    /** "class_6/notes.html", "class_5@2026-11-11/notes.html", "page/policy", "page/policy/pages/logo.png" */
     public function id(): string
     {
-        return $this->event !== null ? $this->event->id . '/' . $this->file->name : 'page/' . $this->page;
+        if ($this->event !== null) {
+            return $this->event->id . '/' . $this->file->name;
+        }
+        return 'page/' . $this->page . ($this->asset ? '/' . $this->file->name : '');
     }
 }
