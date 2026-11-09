@@ -418,5 +418,10 @@ final class RendererTest extends TestCase
             unset($memory);
         }
         $this->assertTrue(substr_count($this->render($course, 'class_1/self.html'), 'SELF') <= 1, 'a page does not inject itself (L-37)');
+        file_put_contents("$this->dir/shared/huge.html", str_repeat('H', 4_100_000));
+        file_put_contents("$this->dir/class/01.Introduction/big.html", '<inject src="../../shared/huge.html"><p>BIG-END</p>');
+        $page = $this->render(Course::load($this->dir), 'class_1/big.html');
+        $this->assertNotContains('HHH', $page, 'a file over the limit is not injected, nor read (L-48)');
+        $this->assertContains('BIG-END', $page);
     }
 }

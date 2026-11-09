@@ -171,10 +171,12 @@ final class PageRenderer
             }
             // no cycles (a page injecting itself or an ancestor), and at most MAX_INJECT_BYTES
             // of injected text per page, so injects can not multiply a page without end (L-37)
-            if (in_array($real, $ancestors, true) || $this->injectedBytes > self::MAX_INJECT_BYTES) {
+            // (the size is checked before the file is read, so one huge file is never read, L-48)
+            $size = (int) filesize($real);
+            if (in_array($real, $ancestors, true) || $this->injectedBytes + $size > self::MAX_INJECT_BYTES) {
                 return '';
             }
-            $this->injectedBytes += (int) filesize($real);
+            $this->injectedBytes += $size;
             // the injected file's own place decides its <postmeeting> (M-24); a file without
             // a key (shared/) belongs to the page that injects it
             $owner = $this->injectOwner($real) ?? $place;
