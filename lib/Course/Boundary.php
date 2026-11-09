@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Cal6\Course;
 
+use Cal6\Http\Download;
+
 /**
  * The course directory is the boundary (DESIGN.md): nothing outside it is served
  * or run, and inside it config/, calendar/, names starting with a dot, .php and
@@ -78,25 +80,39 @@ final class Boundary
         return substr($real, strlen($this->real) + 1);
     }
 
+    /** Server-side script extensions, one list for the scripts and their backups (M-29). */
+    private const SCRIPT = 'php\d*|phtml?|phar|phps|pht|inc|ini';
+
     /**
      * Files that are never sent: server-side scripts (also under other names and as backup
-     * copies: .phps, .pht, .inc, grades.php~, db.php.bak, L-28) and configuration.
+     * copies: .phps, .pht, .inc, grades.php~, db.php.bak, x.phar_old, L-28, M-29) and configuration.
      */
     public static function neverServed(string $name): bool
     {
-        return (bool) preg_match('/\.(php\d?|phtml|phar|phps|pht|inc|ini|htaccess|htpasswd)$/i', $name)
-            || (bool) preg_match('/\.(php\d?|phtml|phps|inc|ini)[.~][^\/]*$/i', $name)
+        $base = basename($name);
+        return (bool) preg_match('/\.(' . self::SCRIPT . '|htaccess|htpasswd)$/i', $base)
+            || (bool) preg_match('/\.(' . self::SCRIPT . ')[^a-z0-9]/i', $base)
             || self::isPageBackup($name);
     }
 
     /**
-     * An editor's backup of a page (index.html~, notes.md.bak, x.html.orig, #index.html#): raw
-     * page source, so never served by either endpoint (M-22).
+     * An editor's or version tool's copy of a page (index.html~, notes.md.bak, x.html.orig,
+     * index.html.~1~, x.html_bak, x.html,v, #index.html#): raw page source, so never served by
+     * either endpoint (M-22, M-29).  Any name with .html, .htm or .md followed by something that
+     * is not a letter or digit, unless it ends in a file type that is served as such
+     * (report.html.pdf, slides.md.zip, notes.html.md).
      */
     public static function isPageBackup(string $name): bool
     {
         $base = basename($name);
-        return (bool) preg_match('/\.(html?|md)(~|\.(bak|orig|old|save|backup|tmp|swp|rej|copy|\d+))$/i', $base)
-            || (bool) preg_match('/^#.+#$/', $base);
+        if (preg_match('/^#.+#$/', $base)) {
+            return true;
+        }
+        if (!preg_match('/\.(html?|md)[^a-z0-9]/i', $base)) {
+            return false;
+        }
+        $extension = strtolower(pathinfo($base, PATHINFO_EXTENSION));
+        // a name that ends in a page or another served type is that (x.html.md is a page)
+        return !Download::isKnownType($extension);
     }
 }

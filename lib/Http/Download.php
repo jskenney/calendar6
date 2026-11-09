@@ -35,6 +35,12 @@ final class Download
         'vtt' => ['text/vtt', true],
     ];
 
+    /** A file type that is served as such (not an unknown extension such as .bak or .orig). */
+    public static function isKnownType(string $extension): bool
+    {
+        return isset(self::TYPES[strtolower($extension)]);
+    }
+
     /** @return array{0: string, 1: bool} content type and whether it is shown inline */
     public static function typeOf(string $name): array
     {

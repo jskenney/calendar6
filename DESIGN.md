@@ -586,8 +586,12 @@ serves only pages. A page is an `.html`, `.htm` or `.md` file (by its name and b
 behind a link). `get.php` answers `404` for a page key, for everyone, so the raw source of a page
 (`<inst>`, `<lock>` codes, `<postmeeting>`, `<host>`) never leaves the server; Markdown stays a
 page type, processed like HTML. Editors' backups of pages (`index.html~`, `notes.md.bak`,
-`x.html.orig`, `#index.html#`) are raw page source too: they are never listed or served by
-either endpoint, and are listed as problems for instructors.
+`x.html.orig`, `index.html.~1~`, `x.html_bak`, `x.html,v`, `#index.html#`: any name with `.html`,
+`.htm` or `.md` followed by something other than a letter or digit, unless it ends in a type that
+is served as such, like `report.html.pdf`) are raw page source too: they are never listed or
+served by either endpoint, and are listed as problems for instructors. PHP files are refused the
+same way under every spelling and as backups (`.php5`, `.phtml`, `.phtm`, `.phar`, `.pht`, `.phps`,
+`.inc`, `x.php~`, `x.phar_old`).
 
 **Inputs:**
 
@@ -941,7 +945,7 @@ The plan:
   `location ~ ^/AB123/(config|pages|shared|class|lab|exam|project)/ { deny all; }`, deny dot
   files and `.ini` files everywhere (`location ~ /\.(?!well-known/) { deny all; }` and
   `location ~ \.ini$ { deny all; }`), deny every PHP spelling in any case
-  (`location ~* \.(php\d?|phtml|phar|phps|pht|inc)$` and with a following `/`), and pass only
+  (`location ~* \.(php\d*|phtml?|phar|phps|pht|inc)$` and with a following `/`), and pass only
   `calendar/php/*.php` to PHP-FPM
   (`calendar/lib/`, `calendar/tests/` and `calendar/template/` must not be reachable).
 - **Checking a server:** `tests/deploy/smoke.php <course URL> <course directory>` checks a real
