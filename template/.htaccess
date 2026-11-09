@@ -1,0 +1,13 @@
+# The course root: never serve a name that starts with a dot (.git, .env, ...) or an .ini file,
+# anywhere under the course, also through calendar/ (M-12). Needs only AllowOverride AuthConfig.
+<IfModule mod_authz_core.c>
+    <If "%{REQUEST_URI} =~ m#/\.(?!well-known/)# || %{REQUEST_URI} =~ m#\.ini$#i">
+        Require all denied
+    </If>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <FilesMatch "(^\.|\.ini$)">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>

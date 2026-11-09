@@ -36,3 +36,17 @@ jobs:
         run: find lib php tests -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
       - name: Tests
         run: php tests/run.php
+
+  apache:
+    name: Deployment (Apache + PHP-FPM, linked course)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Apache and PHP-FPM
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q apache2 php-fpm php-cli php-curl php-mbstring
+      - name: Serve a course made from the template
+        run: sudo bash tests/deploy/apache-setup.sh
+      - name: Smoke test
+        run: php tests/deploy/smoke.php http://localhost/AB123/ /var/www/html/AB123 smoke-test-password

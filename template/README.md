@@ -36,8 +36,13 @@ course_directory/
 5. Rename `config/auth/instructor.ini` to `<your username>.ini` and put in a password hash
    (`php -r 'echo password_hash("the password", PASSWORD_DEFAULT), "\n";'`). Delete
    `assistant.ini` unless you need it.
-6. Keep every `.htaccess`: `config/`, the material directories, `pages/` and `shared/` must never
-   be reachable directly. Add the same file to each new event-type directory.
+6. Keep every `.htaccess`: the one at the course root (it refuses `.git/` and other dot names, and
+   `.ini` files), and those in `config/`, the material directories, `pages/` and `shared/`, which
+   must never be reachable directly. Add the same file to each new event-type directory. `cp -r
+   template/.` copies the root `.htaccess` too.
+7. Check the result: `php calendar/tests/deploy/smoke.php https://server/AB123/` checks the
+   endpoints and that nothing protected can be fetched directly. Add the course directory and the
+   password of an account named `prof` to check a login too.
 
 All paths in the `.ini` files are relative to the course directory, and nothing outside it is
 ever served.

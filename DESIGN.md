@@ -875,12 +875,20 @@ The plan:
 
 ## Deploying (Decided)
 
-- **Apache:** keep the `.htaccess` files the template ships in `config/`, `pages/`, `shared/` and
-  every event-type directory (add one to each new type), and allow `.htaccess` overrides
-  (`AllowOverride AuthConfig` or `All`).
+- **Apache:** keep the `.htaccess` files the template ships: the one at the course root (it
+  refuses every name that starts with a dot, such as `.git/` when the course is kept in git, and
+  every `.ini` file, anywhere under the course, also through `calendar/`), and the deny-all
+  files in `config/`, `pages/`, `shared/` and every event-type directory (add one to each new
+  type). They need `AllowOverride AuthConfig` (or `All`) and Apache 2.4 for the dot rule.
 - **nginx:** no `.htaccess`; deny the same directories in the server block, for example
-  `location ~ ^/AB123/(config|pages|shared|class|lab|exam|project)/ { deny all; }`, and pass only
-  `calendar/php/*.php` to PHP-FPM (`calendar/lib/` and `calendar/tests/` must not be reachable).
+  `location ~ ^/AB123/(config|pages|shared|class|lab|exam|project)/ { deny all; }`, deny dot
+  files and `.ini` files everywhere (`location ~ /\.(?!well-known/) { deny all; }` and
+  `location ~ \.ini$ { deny all; }`), and pass only `calendar/php/*.php` to PHP-FPM
+  (`calendar/lib/`, `calendar/tests/` and `calendar/template/` must not be reachable).
+- **Checking a server:** `tests/deploy/smoke.php <course URL> <course directory>` checks a real
+  deployment: the endpoints, a login, and that `config/`, the material, `.git/`, `calendar/lib/`,
+  `calendar/tests/` and `calendar/template/` can not be fetched directly. CI runs it against
+  Apache + PHP-FPM with a linked course (`tests/deploy/apache-setup.sh`).
 - **Finding the course** relies on `SCRIPT_FILENAME` keeping the linked path; with PHP-FPM set it
   from `$document_root$fastcgi_script_name` (not `$realpath_root`). If it is resolved, every
   endpoint answers `500` instead of guessing.
