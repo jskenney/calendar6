@@ -125,6 +125,9 @@ final class Policy
     /** @return list<array{0: list<string>, 1: ?EventTime}> one list of targets per name the file must be allowed under */
     public function candidateLists(Place $place): array
     {
+        if ($place->assetOf !== null && isset($this->course->places[$place->assetOf])) {
+            return $this->candidateLists($this->course->places[$place->assetOf]); // decided by the page that links to it
+        }
         if ($place->event === null) {
             return [[['page/' . $place->page, 'page', '*'], null]];
         }

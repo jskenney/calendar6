@@ -176,4 +176,31 @@ final class RendererTest extends TestCase
         $this->assertNotContains('everything after', $unclosed);
         $this->assertContains('base64,QUFB', $this->render($course, 'class_1/photo.html'), 'a large inline image still renders');
     }
+
+    public function testVirtualFilesLinkRelativeToTheirRealFile(): void
+    {
+        $course = $this->course([
+            'homework/hw1.html' => '<img src="fig.png"><a href="data.csv">data</a>',
+            'homework/fig.png' => 'REAL-FIG',
+            'homework/data.csv' => 'x',
+            'class/01.Introduction/fig.png' => 'EVENT-FIG',
+            'config/virtual.ini' => "class_1/homework.html = homework/hw1.html\n",
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/homework.html');
+        preg_match('/<img src="[^"]*file=([A-Za-z0-9_-]+)"/', $page, $m);
+        $this->assertSame('homework/fig.png', $course->places[$m[1] ?? '']->file->name ?? null, 'its own figure, not the event\'s fig.png (L-20)');
+        $this->assertNotContains('data-cal6-hidden', $page, 'the files it links to get keys');
+        Fixture::remove($this->dir);
+        $hidden = $this->course([
+            'homework/hw1.html' => '<img src="fig.png">', 'homework/fig.png' => 'P',
+            'config/virtual.ini' => "class_1/homework.html = homework/hw1.html\n",
+            'config/default.ini' => "class_1 = always\nclass_1/homework.html = never\n",
+        ]);
+        foreach ($hidden->places as $place) {
+            if ($place->file->name === 'homework/fig.png') {
+                $this->assertFalse((new Policy($hidden))->decide(Viewer::anonymous(), $place, time())->visible, 'decided by the virtual page that links to it');
+            }
+        }
+    }
 }

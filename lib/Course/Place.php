@@ -17,6 +17,7 @@ final class Place
         public readonly ?string $page = null,     // paths.ini name
         public readonly ?string $box = null,
         public readonly bool $asset = false,      // a file a paths.ini page links to (decided by the page's rule)
+        public readonly ?string $assetOf = null,  // the key of the page whose rules decide this file (virtual files' links)
     ) {
     }
 

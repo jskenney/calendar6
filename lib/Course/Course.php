@@ -127,6 +127,34 @@ final class Course
         foreach ($this->pageKeys as $name => $key) {
             $this->addPageAssets($name, $this->places[$key]->file->realPath);
         }
+        foreach ($this->places as $place) {
+            if ($place->event !== null && $place->file->virtualOf !== null && $place->file->kind() === 'page') {
+                $this->addVirtualAssets($place);
+            }
+        }
+    }
+
+    /**
+     * Files a virtual page links to (relative to its real file, L-20) get keys of their
+     * own, decided by that virtual page's rules; files that already have a key keep it.
+     */
+    private function addVirtualAssets(Place $page): void
+    {
+        $html = (string) @file_get_contents($page->file->realPath);
+        if (preg_match('/\.md$/i', $page->file->realPath)) {
+            $html = (new Markdown())->text($html);
+        }
+        foreach (PageRenderer::linkTargets($html) as $link) {
+            $target = $this->boundary->resolve(dirname($page->file->realPath) . '/' . rawurldecode($link));
+            if ($target === null || !is_file($target) || Boundary::neverServed($target) || isset($this->byRealPath[$target])) {
+                continue;
+            }
+            $relative = $this->boundary->relative($target);
+            $file = new ContentFile($relative, $target, (int) filesize($target), (int) filemtime($target), false);
+            $place = new Place(Keys::make($this->config->secret, $page->id() . '|' . $relative), $file, $page->event, null, null, true, $page->key);
+            $this->places[$place->key] = $place;
+            $this->byRealPath[$target][] = $place->key;
+        }
     }
 
     /**
@@ -218,12 +246,11 @@ final class Course
     {
         $link = rawurldecode($link);
         $event = $from->event;
-        if ($event !== null) {
-            $base = $event->folder?->path;
-            $name = $link;
-            if ($base !== null && $fromDir !== $base && str_starts_with($fromDir, $base . '/')) {
-                $name = substr($fromDir, strlen($base) + 1) . '/' . $link;
-            }
+        $base = $event?->folder?->path;
+        // by name only from inside the event's own directory; a virtual file's links are
+        // relative to its real file (L-20)
+        if ($event !== null && $base !== null && ($fromDir === $base || str_starts_with($fromDir, $base . '/'))) {
+            $name = $fromDir === $base ? $link : substr($fromDir, strlen($base) + 1) . '/' . $link;
             $name = self::normalize($name);
             if ($name !== null && isset($this->keysByEvent[$event->id][$name])) {
                 return $this->places[$this->keysByEvent[$event->id][$name]];
@@ -238,7 +265,8 @@ final class Course
         foreach ($this->byRealPath[$real] ?? [] as $key) {
             $place = $this->places[$key];
             $score = match (true) {
-                $place->asset && $place->page === $from->page => 4,
+                $place->assetOf !== null && $place->assetOf === $from->key => 5,
+                $place->asset && $place->page === $from->page && $place->assetOf === null => 4,
                 $place->page !== null && !$place->asset => 3,
                 $place->event !== null && $place->event->mode === null => 2,
                 default => 1,
