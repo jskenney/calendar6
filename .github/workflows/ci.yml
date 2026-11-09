@@ -15,7 +15,7 @@ concurrency:
 jobs:
   tests:
     name: Tests (PHP ${{ matrix.php }}, server time zone ${{ matrix.timezone }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -25,7 +25,7 @@ jobs:
           - php: '8.4'
             timezone: UTC
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
@@ -39,9 +39,9 @@ jobs:
 
   apache:
     name: Deployment (Apache + PHP-FPM, linked course)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Apache and PHP-FPM
         run: |
           sudo apt-get update -q
