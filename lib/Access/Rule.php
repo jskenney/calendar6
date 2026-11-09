@@ -14,11 +14,15 @@ final class Rule
         public readonly Window $window,
         public readonly string $source,   // "default.ini:12" or "auth/jdoe.ini:8"
         public readonly bool $grant = false,
+        public readonly int $line = 0,
+        public readonly ?string $unreadable = null,   // the text that could not be read (the rule is then "never")
     ) {
     }
 
     public function describe(): string
     {
-        return $this->target . ' = ' . $this->window->text;
+        return $this->unreadable !== null
+            ? $this->target . ' = ' . $this->unreadable . ' (can not be read: hidden)'
+            : $this->target . ' = ' . $this->window->text;
     }
 }

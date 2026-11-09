@@ -152,6 +152,18 @@ INI;
         $this->assertFalse($old !== null && self::sees($course, $old, 'exam_1/index.html', $now), 'grants only inside the window');
     }
 
+    public function testAnUnreadableLineHidesItsTarget(): void
+    {
+        $course = $this->load(['config/default.ini' => "exam_2 = always\nlab = nver\nclass_9..2 = never\n"]);
+        $now = self::now($course);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/index.html', $now), 'a typo hides, never releases (H-2)');
+        $rule = (new Policy($course))->decide(Viewer::anonymous(), $course->places[$course->keysByEvent['lab_1']['index.html']], $now)->rule;
+        $this->assertSame('lab = nver (can not be read: hidden)', $rule?->describe());
+        $messages = implode("\n", array_map(static fn ($p): string => "$p->file:$p->line $p->message", $course->problems));
+        $this->assertContains('default.ini:2', $messages);
+        $this->assertContains('default.ini:3', $messages, 'a bad target is a problem');
+    }
+
     public function testUnreadableRulesHideEverything(): void
     {
         $course = $this->load(['config/default.ini' => null]);

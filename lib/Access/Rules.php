@@ -23,22 +23,36 @@ final class Rules
     /** @var list<string> */
     public array $overridden = [];
 
-    /** @param list<IniLine> $lines */
+    /**
+     * A line whose target can be read but whose time can not is kept as "never" for
+     * that target (fail closed: a typo must not release anything); a line whose target
+     * can not be read is only a problem.
+     *
+     * @param list<IniLine> $lines
+     */
     public static function fromLines(array $lines, string $label, bool $grant = false): self
     {
         $rules = new self();
         foreach ($lines as $line) {
             try {
-                $window = Window::parse($line->value);
-                foreach (Target::expand($line->key) as $target) {
-                    if (isset($rules->byTarget[$target])) {
-                        $rules->overridden[] = sprintf('%s line %d (%s) is overridden by line %d', $label,
-                            (int) substr(strrchr($rules->byTarget[$target]->source, ':') ?: ':0', 1), $target, $line->line);
-                    }
-                    $rules->byTarget[$target] = new Rule($target, $window, "$label:$line->line", $grant);
-                }
+                $targets = Target::expand($line->key);
             } catch (InvalidArgumentException $e) {
                 $rules->problems[] = new Problem($e->getMessage(), $label, $line->line);
+                continue;
+            }
+            $unreadable = null;
+            try {
+                $window = Window::parse($line->value);
+            } catch (InvalidArgumentException $e) {
+                $rules->problems[] = new Problem($e->getMessage() . ' (the target is hidden until this is fixed)', $label, $line->line);
+                $window = Window::parse('never');
+                $unreadable = $line->value;
+            }
+            foreach ($targets as $target) {
+                if (isset($rules->byTarget[$target])) {
+                    $rules->overridden[] = sprintf('%s line %d (%s) is overridden by line %d', $label, $rules->byTarget[$target]->line, $target, $line->line);
+                }
+                $rules->byTarget[$target] = new Rule($target, $window, "$label:$line->line", $grant, $line->line, $unreadable);
             }
         }
         return $rules;
