@@ -79,6 +79,18 @@ final class Boundary
     public static function neverServed(string $name): bool
     {
         return (bool) preg_match('/\.(php\d?|phtml|phar|phps|pht|inc|ini|htaccess|htpasswd)$/i', $name)
-            || (bool) preg_match('/\.(php\d?|phtml|phps|inc|ini)[.~][^\/]*$/i', $name);
+            || (bool) preg_match('/\.(php\d?|phtml|phps|inc|ini)[.~][^\/]*$/i', $name)
+            || self::isPageBackup($name);
+    }
+
+    /**
+     * An editor's backup of a page (index.html~, notes.md.bak, x.html.orig, #index.html#): raw
+     * page source, so never served by either endpoint (M-22).
+     */
+    public static function isPageBackup(string $name): bool
+    {
+        $base = basename($name);
+        return (bool) preg_match('/\.(html?|md)(~|\.(bak|orig|old|save|backup|tmp|swp|rej|copy|\d+))$/i', $base)
+            || (bool) preg_match('/^#.+#$/', $base);
     }
 }

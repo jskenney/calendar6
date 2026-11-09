@@ -56,7 +56,10 @@ final class BoundaryTest extends TestCase
         foreach (['a.php', 'a.PHP5', 'a.phtml', 'a.phps', 'a.pht', 'db.inc', 'grades.php~', 'db.php.bak', 'x.inc.old', 'config.ini', '.htaccess'] as $name) {
             $this->assertTrue(Boundary::neverServed($name), "never served: $name (L-28)");
         }
-        foreach (['notes.html', 'phpinfo.pdf', 'include.txt', 'slides.pptx'] as $name) {
+        foreach (['index.html~', 'notes.md.bak', 'x.html.orig', '#index.html#', 'a.htm.1', 'b.html.swp'] as $name) {
+            $this->assertTrue(Boundary::neverServed($name), "a page backup is never served (M-22): $name");
+        }
+        foreach (['notes.html', 'phpinfo.pdf', 'include.txt', 'slides.pptx', 'report.html.pdf', 'notes (copy).html'] as $name) {
             $this->assertFalse(Boundary::neverServed($name), "served: $name");
         }
     }

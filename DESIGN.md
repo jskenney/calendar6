@@ -585,7 +585,9 @@ viewer may see, with their keys. Things the viewer may not see are left out enti
 serves only pages. A page is an `.html`, `.htm` or `.md` file (by its name and by the real file
 behind a link). `get.php` answers `404` for a page key, for everyone, so the raw source of a page
 (`<inst>`, `<lock>` codes, `<postmeeting>`, `<host>`) never leaves the server; Markdown stays a
-page type, processed like HTML.
+page type, processed like HTML. Editors' backups of pages (`index.html~`, `notes.md.bak`,
+`x.html.orig`, `#index.html#`) are raw page source too: they are never listed or served by
+either endpoint, and are listed as problems for instructors.
 
 **Inputs:**
 

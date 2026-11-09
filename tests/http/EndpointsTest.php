@@ -144,6 +144,15 @@ final class EndpointsTest extends TestCase
         $this->assertContains('not UTF-8', $client->get('calendar/php/calendar.php')->body, 'reported to instructors');
     }
 
+    public function testPageBackupsAreNeverServed(): void
+    {
+        $client = $this->start(['class/01.Introduction/index.html~' => '<inst>INST-SECRET</inst><lock code="hunter2">x</lock>', 'class/01.Introduction/#notes.md#' => 'x']);
+        $body = $client->get('calendar/php/calendar.php')->body;
+        $this->assertNotContains('index.html~', $body, 'not listed (M-22)');
+        $this->login($client);
+        $this->assertContains("editor's backup of a page", $client->get('calendar/php/calendar.php')->body, 'a problem for instructors');
+    }
+
     public function testNumericNamesDoNotTakeTheCourseDown(): void
     {
         $client = $this->start(['class/01.Introduction/1' => 'one', 'class/01.Introduction/2024.pdf' => 'pdf', 'config/paths.ini' => "[pages]\n2027 = pages/home.html\n"]);

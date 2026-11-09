@@ -105,6 +105,9 @@ final class Scanner
                 }
                 continue;
             }
+            if (is_file($real) && Boundary::isPageBackup($name)) {
+                $this->problems[] = new Problem(basename($dir) . "/$prefix$name looks like an editor's backup of a page: it is never served; remove it");
+            }
             if (!is_file($real) || Boundary::neverServed($name) || Boundary::neverServed($real)) {
                 continue;
             }
