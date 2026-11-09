@@ -103,6 +103,7 @@ final class EndpointsTest extends TestCase
         $this->assertFalse(isset($data['events']['exam_2']), 'events on no day are left out');
         $this->assertSame('', $data['events']['class_3']['title'] ?? 'x', 'no title when nothing is visible');
         $this->assertSame(['class_1'], $data['days'][0]['events'] ?? null);
+        $this->assertSame(filesize("$this->dir/class/01.Introduction/index.html"), $data['events']['class_1']['boxes'][0]['files'][0]['size'] ?? null, 'files carry their size (DOC-12)');
         $this->assertSame(['home', 'policy'], array_column($data['pages'], 'name'));
         $this->assertFalse(isset($data['problems']), 'problems are for instructors');
         $this->assertNotContains('instructor.html', $anon->body);

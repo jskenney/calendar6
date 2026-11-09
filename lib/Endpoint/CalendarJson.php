@@ -60,7 +60,7 @@ final class CalendarJson
                     continue;
                 }
                 $anyVisible = true;
-                $item = ['name' => $name, 'key' => $place->key, 'kind' => $file->kind()];
+                $item = ['name' => $name, 'key' => $place->key, 'kind' => $file->kind(), 'size' => $file->size];
                 if ($instructor && !$anonymousView->visible) {
                     $item['visible'] = false;
                     $item['rule'] = $anonymousView->rule?->describe() ?? ($event->date === null ? 'on no calendar day' : '');

@@ -550,7 +550,9 @@ viewer may see, with their keys. Things the viewer may not see are left out enti
   `{"name": "solution.html", "key": "d2Wq7", "kind": "page", "visible": false, "rule":
   "lab/lab-solution = +7 17:00", "opens": "2026-11-16T17:00:00-05:00"}`, events on no calendar
   day (with `"date": null`), and `problems` (bad lines in the `.ini` files, overridden lines,
-  material directories that can be fetched directly).
+  names that are not UTF-8 or differ only in case, copies that can not be made). Whether material
+  can be fetched directly is checked from outside, by `tests/deploy/smoke.php` (and later
+  `bin/cal6 check`, E-5), not by `calendar.php`.
 
 **Caching (Decided: cache when possible):**
 
@@ -653,7 +655,8 @@ Removed: `<ace>` (and Ace itself), and `<keyword>` / `<search>`, which only made
 (search is removed).
 
 `<calphp>` details (Decided: passed through): the file must be inside the course directory (normally the
-same event directory); it runs with the course directory as its working directory; its output is
+same event directory); it runs with **its own directory** as its working directory (as in
+Calendar 4), with `$COURSE`, `$COURSENAME`, `$INSTRUCTOR`, `$TYPE` and `$EVENT` set; its output is
 not processed further. Proposed: it only runs if the page itself is visible to the viewer, and a
 fatal error in it replaces the tag with an error note for instructors instead of breaking the
 page. `.php` files are never sent by `get.php`, so their source stays private.
