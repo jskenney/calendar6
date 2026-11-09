@@ -12,9 +12,11 @@ use Cal6\Http\Response;
 use Cal6\Http\Session;
 
 /**
- * get.php?file=KEY: one file.  The access rule is checked again for the current
- * viewer (a key alone never grants access); unknown and not allowed both answer
- * 404, so hidden files can not be discovered.
+ * get.php?file=KEY: one file, never a page: .html, .htm and .md files are served
+ * only by html.php, processed, so their raw source (<inst>, <lock> codes, ...) is
+ * never sent (C-1).  The access rule is checked again for the current viewer (a key
+ * alone never grants access); unknown, a page, and not allowed all answer 404, so
+ * hidden files can not be discovered.
  */
 final class GetEndpoint
 {
@@ -27,7 +29,7 @@ final class GetEndpoint
         $viewer = $c->viewer();
         Session::close();
         $place = $c->course()->place((string) $c->query('file'));
-        if ($place === null || Boundary::neverServed($place->file->realPath)
+        if ($place === null || Boundary::neverServed($place->file->realPath) || $place->file->kind() === 'page'
             || !(new Policy($c->course()))->decide($viewer, $place, $c->now)->visible
             || $c->course()->boundary->resolve($place->file->realPath) === null) {
             Response::error(404, 'not found');

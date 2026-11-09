@@ -85,7 +85,7 @@ final class Scanner
                 }
                 continue;
             }
-            if (!is_file($real) || Boundary::neverServed($name)) {
+            if (!is_file($real) || Boundary::neverServed($name) || Boundary::neverServed($real)) {
                 continue;
             }
             $this->checkName(basename($dir) . "/$prefix$name");

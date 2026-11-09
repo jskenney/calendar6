@@ -17,9 +17,14 @@ final class ContentFile
     ) {
     }
 
+    /**
+     * "page" (served only by html.php, processed) or "file" (served only by get.php).
+     * A page is .html, .htm or .md, by its name and by its real file: a link named
+     * notes.txt that leads to notes.html is a page too.
+     */
     public function kind(): string
     {
-        return self::isPage($this->name) ? 'page' : 'file';
+        return self::isPage($this->name) || self::isPage($this->realPath) ? 'page' : 'file';
     }
 
     public static function isPage(string $name): bool

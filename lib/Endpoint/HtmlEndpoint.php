@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Cal6\Endpoint;
 
 use Cal6\Access\Policy;
+use Cal6\Course\Boundary;
 use Cal6\Http\Context;
 use Cal6\Http\Locator;
 use Cal6\Http\RateLimiter;
@@ -33,7 +34,9 @@ final class HtmlEndpoint
         $place = $course->place($key);
         $viewer = $c->viewer($method === 'POST');
         $policy = new Policy($course);
-        if ($place === null || $place->file->kind() !== 'page' || !$policy->decide($viewer, $place, $c->now)->visible) {
+        // pages only (.html, .htm, .md, by name and real file), never a server-side file behind a link (L-22)
+        if ($place === null || $place->file->kind() !== 'page' || Boundary::neverServed($place->file->realPath)
+            || !$policy->decide($viewer, $place, $c->now)->visible) {
             Session::close();
             Response::error(404, 'not found');
             return;

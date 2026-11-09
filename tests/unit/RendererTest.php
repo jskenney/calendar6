@@ -116,4 +116,29 @@ final class RendererTest extends TestCase
         $this->assertContains('href="#/view/' . $course->keysByEvent['class_1']['index.html'] . '"', $page, 'the event\'s own page');
         $this->assertContains('data-cal6-hidden="1">other', $page, 'another event\'s hidden page');
     }
+
+    public function testPagesAreLinkedOnlyThroughHtmlPhp(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<a href="other.html">a</a><iframe src="other.html"></iframe><img src="other.html"><script src="notes.md"></script><a href="data.txt">d</a>',
+            'class/01.Introduction/other.html' => 'O',
+            'class/01.Introduction/data.txt' => 'D',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/index.html');
+        $other = $course->keysByEvent['class_1']['other.html'];
+        $this->assertContains('href="#/view/' . $other . '"', $page);
+        $this->assertContains('<iframe src="/calendar/php/html.php?file=' . $other . '&amp;full=1"', $page, 'frames get the processed page (C-1)');
+        $this->assertContains('<img data-cal6-hidden="1">', $page, 'a page is never an image');
+        $this->assertContains('<script data-cal6-hidden="1">', $page, 'or a script');
+        $this->assertSame(1, substr_count($page, 'get.php?file='), 'only the text file goes through get.php');
+    }
+
+    public function testALinkToAPhpFileIsNeitherMaterialNorAPage(): void
+    {
+        $course = $this->course(['class/01.Introduction/db.php' => '<?php $password = "x";']);
+        symlink("$this->dir/class/01.Introduction/db.php", "$this->dir/class/01.Introduction/view.html");
+        $course = Course::load($this->dir);
+        $this->assertFalse(isset($course->keysByEvent['class_1']['view.html']), 'a link to a .php file is not listed (L-22)');
+    }
 }

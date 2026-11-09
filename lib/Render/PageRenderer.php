@@ -347,6 +347,9 @@ final class PageRenderer
         }
         $path = explode('?', $value, 2)[0];
         $target = $this->visiblePlace($place, $dir, $path);
+        if ($target !== null && $target->file->kind() === 'page' && !in_array($element, ['a', 'iframe', 'embed', 'object'], true)) {
+            $target = null; // a page can not be an image, script or style sheet: get.php never sends pages
+        }
         if ($target !== null) {
             return $this->urlFor($target, $element) . $fragment;
         }
@@ -378,10 +381,12 @@ final class PageRenderer
 
     private function urlFor(Place $target, string $element): string
     {
-        if ($element === 'a' && $target->file->kind() === 'page') {
-            return $this->full
-                ? $this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($target->key) . '&full=1'
-                : '#/view/' . rawurlencode($target->key);
+        if ($target->file->kind() === 'page') {
+            // pages are only ever served by html.php (C-1): links open them in the front end,
+            // frames get the whole processed document
+            return $element === 'a' && !$this->full
+                ? '#/view/' . rawurlencode($target->key)
+                : $this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($target->key) . '&full=1';
         }
         return $this->baseUrl . 'calendar/php/get.php?file=' . rawurlencode($target->key);
     }

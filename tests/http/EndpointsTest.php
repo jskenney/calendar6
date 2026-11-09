@@ -176,8 +176,9 @@ final class EndpointsTest extends TestCase
         $this->assertSame('10', $head->header('content-length'));
         $this->assertSame('text/javascript; charset=utf-8', $client->get('calendar/php/get.php?file=' . $keys['class_1/app.js'])->header('content-type'), 'scripts can run (M-4)');
         $this->assertContains('inline', $client->get('calendar/php/get.php?file=' . $keys['class_1/app.js'])->header('content-disposition'));
-        $html = $client->get('calendar/php/get.php?file=' . $keys['class_1/page2.html']);
-        $this->assertContains('attachment', $html->header('content-disposition'), 'HTML is never sent inline');
+        foreach (['class_1/page2.html', 'class_1/index.html', 'class_1/notes.md'] as $page) {
+            $this->assertSame(404, $client->get('calendar/php/get.php?file=' . $keys[$page])->status, "get.php never sends a page's source (C-1): $page");
+        }
         $this->assertContains('attachment', $client->get('calendar/php/get.php?download=1&file=' . $keys['class_1/data.txt'])->header('content-disposition'));
 
         $this->login($client);
@@ -188,7 +189,8 @@ final class EndpointsTest extends TestCase
         $this->assertSame(404, $notFound->status, 'a key alone never grants access');
         $this->assertSame(404, $student->get('calendar/php/get.php?file=AAAAAAAAAAAAAAAAAAAAAA')->status);
         $this->assertSame($notFound->body, $student->get('calendar/php/get.php?file=AAAAAAAAAAAAAAAAAAAAAA')->body, 'the same answer for both');
-        $this->assertSame(200, $client->get('calendar/php/get.php?file=' . $hidden)->status, 'the instructor');
+        $this->assertSame(200, $client->get('calendar/php/get.php?file=' . $profKeys['class_1/data.txt'])->status, 'the instructor');
+        $this->assertSame(404, $client->get('calendar/php/get.php?file=' . $hidden)->status, 'not even instructors get a page from get.php');
         $this->assertSame(405, $student->post('calendar/php/get.php?file=' . $hidden, [])->status);
     }
 
