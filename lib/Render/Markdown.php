@@ -51,7 +51,7 @@ final class Markdown
         if (substr($text, 0, 3) === "\xEF\xBB\xBF") {
             $text = substr($text, 3);
         }
-        $lines = explode("\n", $text);
+        $lines = $this->removeComments(explode("\n", $text));
         $lines = $this->collectReferences($lines);
         $html = $this->blocks($lines);
         return $this->restore($html);
@@ -83,6 +83,80 @@ final class Markdown
             }, $html);
         }
         return $html;
+    }
+
+    # HTML comments are removed before conversion (M-30), so one that starts mid-line or spans a
+    # blank line is not shown as text.  Fenced and indented code and `code spans` keep theirs
+    # (they are shown, escaped, as written); a comment that is never closed removes the rest.
+    private function removeComments($lines) {
+        $out = array();
+        $fence = '';
+        $inComment = False;
+        $codeAllowed = True; # an indented line starts code only after a blank line or code
+        foreach ($lines as $line) {
+            if (!$inComment) {
+                if ($fence !== '') {
+                    if (preg_match('/^ {0,3}' . preg_quote($fence[0], '/') . '{' . strlen($fence) . ',}\s*$/', $line)) {
+                        $fence = '';
+                    }
+                    $out[] = $line;
+                    continue;
+                }
+                if (preg_match('/^ {0,3}(`{3,}|~{3,})/', $line, $m)) {
+                    $fence = $m[1];
+                    $out[] = $line;
+                    continue;
+                }
+                if ($this->indent($line) >= 4 && $codeAllowed && !$this->isHiddenTag($line)) {
+                    $out[] = $line;
+                    continue;
+                }
+            }
+            $kept = '';
+            $pos = 0;
+            $length = strlen($line);
+            while ($pos < $length) {
+                if ($inComment) {
+                    $end = strpos($line, '-->', $pos);
+                    if ($end === False) { $pos = $length; break; }
+                    $pos = $end + 3;
+                    $inComment = False;
+                    continue;
+                }
+                $next = strcspn($line, '`<', $pos) + $pos;
+                $kept .= substr($line, $pos, $next - $pos);
+                if ($next >= $length) { break; }
+                if ($line[$next] === '`') {
+                    $run = strspn($line, '`', $next);
+                    $close = strpos($line, str_repeat('`', $run), $next + $run);
+                    $stop = $close === False ? $next + $run : $close + $run;
+                    $kept .= substr($line, $next, $stop - $next);
+                    $pos = $stop;
+                } elseif (substr($line, $next, 4) === '<!--') {
+                    $inComment = True;
+                    $pos = $next + 4;
+                    # <!--> and <!---> end at once, as in a browser
+                    if (substr($line, $pos, 1) === '>') { $pos++; $inComment = False; }
+                    elseif (substr($line, $pos, 2) === '->') { $pos += 2; $inComment = False; }
+                } elseif (preg_match('/\G<\/?[A-Za-z][^\s\/>]*(?:\s+[^\s"\'>\/=]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*\s*\/?>/', $line, $tag, 0, $next)) {
+                    # a tag is copied whole: <!-- inside its attribute values is not a comment
+                    $kept .= $tag[0];
+                    $pos = $next + strlen($tag[0]);
+                } else {
+                    $kept .= '<';
+                    $pos = $next + 1;
+                }
+            }
+            $out[] = $kept;
+            $codeAllowed = $this->isBlank($kept) || $this->indent($line) >= 4 && $codeAllowed;
+        }
+        return $out;
+    }
+
+    # A hidden block's tag (<inst>, <lock>, <postmeeting>, <host>, <student>) on its own line is
+    # HTML however far it is indented, never code (L-42): an indented <inst> hides its content.
+    private function isHiddenTag($line) {
+        return (bool)preg_match('/^\s*<\/?(inst|lock|postmeeting|host|student)(\s|>|$)/i', $line);
     }
 
     private function isBlank($line) {
@@ -176,6 +250,9 @@ final class Markdown
     }
 
     private function htmlBlockStart($line) {
+        if ($this->isHiddenTag($line)) {
+            return True;
+        }
         if (preg_match('/^ {0,3}<!--/', $line)) {
             return True;
         }
@@ -239,9 +316,9 @@ final class Markdown
             }
 
             # Indented code
-            if ($this->indent($line) >= 4) {
+            if ($this->indent($line) >= 4 && !$this->isHiddenTag($line)) {
                 $code = array();
-                while ($i < $n && ($this->isBlank($lines[$i]) || $this->indent($lines[$i]) >= 4)) {
+                while ($i < $n && ($this->isBlank($lines[$i]) || $this->indent($lines[$i]) >= 4 && !$this->isHiddenTag($lines[$i]))) {
                     $code[] = $this->outdent($lines[$i], 4);
                     $i++;
                 }
@@ -508,7 +585,8 @@ final class Markdown
         }, $text);
 
         # 4. Raw inline HTML (and Cal4 tags) pass through unchanged
-        $text = preg_replace_callback('/<!--.*?-->|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*?)?\s*\/?>/s', function ($m) {
+        #    (a tag with quoted values first, so <!-- or > inside a value stays in the tag)
+        $text = preg_replace_callback('/<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"\'>\/=]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*\s*\/?>|<!--.*?-->|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*?)?\s*\/?>/s', function ($m) {
             return $this->hold($m[0]);
         }, $text);
 

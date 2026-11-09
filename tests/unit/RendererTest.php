@@ -381,6 +381,23 @@ final class RendererTest extends TestCase
         $this->assertTrue(microtime(true) - $start < 3.0, 'many scripts and injects stay fast (L-44)');
     }
 
+    public function testMarkdownCommentsAndIndentedHiddenBlocks(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/c.md' => "Text <!-- start\n\nM1 -->after\n\n`<!-- shown -->`\n\n```\n<!-- fenced -->\n```\n\n<img alt=\"<!--\"><inst>-->M2</inst>",
+            'class/01.Introduction/i.md' => "Intro\n\n    <inst>\n    M3\n    </inst>\n\n- item\n\n        <inst>\n\n        M4\n\n        </inst>\n\nEND",
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/c.md');
+        $this->assertSame(0, preg_match('/M[12]\b/', $page), 'a Markdown comment that spans a blank line is removed (M-30): ' . $page);
+        $this->assertContains('after', $page);
+        $this->assertContains('&lt;!-- shown --&gt;', $page, 'code keeps its comments');
+        $this->assertContains('&lt;!-- fenced --&gt;', $page);
+        $page = $this->render($course, 'class_1/i.md');
+        $this->assertSame(0, preg_match('/M[34]\b/', $page), 'an indented <inst> in Markdown is HTML, not code (L-42): ' . $page);
+        $this->assertContains('END', $page);
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

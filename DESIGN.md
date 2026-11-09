@@ -662,6 +662,11 @@ that is never closed is not raw text for hiding: the rest of the page is read as
 blocks after it are still hidden. Processing is linear in the size of the page;
 `<inject>` does not follow cycles and stops after about 4 MB of injected text; the Markdown
 converter nests quotes and lists at most 16 deep and emphasis spans at most 1000 characters.
+**In Markdown**, HTML comments are removed from the source before it is converted (outside code),
+and a block tag (`<inst>`, `<lock>`, `<postmeeting>`, `<host>`, `<student>`) on its own line is
+HTML however far it is indented, so an indented `<inst>` still hides. Code shows what is written:
+an `<inst>` inside a fenced code block (or a code span) is shown as code, so to hide a code
+block, put `<inst>` and `</inst>` on lines of their own around the fence.
 `<codeinject>` of a page shows its source without what the viewer may not see. If any other
 pattern fails on a page, the request fails rather than sending the page half processed.
 
