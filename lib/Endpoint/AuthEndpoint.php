@@ -42,9 +42,9 @@ final class AuthEndpoint
             return;
         }
 
-        // Limits (M-7): per address and username the configured number; per address
-        // four times that; per username ten times that, so one person can not keep an
-        // account locked by guessing from a single address.
+        // Limits (M-7, L-23): per address and username the configured number, and per
+        // address four times that, block; per username (ten times that) only slows down,
+        // so guesses from many addresses can not lock the real instructor out.
         [$limit, $seconds] = $c->config->loginAttempts;
         $limiter = RateLimiter::forCourse($c->courseDir, $seconds);
         if (!$limiter->available()) {
@@ -54,7 +54,7 @@ final class AuthEndpoint
             return;
         }
         $user = strtolower($username);
-        $keys = ['pair:' . $c->address() . '|' . $user => $limit, 'address:' . $c->address() => $limit * 4, 'user:' . $user => $limit * 10];
+        $keys = ['pair:' . $c->address() . '|' . $user => $limit, 'address:' . $c->address() => $limit * 4];
         $recorded = [];
         foreach ($keys as $key => $max) {
             $wait = $limiter->hit($key, $c->now, $max);
@@ -67,6 +67,11 @@ final class AuthEndpoint
                 return;
             }
             $recorded[] = $key;
+        }
+        if ($limiter->hit('user:' . $user, $c->now, $limit * 10) === 0) {
+            $recorded[] = 'user:' . $user;
+        } else {
+            usleep(1_000_000); // many failures for this username from many addresses: slow down, never block
         }
 
         $account = Viewer::account($c->config, $username);
