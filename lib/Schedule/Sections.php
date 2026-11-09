@@ -72,9 +72,17 @@ final class Sections
         if (!preg_match('/^([MTWRFSU]+)\s*([X0-9]+)(?:\s+([A-Za-z][A-Za-z0-9-]*))?$/i', $entry, $m)) {
             return null;
         }
-        $type = $m[3] ?? $defaultType;
-        if (!isset($types[$type]) && isset($m[3])) {
-            return null;
+        $type = $defaultType;
+        if (isset($m[3])) {
+            $type = null;
+            foreach (array_keys($types) as $known) {
+                if (strcasecmp($known, $m[3]) === 0) {
+                    $type = $known; // not case-sensitive (M-14)
+                }
+            }
+            if ($type === null) {
+                return null;
+            }
         }
         $days = [];
         foreach (str_split(strtoupper($m[1])) as $letter) {

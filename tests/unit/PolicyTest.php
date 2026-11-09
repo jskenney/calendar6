@@ -196,6 +196,24 @@ INI;
         $this->assertContains('default.ini:3', $messages, 'a bad target is a problem');
     }
 
+    public function testTargetsAreNotCaseSensitive(): void
+    {
+        $course = $this->load([
+            'config/default.ini' => "CLASS_1/INDEX.HTML = never\npage/Solutions = never\nLab/Lab-Solution = 2000-01-01\n",
+            'config/paths.ini' => "[pages]\nhome = pages/home.html\nSolutions = pages/syllabus.html\n",
+            'config/dates.ini' => "2026-09-18 = EXAM\n",
+            'class/01.Introduction/Notes.md' => 'two names that differ only in case',
+        ]);
+        $now = self::now($course);
+        $anon = Viewer::anonymous();
+        $this->assertFalse(self::sees($course, $anon, 'class_1/index.html', $now), 'CLASS_1/INDEX.HTML is class_1/index.html (M-14)');
+        $this->assertFalse(self::sees($course, $anon, 'page/solutions', $now), 'page/Solutions matches the page "Solutions"');
+        $this->assertTrue(self::sees($course, $anon, 'lab_1/lab-solution.html', $now), 'Lab/Lab-Solution');
+        $this->assertSame('2026-09-18', $course->events['exam_1']->date, 'dates.ini: EXAM is the type exam');
+        $messages = implode("\n", array_map(static fn ($p): string => $p->message, $course->problems));
+        $this->assertContains('"Notes.md" and "notes.md" differ only in case', $messages, 'a case clash is a problem');
+    }
+
     public function testUnreadableRulesHideEverything(): void
     {
         $course = $this->load(['config/default.ini' => null]);

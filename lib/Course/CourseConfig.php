@@ -119,12 +119,13 @@ final class CourseConfig
                 $config->problems[] = new Problem("expected \"weekday = type [HH:MM-HH:MM]\" (one type per day): $line->key = $line->value", 'config.ini', $line->line);
                 continue;
             }
-            if (!isset($config->types[$m[1]])) {
+            $type = $config->typeName($m[1]);
+            if ($type === null) {
                 $config->problems[] = new Problem("unknown event type: $m[1]", 'config.ini', $line->line);
                 continue;
             }
             try {
-                $config->schedule[$day] = ['type' => $m[1], 'start' => isset($m[2]) ? self::hhmm($m[2]) : null, 'end' => isset($m[3]) ? self::hhmm($m[3]) : null];
+                $config->schedule[$day] = ['type' => $type, 'start' => isset($m[2]) ? self::hhmm($m[2]) : null, 'end' => isset($m[3]) ? self::hhmm($m[3]) : null];
             } catch (InvalidArgumentException $e) {
                 $config->problems[] = new Problem($e->getMessage(), 'config.ini', $line->line);
             }
@@ -175,6 +176,17 @@ final class CourseConfig
             $config->problems[] = new Problem("[course] period: no such period schedule in periods.ini: $config->defaultPeriod", 'config.ini');
         }
         return $config;
+    }
+
+    /** The type as written in [types], for a name in any case (M-14), or null. */
+    public function typeName(string $name): ?string
+    {
+        foreach (array_keys($this->types) as $type) {
+            if (strcasecmp($type, $name) === 0) {
+                return $type;
+            }
+        }
+        return null;
     }
 
     public static function hhmm(string $time): string

@@ -116,12 +116,12 @@ final class CalendarBuilder
             } elseif (isset(self::DAY_NAMES[$lower])) {
                 $this->exclusive($change, 'weekday');
                 $change['weekday'] = self::DAY_NAMES[$lower];
-            } elseif (isset($this->config->types[$token])) {
+            } elseif (($type = $this->config->typeName($token)) !== null) {
                 if ($change['events'] !== null && $change['events'] !== 'types') {
                     throw new InvalidArgumentException("event types can not be combined with $change[events]: $what");
                 }
                 $change['events'] = 'types';
-                $change['types'][] = $token;
+                $change['types'][] = $type;
             } else {
                 throw new InvalidArgumentException("not holiday, none, an event type, a weekday or \"period <schedule>\": $token");
             }
@@ -193,10 +193,11 @@ final class CalendarBuilder
                     if (!preg_match('/^([A-Za-z][A-Za-z0-9-]*)_(\d+)$/', $target, $t)) {
                         throw new InvalidArgumentException("not an event: $target");
                     }
-                    if ($t[1] !== $m[1]) {
+                    $type = $this->config->typeName($t[1]);
+                    if ($type === null || strcasecmp($t[1], $m[1]) !== 0) {
                         throw new InvalidArgumentException("a copy must be the same type as its source: $target = $line->value");
                     }
-                    $copies[$t[1]][(int) $t[2]] = ['source' => (int) $m[2], 'mode' => strtolower($m[3] ?? 'numbered')];
+                    $copies[$type][(int) $t[2]] = ['source' => (int) $m[2], 'mode' => strtolower($m[3] ?? 'numbered')];
                 }
             } catch (InvalidArgumentException $e) {
                 $this->problems[] = new Problem($e->getMessage(), 'duplicate.ini', $line->line);

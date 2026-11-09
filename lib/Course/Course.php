@@ -85,7 +85,7 @@ final class Course
                 }
                 foreach (Target::expand(substr($line->key, 0, $slash)) as $target) {
                     foreach ($this->events as $event) {
-                        if ($event->target() === $target) {
+                        if (strcasecmp($event->target(), $target) === 0) {
                             $event->files[$name] = new ContentFile($name, $real, (int) filesize($real), (int) filemtime($real),
                                 !str_contains($name, '/'), $this->boundary->relative($real));
                         }

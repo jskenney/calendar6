@@ -49,6 +49,7 @@ final class Scanner
             foreach ($names as $name) {
                 $this->checkName("$type/$name");
             }
+            $this->checkCase($type, $names);
             foreach ($names as $i => $name) {
                 $path = (string) realpath("$dir/$name");
                 $events[$type][] = new EventFolder($type, $i + 1, $name, EventFolder::titleOf($name), $path, $this->files($path, '', 0));
@@ -65,12 +66,31 @@ final class Scanner
         }
     }
 
+    /**
+     * Rules are not case-sensitive, so two names in one place that differ only in case
+     * (Notes.html and notes.html) would share every rule: tell instructors (M-14).
+     *
+     * @param list<string> $names
+     */
+    private function checkCase(string $where, array $names): void
+    {
+        $seen = [];
+        foreach ($names as $name) {
+            $key = mb_strtolower($name, 'UTF-8');
+            if (isset($seen[$key])) {
+                $this->problems[] = new Problem("$where: \"$seen[$key]\" and \"$name\" differ only in case, so rules for one also apply to the other; rename one");
+            }
+            $seen[$key] = $name;
+        }
+    }
+
     /** @return array<string, ContentFile> */
     public function files(string $dir, string $prefix, int $depth): array
     {
         $files = [];
         $entries = scandir($dir) ?: [];
         sort($entries, SORT_STRING);
+        $this->checkCase(basename($dir) . ($prefix !== '' ? '/' . rtrim($prefix, '/') : ''), array_values(array_filter($entries, static fn (string $e): bool => $e[0] !== '.')));
         foreach ($entries as $name) {
             if ($name[0] === '.') {
                 continue;

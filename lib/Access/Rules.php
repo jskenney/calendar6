@@ -16,7 +16,7 @@ use InvalidArgumentException;
  */
 final class Rules
 {
-    /** @var array<string, Rule> */
+    /** @var array<string, Rule> by target in lower case */
     public array $byTarget = [];
     /** @var list<Problem> */
     public array $problems = [];
@@ -49,10 +49,11 @@ final class Rules
                 $unreadable = $line->value;
             }
             foreach ($targets as $target) {
-                if (isset($rules->byTarget[$target])) {
-                    $rules->overridden[] = sprintf('%s line %d (%s) is overridden by line %d', $label, $rules->byTarget[$target]->line, $target, $line->line);
+                $key = self::key($target);
+                if (isset($rules->byTarget[$key])) {
+                    $rules->overridden[] = sprintf('%s line %d (%s) is overridden by line %d', $label, $rules->byTarget[$key]->line, $target, $line->line);
                 }
-                $rules->byTarget[$target] = new Rule($target, $window, "$label:$line->line", $grant, $line->line, $unreadable);
+                $rules->byTarget[$key] = new Rule($target, $window, "$label:$line->line", $grant, $line->line, $unreadable);
             }
         }
         return $rules;
@@ -65,9 +66,15 @@ final class Rules
         return $rules;
     }
 
+    /** Targets are not case-sensitive (M-14): Class_1/Notes.html is class_1/notes.html. */
     public function get(string $target): ?Rule
     {
-        return $this->byTarget[$target] ?? null;
+        return $this->byTarget[self::key($target)] ?? null;
+    }
+
+    public static function key(string $target): string
+    {
+        return mb_strtolower($target, 'UTF-8');
     }
 
     /** This set with $other laid over it: a rule of $other replaces the rule for the same target. */

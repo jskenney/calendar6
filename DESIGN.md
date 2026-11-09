@@ -709,9 +709,11 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable file** hides everything (fail closed) | |
 | R16 | **Paths with spaces** | tab-separated lines |
 
-Targets are case-sensitive, as in v4: `class_1` is not `Class_1`, and `notes.html` is not
-`Notes.html` (DOC-7). Type names are the directory names from `[types]`; file and box names are
-written exactly as they are on disk and in `[boxes]`.
+Targets are **not** case-sensitive (Decided, M-14): `Class_1/Notes.html`, `class_1/notes.html` and
+`page/Solutions` / `page/solutions` mean the same thing, in `default.ini`, grants, `virtual.ini`,
+`duplicate.ini`, `dates.ini` and `sections.ini`. Because of that, two names in one place that
+differ only in case (`Notes.html` and `notes.html` in one event) would share every rule; such
+pairs are listed as problems for instructors.
 
 The order, from strongest to weakest (v4's `get_file_security()`, kept exactly): `T_N/F`, `F`,
 `T_N/C`, `T/C`, `T_N`, `T/*`, `T_N/all`, `T_N/*`, `*/C`, `T`, `*`.
