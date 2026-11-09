@@ -51,6 +51,16 @@ final class BoundaryTest extends TestCase
         $this->assertSame(null, $boundary->resolve("$this->dir/class/.hidden"));
     }
 
+    public function testServerSideFilesUnderOtherNames(): void
+    {
+        foreach (['a.php', 'a.PHP5', 'a.phtml', 'a.phps', 'a.pht', 'db.inc', 'grades.php~', 'db.php.bak', 'x.inc.old', 'config.ini', '.htaccess'] as $name) {
+            $this->assertTrue(Boundary::neverServed($name), "never served: $name (L-28)");
+        }
+        foreach (['notes.html', 'phpinfo.pdf', 'include.txt', 'slides.pptx'] as $name) {
+            $this->assertFalse(Boundary::neverServed($name), "served: $name");
+        }
+    }
+
     public function testAConfigDirectoryElsewhereInTheCourseIsStillClosed(): void
     {
         $this->dir = Fixture::course();

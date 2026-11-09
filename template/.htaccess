@@ -1,7 +1,11 @@
 # The course root: never serve a name that starts with a dot (.git, .env, ...) or an .ini file,
-# anywhere under the course, also through calendar/ (M-12). Needs only AllowOverride AuthConfig.
+# anywhere under the course, also through calendar/ (M-12); never run or send a PHP file
+# except the endpoints calendar/php/<name>.php (L-27, L-28). Needs only AllowOverride AuthConfig.
 <IfModule mod_authz_core.c>
     <If "%{REQUEST_URI} =~ m#/\.(?!well-known/)# || %{REQUEST_URI} =~ m#\.ini$#i">
+        Require all denied
+    </If>
+    <If "(%{REQUEST_URI} =~ m#\.(php\d?|phtml|phar|phps|pht|inc)([.~][^/]*)?$#i) && !(%{REQUEST_URI} =~ m#/calendar/php/[a-z]+\.php$#)">
         Require all denied
     </If>
 </IfModule>

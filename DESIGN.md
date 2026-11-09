@@ -906,8 +906,9 @@ The plan:
 ## Deploying (Decided)
 
 - **Apache:** keep the `.htaccess` files the template ships: the one at the course root (it
-  refuses every name that starts with a dot, such as `.git/` when the course is kept in git, and
-  every `.ini` file, anywhere under the course, also through `calendar/`), and the deny-all
+  refuses every name that starts with a dot, such as `.git/` when the course is kept in git,
+  every `.ini` file, and every PHP file or PHP backup except `calendar/php/<name>.php`, anywhere
+  under the course, also through `calendar/`), and the deny-all
   files in `config/`, `pages/`, `shared/` and every event-type directory (add one to each new
   type). They need `AllowOverride AuthConfig` (or `All`) and Apache 2.4 for the dot rule. The
   repository's own `.htaccess` (in `calendar/`) refuses `calendar/template/`; `calendar/lib/` and

@@ -72,9 +72,13 @@ final class Boundary
         return substr($real, strlen($this->real) + 1);
     }
 
-    /** Files that are never sent: server-side scripts and configuration. */
+    /**
+     * Files that are never sent: server-side scripts (also under other names and as backup
+     * copies: .phps, .pht, .inc, grades.php~, db.php.bak, L-28) and configuration.
+     */
     public static function neverServed(string $name): bool
     {
-        return (bool) preg_match('/\.(php\d?|phtml|phar|ini|htaccess|htpasswd)$/i', $name);
+        return (bool) preg_match('/\.(php\d?|phtml|phar|phps|pht|inc|ini|htaccess|htpasswd)$/i', $name)
+            || (bool) preg_match('/\.(php\d?|phtml|phps|inc|ini)[.~][^\/]*$/i', $name);
     }
 }

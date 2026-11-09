@@ -31,4 +31,6 @@ sed -i 's/^secret   = .*/secret   = 0123456789abcdef0123456789abcdef0123456789ab
 hash="$(php -r 'echo password_hash("smoke-test-password", PASSWORD_DEFAULT);')"
 printf 'password_hash = %s\ninstructor = true\nvalid = always\n' "$hash" > "$course/config/auth/prof.ini"
 mkdir -p "$course/.git" && echo 'ref: refs/heads/main' > "$course/.git/HEAD"   # a course kept in git
+mkdir -p "$course/tools" && echo '<?php echo "RAN-DIRECTLY";' > "$course/tools/report.php"   # stray PHP
+echo '<?php $db_password = "x";' > "$course/backup.php~" && cp "$course/backup.php~" "$course/db.inc"
 chmod -R a+rX "$software" "$course"
