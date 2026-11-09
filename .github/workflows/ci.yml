@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# a newer push to the same branch cancels the run it supersedes
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     name: Tests (PHP ${{ matrix.php }}, server time zone ${{ matrix.timezone }})
