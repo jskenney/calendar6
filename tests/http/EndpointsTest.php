@@ -315,7 +315,12 @@ HTML;
     {
         $client = $this->start();
         $this->assertSame(405, $client->get('calendar/php/auth.php')->status);
-        $this->assertSame(403, $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD])->status, 'no token');
+        $noToken = $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD]);
+        $this->assertSame(403, $noToken->status, 'no token');
+        $this->assertSame('', $noToken->header('set-cookie'), 'and no session is created (L-43)');
+        $cross = $client->get('calendar/php/config.php?csrf=1', ['Sec-Fetch-Site' => 'cross-site']);
+        $this->assertSame(null, $cross->json()['csrf'], 'a cross-site csrf=1 creates no session (L-43)');
+        $this->assertSame('', $cross->header('set-cookie'));
         $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
         $wrong = $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => 'nope', 'csrf' => $csrf]);
         $this->assertSame(401, $wrong->status);
@@ -397,11 +402,18 @@ HTML;
         $this->assertNotContains('img/pic.png', json_encode($data['events']['class_1']['files']), 'nested files are not listed');
 
         preg_match('/name="csrf" value="([^"]+)"/', $client->get("calendar/php/html.php?file=$first")->body, $t);
-        for ($i = 0; $i < 10; $i++) {
+        $wrong = $client->post("calendar/php/html.php?file=$first", ['lock' => 'wrong', 'csrf' => $t[1] ?? '']);
+        $this->assertSame(303, $wrong->status);
+        $this->assertNotContains('cal6_', $wrong->header("set-cookie"), 'a wrong code creates no session (L-43)');
+        for ($i = 0; $i < 18; $i++) {
             $this->assertSame(303, $client->post("calendar/php/html.php?file=$first", ['lock' => "wrong$i", 'csrf' => $t[1] ?? ''])->status);
         }
+        $right = $client->post("calendar/php/html.php?file=$first", ['lock' => 'sesame', 'csrf' => $t[1] ?? '']);
+        $this->assertSame(303, $right->status, 'twenty tries per address and page; a right code does not count (M-31)');
+        $this->assertContains('cal6_', $right->header("set-cookie"), 'and makes the session');
+        $this->assertSame(303, $client->post("calendar/php/html.php?file=$first", ['lock' => 'last', 'csrf' => $t[1] ?? ''])->status);
         $limited = $client->post("calendar/php/html.php?file=$first", ['lock' => 'sesame', 'csrf' => $t[1] ?? '']);
-        $this->assertSame(429, $limited->status, 'lock codes are rate limited per address');
+        $this->assertSame(429, $limited->status, 'then lock codes are limited per address and page');
     }
 
     public function testConfigShapeAndMarkdown(): void

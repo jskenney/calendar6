@@ -24,7 +24,9 @@ final class ConfigEndpoint
         }
         // A session (and its CSRF token) only when one exists or is asked for with
         // ?csrf=1 (a login form), so anonymous visitors leave no session files (L-12).
-        $viewer = $c->viewer($c->query('csrf') === '1');
+        // A cross-site request (Sec-Fetch-Site, sent by current browsers) never creates one (L-43).
+        $crossSite = strtolower((string) ($c->server['HTTP_SEC_FETCH_SITE'] ?? '')) === 'cross-site';
+        $viewer = $c->viewer($c->query('csrf') === '1' && !$crossSite);
         $csrf = Session::isOpen() ? Session::csrf() : null;
         Session::close();
         Response::json(self::data($c->config, $c) + [

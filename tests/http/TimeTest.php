@@ -124,6 +124,13 @@ final class TimeTest extends TestCase
         $this->assertSame(429, $post($attacker, 'prof', 'bad-b', '203.0.113.51'), 'and the next waits: parallel guesses do not get through (M-18)');
         $this->assertSame(429, $post($attacker, 'prof', 'bad-c', '2001:db8::1'), 'IPv6 too');
         $this->assertSame(200, $post($prof, 'prof', Fixture::PASSWORD, '198.51.100.8'), 'a browser that logged in before is not gated: no lockout');
+        $token = (string) $prof->get('calendar/php/config.php')->json()['csrf'];
+        $prof->post('calendar/php/auth.php', ['csrf' => $token]);
+        for ($i = 0; $i < 4; $i++) { // a shared address (campus NAT) fills its per-address bucket (4 x 1)
+            $post($attacker, "user$i", 'bad', '203.0.113.99');
+        }
+        $this->assertSame(429, $post($attacker, 'other', 'bad', '203.0.113.99'), 'the address is blocked');
+        $this->assertSame(200, $post($prof, 'prof', Fixture::PASSWORD, '203.0.113.99'), 'but not for a browser that logged in before (M-31)');
         $this->at('2026-10-01 10:00:01');
         $this->assertSame(401, $post($attacker, 'prof', 'bad-d', '203.0.113.52'), 'a second later, one more attempt');
     }

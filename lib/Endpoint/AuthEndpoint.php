@@ -59,8 +59,10 @@ final class AuthEndpoint
             Response::error(405, 'POST only', ['Allow: POST']);
             return;
         }
-        Session::start($c, true);
-        if (!Session::checkCsrf($c->post('csrf'))) {
+        // only an existing session (made by config.php?csrf=1) can carry a valid token, so a
+        // cross-site POST creates none (L-43)
+        Session::start($c, false);
+        if (!Session::isOpen() || !Session::checkCsrf($c->post('csrf'))) {
             Session::close();
             Response::error(403, 'the form has expired: reload the page');
             return;
@@ -78,12 +80,13 @@ final class AuthEndpoint
             return;
         }
 
-        // Limits (M-7, L-23, M-18): per address and username the configured number, and
-        // per address four times that, block (IPv6 counted per /64). Once a username has
+        // Limits (M-7, L-23, M-18, M-31): per address and username the configured number,
+        // and per address four times that, block (IPv6 counted per /64). Once a username has
         // ten times that many failures from anywhere, its attempts pass one per second
-        // (the others get 429 at once, nobody sleeps), except from a browser that has
-        // logged in as that user before (a signed device cookie), so guesses from many
-        // addresses neither get far nor lock the real instructor out.
+        // (the others get 429 at once, nobody sleeps). A browser that has logged in as that
+        // user before (a signed device cookie) skips the per-address and per-user limits and
+        // keeps only its own address+username one, so guesses from many addresses, or from
+        // a shared address (campus NAT), neither get far nor lock the real instructor out.
         [$limit, $seconds] = $c->config->loginAttempts;
         $limiter = RateLimiter::forCourse($c->courseDir, $seconds);
         if (!$limiter->available()) {
@@ -94,7 +97,8 @@ final class AuthEndpoint
         }
         $user = strtolower($username);
         $address = RateLimiter::addressKey($c->address());
-        $keys = ['pair:' . $address . '|' . $user => $limit, 'address:' . $address => $limit * 4];
+        $known = self::knownDevice($c, $user);
+        $keys = ['pair:' . $address . '|' . $user => $limit] + ($known ? [] : ['address:' . $address => $limit * 4]);
         $recorded = [];
         foreach ($keys as $key => $max) {
             $wait = $limiter->hit($key, $c->now, $max);
@@ -108,9 +112,11 @@ final class AuthEndpoint
             }
             $recorded[] = $key;
         }
-        if ($limiter->hit('user:' . $user, $c->now, $limit * 10) === 0) {
+        if ($known) {
+            // a browser this user logged in from: only its own pair limit
+        } elseif ($limiter->hit('user:' . $user, $c->now, $limit * 10) === 0) {
             $recorded[] = 'user:' . $user;
-        } elseif (!self::knownDevice($c, $user)) {
+        } else {
             $wait = $limiter->gate('user:' . $user, $c->now, 1);
             if ($wait > 0) {
                 foreach ($recorded as $done) {

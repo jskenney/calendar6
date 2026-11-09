@@ -465,7 +465,10 @@ No `username`/`password`: log out. Any method other than POST: `405`.
   **one per second** (others get `429` with `Retry-After` at once; nobody waits on the server),
   except from a browser that has logged in as that user before: a successful login sets a
   signed device cookie (`cal6_device_<hash>`, 180 days, `HttpOnly`, `SameSite=Strict`) that skips
-  this gate. So guesses from many addresses neither get far nor lock the instructor out. Behind a reverse proxy, list it in
+  this gate and the per-address limit (only its own address-and-username limit stays). So
+  guesses from many addresses, or from an address the instructor shares (campus NAT), neither
+  get far nor lock the instructor out. A POST without an existing session is refused (`403`)
+  without creating one. Behind a reverse proxy, list it in
   `[server] trusted_proxies` so the client's address is used (see "Deploying").
 - Hardening: cookie flags `HttpOnly`, `Secure` (on HTTPS, also behind a trusted proxy that says
   so), `SameSite=Strict`; a session lifetime from `config.ini`; the login ends by itself when the
@@ -475,7 +478,8 @@ No `username`/`password`: log out. Any method other than POST: `405`.
 
 **Inputs:** `GET`. `csrf=1` (optional): start a session and include its CSRF token, for a login
 form. Without it, no session is created (anonymous visitors leave no session files), and `csrf`
-is `null` unless the browser already has a session.
+is `null` unless the browser already has a session. A cross-site request (`Sec-Fetch-Site:
+cross-site`) never creates one, so a link from another site can not plant a session.
 
 **Output:** what the front end needs to draw the site. It changes only when `config/*.ini`
 changes, apart from `viewer` and `csrf`.
@@ -617,7 +621,7 @@ never sent.
 |---|---|---|
 | `file` | yes | the key of a page (`.html`, `.htm`, `.md`), from `calendar.php` or a rewritten link |
 | `full=1` | no | a whole HTML document (the site's CSS, MathJax, highlight.js) for a new tab or printing, instead of the fragment the front end inserts |
-| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The form's `csrf` is a token signed from the page and the hour (valid for up to two hours), so showing a page with `<lock>` creates no session. The answer is `303` back to the page (`GET`), so a reload does not resend it. Rate limited per address |
+| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The form's `csrf` is a token signed from the page and the hour (valid for up to two hours), so showing a page with `<lock>` creates no session. The answer is `303` back to the page (`GET`), so a reload does not resend it. A session is created only for a matching code. Wrong codes are limited per address and page (four times `login_attempts`) and per address (twenty times); a right code does not count, so a classroom behind one address is not blocked by a few typos |
 | any other parameter | no | values for `<url value="...">` tags (HTML-escaped; a value with a URL scheme other than `http(s):`, such as `javascript:`, is ignored; remembered only in a session that already exists, so a link can not create or replace one) |
 
 **Output:** `text/html; charset=utf-8`, by default an HTML **fragment** (the page's body). The
@@ -1022,7 +1026,8 @@ Choices the code made where the design left room (change them here if they are w
 - **Keys:** 22 characters of base64url HMAC-SHA256.
 - **Sessions:** one cookie per course (`cal6_<hash>`, path = the course's URL), opened by
   read-only endpoints only when the browser already has it; created only by
-  `config.php?csrf=1`, `auth.php`, and a `<lock>` code sent to `html.php` (a POST).
+  `config.php?csrf=1` (not cross-site), a login, and a matching `<lock>` code sent to
+  `html.php` (a POST).
 - **html.php:** links to pages become `#/view/KEY`, other files the absolute path
   `/<course>/calendar/php/get.php?file=KEY`; links to files the viewer may not see keep their
   text but lose their target (`data-cal6-hidden`); links to files that do not exist are left as

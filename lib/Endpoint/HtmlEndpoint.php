@@ -45,7 +45,8 @@ final class HtmlEndpoint
         $key = (string) $c->query('file');
         $course = $c->course();
         $place = $course->place($key);
-        $viewer = $c->viewer($method === 'POST');
+        // no session is created before the checks: only a matching lock code makes one (L-43)
+        $viewer = $c->viewer();
         $policy = new Policy($course);
         // pages only (.html, .htm, .md, by name and real file), never a server-side file behind a link (L-22)
         if ($place === null || $place->file->kind() !== 'page' || Boundary::neverServed($place->file->realPath)
@@ -66,18 +67,33 @@ final class HtmlEndpoint
             }
             $code = trim((string) $c->post('lock'));
             if ($code !== '') {
+                // per address and page four times the login limit, per address twenty times it,
+                // and a right code does not count, so a classroom behind one address is not
+                // blocked by a few typos (M-31)
                 $limiter = RateLimiter::forCourse($c->courseDir, $c->config->loginAttempts[1]);
-                $wait = $limiter->hit('lock:' . RateLimiter::addressKey($c->address()), $c->now, $c->config->loginAttempts[0] * 2);
-                if ($wait > 0) {
-                    Session::close();
-                    Response::error($limiter->available() ? 429 : 503, 'too many attempts: try again later', ['Retry-After: ' . $wait]);
-                    return;
+                $address = RateLimiter::addressKey($c->address());
+                $keys = ["lock:$address|" . $place->key => $c->config->loginAttempts[0] * 4, "lock:$address" => $c->config->loginAttempts[0] * 20];
+                $recorded = [];
+                foreach ($keys as $limitKey => $max) {
+                    $wait = $limiter->hit($limitKey, $c->now, $max);
+                    if ($wait > 0) {
+                        foreach ($recorded as $done) {
+                            $limiter->forgive($done);
+                        }
+                        Session::close();
+                        Response::error($limiter->available() ? 429 : 503, 'too many attempts: try again later', ['Retry-After: ' . $wait]);
+                        return;
+                    }
+                    $recorded[] = $limitKey;
                 }
                 if (PageRenderer::codeMatches($code, PageRenderer::lockCodes($source))) {
+                    Session::start($c, true);
                     $unlocked = (array) Session::get('unlocked', []);
                     $unlocked[] = $code;
                     Session::set('unlocked', array_values(array_unique($unlocked)));
-                    $limiter->forgive('lock:' . RateLimiter::addressKey($c->address()));
+                    foreach ($recorded as $done) {
+                        $limiter->forgive($done);
+                    }
                 }
             }
             // answer with a redirect, so reloading the page does not send the form again (L-6)
