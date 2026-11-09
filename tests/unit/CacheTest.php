@@ -75,18 +75,25 @@ final class CacheTest extends TestCase
 
     public function testSoftwareVersionFollowsContentsNotTimes(): void
     {
-        $software = new \ReflectionProperty(Fingerprint::class, 'software');
-        $software->setValue(null, null);
-        $first = Fingerprint::software();
-        $file = dirname(__DIR__, 2) . '/lib/Version.php';
-        file_put_contents($file, "<?php\n// a same-size change\n");
-        $mtime = (int) filemtime($file);
-        $software->setValue(null, null);
-        $changed = Fingerprint::software();
-        unlink($file);
-        $software->setValue(null, null);
-        $this->assertTrue($first !== $changed, 'a new file changes the version (L-18)');
-        $this->assertSame($first, Fingerprint::software(), 'and removing it restores it: contents, not times');
-        $this->assertTrue($mtime > 0);
+        // on a copy of lib/ and php/, never on the repository itself (T-10)
+        $this->outside = sys_get_temp_dir() . '/cal6-software-' . bin2hex(random_bytes(4));
+        mkdir("$this->outside/lib/Http", 0777, true);
+        mkdir("$this->outside/php");
+        file_put_contents("$this->outside/lib/Http/A.php", "<?php // one\n");
+        file_put_contents("$this->outside/php/get.php", "<?php // get\n");
+        $first = Fingerprint::softwareOf($this->outside);
+        touch("$this->outside/lib/Http/A.php", time() - 3600);
+        $this->assertSame($first, Fingerprint::softwareOf($this->outside), 'a new time alone is not a new version');
+        file_put_contents("$this->outside/lib/Http/A.php", "<?php // two\n");
+        touch("$this->outside/lib/Http/A.php", time() - 3600);
+        $this->assertTrue($first !== Fingerprint::softwareOf($this->outside), 'a same-size change with an old time is (L-18)');
+        $this->assertSame(Fingerprint::softwareOf(dirname(__DIR__, 2)), Fingerprint::software(), 'the running software');
+        unlink("$this->outside/lib/Http/A.php");
+        unlink("$this->outside/php/get.php");
+        rmdir("$this->outside/lib/Http");
+        rmdir("$this->outside/lib");
+        rmdir("$this->outside/php");
+        rmdir($this->outside);
+        $this->outside = '';
     }
 }

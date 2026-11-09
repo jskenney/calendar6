@@ -23,25 +23,30 @@ final class Fingerprint
      */
     public static function software(): string
     {
-        if (self::$software === null) {
-            $context = hash_init('sha1');
-            $root = dirname(__DIR__, 2);
-            foreach (['lib', 'php'] as $dir) {
-                $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator("$root/$dir", \FilesystemIterator::SKIP_DOTS));
-                $list = [];
-                foreach ($files as $file) {
-                    if ($file->isFile() && str_ends_with($file->getFilename(), '.php')) {
-                        $list[substr($file->getPathname(), strlen($root))] = (string) hash_file('sha1', $file->getPathname());
-                    }
-                }
-                ksort($list);
-                foreach ($list as $name => $stat) {
-                    hash_update($context, "$name\0$stat\n");
+        return self::$software ??= self::softwareOf(dirname(__DIR__, 2));
+    }
+
+    /** The version of the software in $root (its lib/ and php/ directories). */
+    public static function softwareOf(string $root): string
+    {
+        $context = hash_init('sha1');
+        foreach (['lib', 'php'] as $dir) {
+            if (!is_dir("$root/$dir")) {
+                continue;
+            }
+            $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator("$root/$dir", \FilesystemIterator::SKIP_DOTS));
+            $list = [];
+            foreach ($files as $file) {
+                if ($file->isFile() && str_ends_with($file->getFilename(), '.php')) {
+                    $list[substr($file->getPathname(), strlen($root))] = (string) hash_file('sha1', $file->getPathname());
                 }
             }
-            self::$software = hash_final($context);
+            ksort($list);
+            foreach ($list as $name => $hash) {
+                hash_update($context, "$name\0$hash\n");
+            }
         }
-        return self::$software;
+        return hash_final($context);
     }
 
     /** The cache key for a course: its fingerprint and the software's. */

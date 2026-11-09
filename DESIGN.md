@@ -934,9 +934,10 @@ Choices the code made where the design left room (change them here if they are w
 - **Finding the course:** the endpoints refuse to run (500) unless the script was reached as
   `course/calendar/php/...` and `course/calendar` resolves to the running code; `config.ini`
   must have a real `secret` (32+ characters), or nothing is served.
-- **Caching:** a fingerprint of the course directory (the names, sizes and modification times of
-  everything in it except `calendar/`, following links only while they stay inside) keys two
-  caches: the built course model (shared by every endpoint, signed with the course secret) and
+- **Caching:** the cache key combines a fingerprint of the course directory (the names, sizes and
+  modification times of everything in it except `calendar/`, following links only while they
+  stay inside) with the software's version (a hash of the contents of its `lib/` and `php/`
+  files, so an update never serves what older code built). It keys two caches: the built course model (shared by every endpoint, signed with the course secret) and
   `calendar.php`'s answer per viewer (valid until `next_change`). Both live in
   `<temp>/cal6-<uid>-<hash of course path>/`, used only when that directory is ours and closed
   to others.
