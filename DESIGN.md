@@ -71,7 +71,7 @@ AB123/                        the course's web directory
 │   ├── paths.ini             where the course's own pages are (resources, policy, ...)
 │   ├── virtual.ini           files shown in an event but stored elsewhere
 │   ├── duplicate.ini         events that are used again (class 5 also as class 6)
-│   ├── periods.ini           the school's periods, per bell schedule
+│   ├── periods.ini           the school's periods, per period schedule
 │   ├── sections.ini          the course's sections: meetings, instructors, rooms (optional)
 │   └── auth/
 │       └── <username>.ini    one file per user, instructors included
@@ -143,7 +143,7 @@ ranges `class_20..27`, lists `class_6,8,22`); in every file **the later line win
 number   = AB123
 name     = Web and Internet Programming
 timezone = America/New_York
-bell     = normal                 ; the default bell schedule in periods.ini
+period   = normal                 ; the default period schedule in periods.ini
 ; secret: used to make file keys; never sent to the browser. Generate one with
 ;   php -r 'echo bin2hex(random_bytes(32)), "\n";'
 secret   = REPLACE-WITH-64-HEX-DIGITS
@@ -154,11 +154,13 @@ end      = 2026-12-18
 weekends = no                     ; yes: Saturday and Sunday can hold events too
 
 [schedule]
-; The one course calendar: which event types fall on which weekday, in order (class 1, 2, 3 ...
-; on the class days). Times come from sections.ini; without it they may be given here
-; (mon = class 08:00-08:50).
+; The one course calendar: the event type of each weekday (one type per day; days not listed
+; have no events). Events are placed in order: class 1, 2, 3 ... on the class days.
+; dates.ini can change any single day. Times come from sections.ini; a course without
+; sections.ini may give them here (mon = class 08:00-08:50).
 mon = class
-tue = class, lab
+tue = class
+wed = lab
 fri = class
 
 [types]
@@ -181,7 +183,6 @@ instructor        = instructor.html             | Instructor
 [access]
 ; lockdown: from then on anonymous viewers only see what an "always" rule decides
 ;lockdown    = 2026-12-18 17:00
-postmeeting = end                 ; <postmeeting>: end (of the meeting) | HH:MM | off
 
 [users]
 valid          = 2026-08-24 until 2026-12-18 23:59   ; the default window for auth/*.ini
@@ -201,24 +202,29 @@ Each line is a window (a day, or several) and what happens then, optionally with
 
 ```ini
 [days]
-2026-09-07                  = holiday            | Labor Day
-2026-10-12                  = holiday            | Columbus Day
-2026-10-13                  = mon                | Monday schedule
-2026-11-11                  = holiday            | Veterans Day
-2026-11-25 until 2026-11-27 = holiday            | Thanksgiving
-;2026-12-03                 = bell 2_hour_delay  | 2-hour delay (snow)
-;2026-12-04                 = holiday            | Snow day
+2026-09-07                  = holiday             | Labor Day
+2026-10-12                  = holiday             | Columbus Day
+2026-10-13                  = mon                 | Monday schedule
+2026-10-14                  = lab                 | Lab day
+2026-11-11                  = holiday             | Veterans Day
+2026-11-25 until 2026-11-27 = holiday             | Thanksgiving
+;2026-12-03                 = period 2_hour_delay | 2-hour delay (snow)
+;2026-12-04                 = holiday             | Snow day
 ```
 
 - `holiday` / `none`: no events that day (`holiday` is shown as such).
-- `bell <schedule>`: a bell schedule from `periods.ini` for the day (times change, lessons do not).
-- `mon` ... `sun`: that day follows another weekday's schedule.
-- `type HH:MM-HH:MM, ...`: that day's own meetings.
+- `class`, `lab`, ... (Decided): that day is that type of day, overriding `config.ini`'s
+  `[schedule]` (`2026-10-14 = lab`).
+- `mon` ... `sun`: that day follows another weekday's schedule (its type, and the sections that
+  meet on that weekday).
+- `period <schedule>`: a period schedule from `periods.ini` for the day (times change, lessons do
+  not).
+- A type or weekday can be combined with a period schedule: `mon, period early`.
 - A window with times affects only meetings that start inside it.
 - Events are placed on the days that have meetings of their type, in order; a holiday moves the
   following events of that type to the next meeting.
 
-### Sections, periods and bell schedules (Decided)
+### Sections, periods and period schedules (Decided)
 
 A course can be one instructor with one section, or a dozen instructors with 30 sections that
 meet on different days and periods. Decided:
@@ -237,10 +243,10 @@ meet on different days and periods. Decided:
 So sections and periods are **information**, not scheduling: they say when and where each
 section meets, so the site can show it, and they give `start` / `end` a meaning.
 
-#### `periods.ini`: the school's periods, per bell schedule
+#### `periods.ini`: the school's periods, per period schedule
 
 The full file ships in `template/config/periods.ini` (the default for every course). Each
-`[bell schedule]` lists its periods; a period that is not listed does not exist in that schedule
+`[period schedule]` lists its periods; a period that is not listed does not exist in that schedule
 (NA), and `cancelled` means it exists but does not meet:
 
 ```ini
@@ -259,7 +265,7 @@ label = 4 Hour Delay
 ```
 
 A copy lives in each course (the course directory is the boundary). `config.ini` names the
-default (`[course] bell = normal`).
+default (`[course] period = normal`).
 
 #### `sections.ini`: the course's sections
 
@@ -273,31 +279,34 @@ room       = HP111
 [4345]
 meets      = MF4, R34
 instructor = JONES
-room       = HP132
+room       = HP132, HP301    ; one room per entry of meets: Thursday's R34 meets in HP301
 ```
 
 - Periods are read greedily as `X`, `10`, then single digits (there is no period 0, so `T910`
   is 9 and 10).
+- `room`: one room for every meeting, or one per entry of `meets`, in order (Decided). A count
+  that matches neither is listed as a problem for the instructor.
 - `instructor` is a display name (several: `SMITH, LEE`); it does not have to be a user in
   `auth/`.
 - Optional. Without `sections.ini`, `config.ini`'s `[schedule]` may give times directly
   (`mon = class 08:00-08:50`), which suits a one-section course.
 
-#### `dates.ini` picks the bell schedule for a day
+#### `dates.ini` picks the period schedule for a day
 
 ```ini
-2026-12-03 = bell 2_hour_delay         | 2-hour delay (snow)
-2026-10-13 = mon, bell early           | Monday schedule, early start
+2026-12-03 = period 2_hour_delay       | 2-hour delay (snow)
+2026-10-13 = mon, period early         | Monday schedule, early start
+2026-10-14 = lab                       | Lab day
 2026-12-04 = holiday                   | Snow day (the calendar moves)
 ```
 
 #### What is shown
 
 - **The course calendar** shows lessons by day, without times, rooms or instructors (with a dozen
-  instructors that is noise). A day with a different bell schedule is labelled ("2-hour delay").
+  instructors that is noise). A day with a different period schedule is labelled ("2-hour delay").
 - **A section picker** (proposed): a viewer may choose a section; the browser remembers it (it is
   not secret, so `localStorage` is fine). Then the calendar adds that section's meeting time and
-  room on the days it meets, adjusted for the day's bell schedule ("period 6: 15:45-16:35"), and a
+  room on the days it meets, adjusted for the day's period schedule ("period 6: 15:45-16:35"), and a
   "Sections" page lists every section, its meetings, instructor and room.
 - **One section:** its times are shown without picking.
 
@@ -308,11 +317,12 @@ Rules are measured from the lesson's date on the one calendar, so nothing differ
 | In a rule | Means |
 |---|---|
 | `+N`, `-N`, `-monday` | from the lesson's calendar date |
-| `start` | the earliest meeting start of any section on that date (with that day's bell schedule) |
+| `start` | the **first section of the day**: the earliest meeting start of any section on that date, with that day's period schedule (`start-15m` = 15 minutes before it) |
 | `end` | the latest meeting end of any section on that date |
 
-`<postmeeting>` opens at `end`, so answers stay hidden until every section that meets on the
-lesson's day has met. Without sections, `start` / `end` come from `[schedule]` times (00:00 /
+`<postmeeting>` content opens at `end`, so answers stay hidden until every section that meets on
+the lesson's day has met. This is fixed (Decided), so `config.ini` has no setting for it.
+Without sections, `start` / `end` come from `[schedule]` times (00:00 /
 end of day without them).
 
 ### `paths.ini` (Decided: the course's own pages)
@@ -432,14 +442,14 @@ changes, apart from `viewer` and `csrf`.
 {
   "course":   {"number": "AB123", "name": "Web and Internet Programming", "timezone": "America/New_York"},
   "semester": {"start": "2026-08-24", "end": "2026-12-18"},
-  "schedule": {"mon": ["class"], "tue": ["class", "lab"], "fri": ["class"]},
+  "schedule": {"mon": "class", "tue": "class", "wed": "lab", "fri": "class"},
   "days":     [{"date": "2026-10-13", "as": "mon", "label": "Monday schedule"},
                {"date": "2026-11-25", "until": "2026-11-27", "kind": "holiday", "label": "Thanksgiving"},
-               {"date": "2026-12-03", "bell": "2_hour_delay", "label": "2-hour delay (snow)"}],
-  "bells":    {"normal": {"label": "Normal", "periods": {"1": "07:45-08:35", "4": "10:45-11:35"}},
-               "2_hour_delay": {"label": "2 Hour Delay", "periods": {"1": "09:45-10:35", "4": "13:45-14:35"}}},
-  "sections": [{"section": "1121", "meets": "MF1, T12", "instructor": "SMITH", "room": "HP111"},
-               {"section": "4345", "meets": "MF4, R34", "instructor": "JONES", "room": "HP132"}],
+               {"date": "2026-12-03", "period": "2_hour_delay", "label": "2-hour delay (snow)"}],
+  "periods":  {"normal": {"label": "Normal", "times": {"1": "07:45-08:35", "4": "10:45-11:35"}},
+               "2_hour_delay": {"label": "2 Hour Delay", "times": {"1": "09:45-10:35", "4": "13:45-14:35"}}},
+  "sections": [{"section": "1121", "meetings": [{"meets": "MF1", "room": "HP111"}, {"meets": "T12", "room": "HP111"}], "instructor": "SMITH"},
+               {"section": "4345", "meetings": [{"meets": "MF4", "room": "HP132"}, {"meets": "R34", "room": "HP301"}], "instructor": "JONES"}],
   "types":    {"class": {"label": "Class"}, "lab": {"label": "Lab"}, "exam": {"label": "Exam"}},
   "boxes":    [{"box": "title", "label": "Lecture"}, {"box": "homework", "label": "Homework"},
                {"box": "lab-solution", "label": "Solution"}],
@@ -577,7 +587,7 @@ All are handled in `html.php`, so hidden content never reaches the browser:
 |---|---|
 | `<inst>` ... `</inst>` | only for instructors (`instructor = true`) |
 | `<student>` ... `</student>` | answers behind a "reveal" icon (sent to everyone, hidden only visually, as v4) |
-| `<postmeeting>` ... `</postmeeting>` | shown once the event's meeting is over |
+| `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times) |
 | `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it) |
 | `<host server="name">` ... `</host>` | shown only when served by that server |
 | `<inject src="file">` | another file of the event, processed as part of the page |

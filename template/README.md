@@ -40,4 +40,4 @@ course_directory/
 All paths in the `.ini` files are relative to the course directory, and nothing outside it is
 ever served.
 
-`config/periods.ini` is the school's default bell schedule; keep it unless the periods change.
+`config/periods.ini` holds the school's period schedules; keep it unless the periods change.
