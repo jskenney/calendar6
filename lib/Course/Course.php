@@ -102,9 +102,10 @@ final class Course
         $secret = $this->config->secret;
         foreach ($this->events as $event) {
             ksort($event->files, SORT_STRING);
-            $boxes = $this->boxesOf($event);
+            [$boxes, $assets] = $this->boxesOf($event);
             foreach ($event->files as $name => $file) {
-                $place = new Place(Keys::make($secret, $event->id . '/' . $name), $file, $event, null, $boxes[$name] ?? null);
+                $place = new Place(Keys::make($secret, $event->id . '/' . $name), $file, $event, null,
+                    $boxes[$name] ?? $assets[$name] ?? null, isset($assets[$name]));
                 $this->places[$place->key] = $place;
                 $this->keysByEvent[$event->id][$name] = $place->key;
             }
@@ -164,7 +165,14 @@ final class Course
         }
     }
 
-    /** @return array<string, string> file name => box: the first candidate found fills each box */
+    /**
+     * Which files fill which box (the first candidate found fills each box), and the
+     * box assets (M-3): a file whose name starts with a box file's name without its
+     * extension, followed by "-", "_", "." or "/" (lab-solution-figure.png,
+     * lab-solution/fig.png), follows that box's rule; the longest such name wins.
+     *
+     * @return array{0: array<string, string>, 1: array<string, string>} file => box, asset => box
+     */
     public function boxesOf(ScheduledEvent $event): array
     {
         $boxes = [];
@@ -176,7 +184,24 @@ final class Course
                 }
             }
         }
-        return $boxes;
+        $stems = [];
+        foreach ($boxes as $file => $box) {
+            $stems[(string) preg_replace('/\.[^.\/]+$/', '', $file)] = $box;
+        }
+        uksort($stems, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
+        $assets = [];
+        foreach (array_keys($event->files) as $name) {
+            if (isset($boxes[$name])) {
+                continue;
+            }
+            foreach ($stems as $stem => $box) {
+                if (strlen($name) > strlen($stem) && str_starts_with($name, $stem) && in_array($name[strlen($stem)], ['-', '_', '.', '/'], true)) {
+                    $assets[$name] = $box;
+                    break;
+                }
+            }
+        }
+        return [$boxes, $assets];
     }
 
     public function place(string $key): ?Place

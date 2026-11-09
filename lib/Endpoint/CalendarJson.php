@@ -68,9 +68,12 @@ final class CalendarJson
                         $item['opens'] = $this->c->iso($anonymousView->opens);
                     }
                 }
-                if ($place->box !== null) {
+                if ($place->box !== null && !$place->asset) {
                     $boxes[$place->box][] = $item;
                 } else {
+                    if ($place->asset) {
+                        $item['box'] = $place->box; // a box asset: it follows that box's rule
+                    }
                     $files[] = $item;
                 }
             }

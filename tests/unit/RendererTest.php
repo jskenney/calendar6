@@ -70,4 +70,21 @@ final class RendererTest extends TestCase
         $this->assertSame(2, substr_count($class, 'get.php?file=', strpos($class, 'srcset')), 'srcset: the hidden candidate is dropped (L-9)');
         $this->assertContains(' 3x"', $class);
     }
+
+    public function testInjectObeysReleaseRules(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<inject src="answers.html"><inject src="../02.Two/index.html"><inject src="../../shared/part.html"><codeinject src="../02.Two/index.html">',
+            'class/01.Introduction/answers.html' => 'HIDDEN-ANSWERS',
+            'class/02.Two/index.html' => 'OTHER-EVENT',
+            'shared/part.html' => 'SHARED-PART',
+            'config/default.ini' => "class_1 = always\nclass_1/answers.html = never\nclass_2 = never\n",
+        ]);
+        $page = $this->render($course, 'class_1/index.html');
+        $this->assertNotContains('HIDDEN-ANSWERS', $page, 'a hidden file of the same event (M-2)');
+        $this->assertNotContains('OTHER-EVENT', $page, 'a hidden event, also with <codeinject>');
+        $this->assertContains('SHARED-PART', $page, 'files outside the events');
+        $prof = Viewer::account($course->config, 'prof');
+        $this->assertContains('HIDDEN-ANSWERS', $this->render($course, 'class_1/index.html', [], $prof), 'instructors');
+    }
 }

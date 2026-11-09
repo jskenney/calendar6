@@ -98,6 +98,21 @@ INI;
         $this->assertSame('class_3 = never', $decision->rule?->describe());
     }
 
+    public function testBoxAssetsFollowTheirBox(): void
+    {
+        $course = $this->load([
+            'lab/01.Setup/lab-solution-figure.png' => 'P',
+            'lab/01.Setup/lab-solution/data.csv' => 'x',
+            'lab/01.Setup/lab.png' => 'P',
+        ]);
+        $now = self::now($course);
+        $anon = Viewer::anonymous();
+        $this->assertFalse(self::sees($course, $anon, 'lab_1/lab-solution-figure.png', $now), 'lab/lab-solution = never covers its assets (M-3)');
+        $this->assertFalse(self::sees($course, $anon, 'lab_1/lab-solution/data.csv', $now), 'and a directory named after it');
+        $this->assertTrue(self::sees($course, $anon, 'lab_1/lab.png', $now), 'other files follow the event');
+        $this->assertTrue(self::sees($course, $anon, 'lab_1/index.html', $now));
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);

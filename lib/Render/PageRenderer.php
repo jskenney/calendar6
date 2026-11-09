@@ -83,7 +83,7 @@ final class PageRenderer
         return preg_replace_callback('/<(code)?inject\b[^>]*>/i', function (array $m) use ($dir, $depth): string {
             $src = self::attribute($m[0], 'src');
             $real = $src === null ? null : $this->course->boundary->resolve($dir . '/' . $src);
-            if ($real === null || !is_file($real) || Boundary::neverServed($real)) {
+            if ($real === null || !is_file($real) || Boundary::neverServed($real) || !$this->mayInject($real)) {
                 return '';
             }
             if (($m[1] ?? '') !== '') {
@@ -92,6 +92,26 @@ final class PageRenderer
             $inner = $this->load($real);
             return $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1) : $inner;
         }, $html) ?? $html;
+    }
+
+    /**
+     * An injected file obeys its own release rule (M-2): a file with a key must be
+     * visible to this viewer; a file without one may be injected only from outside
+     * the event directories (shared/, pages/, ...).
+     */
+    private function mayInject(string $real): bool
+    {
+        $keys = $this->course->byRealPath[$real] ?? [];
+        foreach ($keys as $key) {
+            if ($this->policy->decide($this->viewer, $this->course->places[$key], $this->now)->visible) {
+                return true;
+            }
+        }
+        if ($keys !== []) {
+            return false;
+        }
+        $first = explode('/', $this->course->boundary->relative($real))[0];
+        return !isset($this->course->config->types[$first]);
     }
 
     /** <calphp src="file.php">: runs the course's own PHP file and puts its output in place, as-is. */
