@@ -714,7 +714,7 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | R12 | **A semester-end lockdown** | the block at the top of the example |
 | R13 | **Virtual files** (v4 `$CLASS_FILE`, now `virtual.ini`: a file shown in an event but stored elsewhere) are checked under both names; the stricter answer wins (Calendar 5 behaviour; v4 mixed them up) | `notes.html  homework/homework01.html  lab  1` |
 | R14 | **Events that are on no calendar day** are never shown to anonymous viewers | a third exam folder with two exam days |
-| R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable file** hides everything (fail closed) | |
+| R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable or missing file** hides everything from anonymous viewers (fail closed, Calendar 6 also for a missing one) | |
 | R16 | **Paths with spaces** | tab-separated lines |
 
 Targets are **not** case-sensitive (Decided, M-14): `Class_1/Notes.html`, `class_1/notes.html` and

@@ -56,7 +56,12 @@ final class Course
         $course->indexPlaces();
 
         $default = $course->config->ini('default.ini');
-        $course->rulesUnreadable = $default->exists && !$default->readable;
+        // no usable release rules: anonymous viewers see nothing (fail closed), also when the
+        // file is missing or misnamed (M-19)
+        $course->rulesUnreadable = !$default->exists || !$default->readable;
+        if (!$default->exists) {
+            $course->problems[] = new Problem('config/default.ini is missing: nothing is shown to anonymous viewers until it exists', 'default.ini');
+        }
         $course->rules = Rules::fromIni($default);
         array_push($course->problems, ...$course->rules->problems);
         foreach ($course->rules->overridden as $note) {

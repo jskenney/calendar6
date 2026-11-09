@@ -232,6 +232,14 @@ INI;
         $this->assertTrue(self::sees($course, Viewer::anonymous(), 'page/2027', $now));
     }
 
+    public function testAMissingDefaultIniHidesEverything(): void
+    {
+        $course = $this->load(['config/default.ini' => null]);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/index.html', self::now($course)), 'a missing default.ini fails closed (M-19)');
+        $this->assertContains('default.ini is missing', implode("\n", array_map(static fn ($p): string => $p->message, $course->problems)));
+        $this->assertTrue(self::sees($course, Viewer::account($course->config, 'prof'), 'class_1/index.html', self::now($course)), 'instructors still see everything');
+    }
+
     public function testUnreadableRulesHideEverything(): void
     {
         $course = $this->load(['config/default.ini' => null]);
