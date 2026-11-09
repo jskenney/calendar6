@@ -136,56 +136,184 @@ personalised answers (`Cache-Control: private, no-store`), and JSON as
 `application/json; charset=utf-8`. Errors are JSON too (`{"error": "..."}`) with the right
 status code (400, 401, 403, 404, 405, 429).
 
+Every request is answered for **the current viewer**: anonymous, or the user stored in the PHP
+session by `auth.php`. Requests that change something (`auth.php`, a lock code sent to
+`html.php`) must carry the session's **CSRF token**, which `config.php` hands out.
+
 ### `auth.php` (Decided: POST only, session, JSON)
 
-- `POST username + password`: checks `config/auth/<username>.ini` (hashed password,
-  `password_verify`), checks the account's `valid` window, then stores the login in the
-  PHP session and returns `{"user": "...", "valid_until": "...", "grants": [...]}`.
-- `POST` without credentials: logs out (destroys the login) and returns `{"user": null}`.
-- Anything other than POST: `405`.
-- Proposed hardening: a new session id at login (`session_regenerate_id`), cookie flags
-  `HttpOnly`, `Secure` (on HTTPS), `SameSite=Strict`; rate limiting of failed logins per
-  address and per username; constant-time comparisons; a session lifetime from `config.ini`.
-  Because it is a JSON POST from our own page, a CSRF token is cheap to add (the token comes
-  with `config.php`); proposed, so another site can not log a user out or in.
+**Inputs** (`POST`, form-encoded or JSON):
+
+| Field | Required | Meaning |
+|---|---|---|
+| `username` | to log in | the name of a file in `config/auth/` (letters, digits, `.`, `_`, `-` only) |
+| `password` | to log in | checked with `password_verify` against `password_hash` |
+| `csrf` | always | the token from `config.php` |
+
+No `username`/`password`: log out. Any method other than POST: `405`.
+
+**Output:**
+
+```json
+{"user": "jdoe", "instructor": false, "valid_until": "2026-12-18T17:00:00-05:00", "csrf": "q9Xb..."}
+```
+
+```json
+{"user": null, "instructor": false, "csrf": "Lm2c..."}
+```
+
+```json
+{"error": "Wrong username or password."}
+```
+
+- Logged in: `200`, the first form. The session id is replaced, so a **new CSRF token** comes
+  back. Grants are not listed (they could name hidden files); `calendar.php` shows their effect.
+- Logged out: `200`, the second form (also a new token).
+- Wrong password, unknown user, or outside the account's `valid` window: `401`, the same message
+  for all three. Too many failures: `429` with `Retry-After`. Bad or missing token: `403`.
+- Hardening: cookie flags `HttpOnly`, `Secure` (on HTTPS), `SameSite=Strict`; rate limiting per
+  address and per username; a session lifetime from `config.ini`; the login ends by itself when
+  the `valid` window does.
 
 ### `config.php` (Decided: the site config without secrets)
 
-Returns what the front end needs to draw the site: course number and name, semester dates,
-weekly schedule, the days from `dates.ini`, box names and labels, menus, time zone, and the
-current viewer (`anonymous` or the username). Never: password hashes, the secret, file paths
-on the server, or the content of `default.ini` / `auth/`.
+**Inputs:** `GET`, none.
 
-### `calendar.php` (Decided: everything this viewer may see)
+**Output:** what the front end needs to draw the site. It changes only when `config/*.ini`
+changes, apart from `viewer` and `csrf`.
 
-Walks the course's material, applies the access rules for the current viewer (anonymous, or
-the logged-in user's extra grants) **at this moment**, and returns one JSON document: every
-calendar day, its events, and for each event the boxes and files the viewer may see, each with
-its **key**, kind (page / file), and title. Things the viewer may not see are left out
-entirely (not marked hidden), except, proposed, an "opens at" time when the rules allow showing
-that something is coming.
+```json
+{
+  "course":   {"number": "AB123", "name": "Web and Internet Programming", "timezone": "America/New_York"},
+  "semester": {"start": "2026-08-24", "end": "2026-12-18"},
+  "schedule": {"mon": [{"type": "class", "start": "08:00", "end": "08:50"}],
+               "tue": [{"type": "lab",   "start": "13:30", "end": "15:20"}]},
+  "days":     [{"date": "2026-10-13", "as": "mon", "label": "Monday schedule"},
+               {"date": "2026-11-25", "until": "2026-11-27", "kind": "holiday", "label": "Thanksgiving"}],
+  "types":    {"class": {"label": "Class"}, "lab": {"label": "Lab"}, "exam": {"label": "Exam"}},
+  "boxes":    [{"box": "title", "label": "Lecture"}, {"box": "homework", "label": "Homework"},
+               {"box": "lab-solution", "label": "Solution"}],
+  "replace":  {"classyear": "27"},
+  "viewer":   {"user": null, "instructor": false},
+  "csrf":     "Lm2c..."
+}
+```
 
-Proposed: cache the walk of the file system per course (invalidated by modification times) and
-apply only the per-viewer access filter per request; send an `ETag`.
+Never included: password hashes, the secret, server file paths, `default.ini`, `auth/`, lock
+codes, the lockdown date (its effect shows in `calendar.php`).
+
+### `calendar.php` (Decided: everything this viewer may see, cached)
+
+**Inputs:** `GET`, none for everyone. For instructors only (ignored otherwise):
+
+| Field | Meaning |
+|---|---|
+| `as=anonymous` or `as=<username>` | the answer that viewer would get |
+| `at=YYYY-MM-DD HH:MM` | the answer at that moment instead of now |
+
+**Output:** the calendar days, the events on them, and for each event the boxes and files the
+viewer may see, with their keys. Things the viewer may not see are left out entirely.
+
+```json
+{
+  "generated":   "2026-11-09T14:05:00-05:00",
+  "next_change": "2026-11-10T08:00:00-05:00",
+  "viewer":      {"user": "jdoe", "instructor": false},
+  "pages":  [{"name": "policy", "title": "Policy", "key": "p7Kq2"}],
+  "days": [
+    {"date": "2026-11-09", "events": ["class_30", "lab_10"]},
+    {"date": "2026-11-11", "events": ["class_5@2026-11-11"]},
+    {"date": "2026-11-26", "kind": "holiday", "label": "Thanksgiving", "events": []}
+  ],
+  "events": {
+    "class_30": {
+      "type": "class", "number": 30, "title": "Sessions and Cookies",
+      "date": "2026-11-09", "start": "08:00", "end": "08:50",
+      "boxes": [
+        {"box": "title",    "files": [{"name": "index.html", "key": "a1Xc9", "kind": "page"}]},
+        {"box": "homework", "files": [{"name": "homework.html", "key": "b4Rt0", "kind": "page"}]}
+      ],
+      "files": [{"name": "slides.pdf", "key": "c8Ld3", "kind": "file", "size": 482113}]
+    },
+    "lab_10": {"type": "lab", "number": 10, "title": "Cookies", "date": "2026-11-09",
+               "boxes": [], "files": [], "opens": "2026-11-10T08:00:00-05:00"},
+    "class_5@2026-11-11": {"type": "class", "number": 5, "title": "Forms", "date": "2026-11-11",
+                "copy_of": "class_5", "mode": "same", "boxes": [], "files": []}
+  }
+}
+```
+
+- `boxes` follow the order of `config.php`'s `boxes`; `files` are the event's other files (v4's
+  Files menu). `kind` says which script serves it: `page` → `html.php`, `file` → `get.php`.
+- `opens`: the next time something in the event becomes visible to this viewer (proposed: only
+  when the rule that hides it is a date, not `never`).
+- `copy_of` / `mode`: an event from `duplicate.ini`. A `same` repeat is shown under the source's
+  number, so its id adds the date (`class_5@2026-11-11`); its files have their own keys, since
+  relative rules can give each showing a different window. Events on no calendar day are left out.
+- **Instructors** get everything, with each hidden file marked:
+  `{"name": "solution.html", "key": "d2Wq7", "kind": "page", "visible": false, "rule":
+  "lab/lab-solution = +7 17:00", "opens": "2026-11-16T17:00:00-05:00"}`, events on no calendar
+  day (with `"date": null`), and `problems` (bad lines in the `.ini` files, overridden lines,
+  material directories that can be fetched directly).
+
+**Caching (Decided: cache when possible):**
+
+1. **The course model** (the walk of the material, `config/*.ini`, `virtual.ini`,
+   `duplicate.ini`, parsed rules) is stored in a cache file per course and reused while nothing
+   changed: the check compares the modification times of `config/`'s files, the type
+   directories, the event directories and the real files of `virtual.ini` (adding, removing or
+   renaming a file changes its directory's time; boxes depend only on names).
+2. **The answer per viewer** is stored too: one answer shared by all anonymous viewers, one per
+   user. It stays valid until `next_change`, the earliest moment at which any rule, grant,
+   window or lockdown changes what that viewer sees, or until the course model changes. So most
+   requests are one `stat()` sweep and one file read.
+3. **HTTP:** `ETag` (a hash of the answer) and `Cache-Control: private, no-cache`; the browser
+   asks again each time and gets `304 Not Modified` when nothing changed. (Not `public`: the
+   answer depends on the session cookie.)
+4. Not cached: instructors' `as` / `at` previews.
+5. The cache lives outside the web root (proposed: the system temporary directory, in a folder
+   named by a hash of the course path), and is only a speed-up: deleting it is always safe.
 
 ### `get.php` (Decided: one file by key, with the right MIME type)
 
-`get.php?file=KEY`: looks the key up, **checks the access rule for the current viewer again**
-(a key alone never grants access), and streams the file with its MIME type, `Content-Length`,
-`Range` support (video, large PDFs), and inline/attachment by type. Unknown key or not allowed:
-`404` (the same answer for both, so hidden files can not be discovered). Server-side scripts
-(`.php` and similar) are never sent.
+**Inputs:**
+
+| Field | Required | Meaning |
+|---|---|---|
+| `file` | yes | the key, from `calendar.php` or a rewritten link |
+| `download=1` | no | send as an attachment instead of inline |
+| header `Range` | no | part of the file (video, large PDFs): `206 Partial Content` |
+| header `If-None-Match` / `If-Modified-Since` | no | `304` when unchanged |
+
+`GET` and `HEAD` only. The key is looked up and **the access rule is checked again for the
+current viewer** (a key alone never grants access); then the file is streamed with its MIME
+type, `Content-Length`, `Accept-Ranges`, `ETag`, `Last-Modified`, `Cache-Control: private`, and
+inline or attachment by type (HTML and SVG always as attachments, so they can not run as pages
+of the site). Unknown key or not allowed: `404`, the same answer for both. `.php` files are
+never sent.
 
 ### `html.php` (Decided: one HTML page by key, processed inline)
 
-`html.php?file=KEY`: the same key lookup and access check as `get.php`, then the page is
-processed and returned as `text/html`:
+**Inputs:**
+
+| Field | Required | Meaning |
+|---|---|---|
+| `file` | yes | the key of a page (`.html`, `.htm`, `.md`), from `calendar.php` or a rewritten link |
+| `full=1` | no | a whole HTML document (the site's CSS, MathJax, highlight.js) for a new tab or printing, instead of the fragment the front end inserts |
+| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session and the page comes back unlocked. Rate limited like logins |
+| any other parameter | no | values for `<url value="...">` tags (HTML-escaped, remembered in the session, as v4) |
+
+**Output:** `text/html; charset=utf-8`, by default an HTML **fragment** (the page's body). The
+same key lookup and access check as `get.php`; unknown or not allowed: `404`. Then the page is
+processed:
 
 - links to files of the same event are rewritten to keys, as Calendar 4 does: `<img src="pic.png">`
-  becomes `php/get.php?file=KEY`, `<a href="notes.html">` becomes `php/html.php?file=KEY` (or the
-  front end's route to it), `<source src>`, `<a href>` to downloads, ...;
+  becomes `php/get.php?file=KEY`, `<a href="notes.html">` becomes the front end's route
+  `#/view/KEY`, `<a href="data.zip">` becomes `php/get.php?file=KEY`, and `<source src>`,
+  `<video poster>` the same; links to files the viewer may not see are left as plain text;
 - every Calendar 4 tag except `<ace>` is processed on the server (see "Tags");
-- `<a name>` anchors (and `##` headings in Markdown) become the page's menu, as in v4;
+- `<a name>` anchors (and `##` headings in Markdown) get ids; the front end builds the page's menu
+  from them, as v4 did on the server;
 - **JavaScript is passed through unchanged** (Decided): `<script>` elements and inline handlers
   reach the browser as written. The front end runs them after placing the page (see "The front
   end").
@@ -196,7 +324,7 @@ All are handled in `html.php`, so hidden content never reaches the browser:
 
 | Tag | Meaning |
 |---|---|
-| `<inst>` ... `</inst>` | only for instructors (users with `*`) |
+| `<inst>` ... `</inst>` | only for instructors (`instructor = true`) |
 | `<student>` ... `</student>` | answers behind a "reveal" icon (sent to everyone, hidden only visually, as v4) |
 | `<postmeeting>` ... `</postmeeting>` | shown once the event's meeting is over |
 | `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it) |
@@ -225,7 +353,7 @@ page. `.php` files are never sent by `get.php`, so their source stays private.
 |---|---|
 | **Anonymous** | What `default.ini` releases, at the times it says |
 | **A user** (`auth/<username>.ini`) | Everything anonymous sees, plus the user's **grants**, during the user's valid period |
-| **Instructor** (Decided) | Everything, always, and `<inst>` content: a user in `auth/` whose grants include `*` |
+| **Instructor** (Decided) | Everything, always, and `<inst>` content: a user in `auth/` with `instructor = true` |
 
 ### Dates, times and windows (Decided)
 
@@ -336,6 +464,7 @@ future enhancement.
 
 ```ini
 password_hash = $2y$12$...          ; password_hash(), never plain text
+instructor    = false               ; true: complete access (every file, always, and <inst>)
 valid         = 2026-08-24 until 2026-12-18 17:00   ; optional window; default from config.ini
 
 [grants]                            ; the same targets and "when" as default.ini
@@ -346,7 +475,9 @@ exam_2             = 2026-11-06 08:00 until 2026-11-06 11:50   ; extra time
 class_20..27       = always                             ; ranges work in grants too
 ```
 
-An instructor is the same kind of file with `* = always` under `[grants]`.
+An instructor is the same kind of file with `instructor = true` (Decided); grants are then not
+needed. The `valid` window still applies, so a teaching assistant can be an instructor for a
+semester only.
 
 **How grants combine with `default.ini` (proposed):** a user's rules are `default.ini` with the
 user's grants laid over it (a grant replaces the rule for the same target), evaluated with the
@@ -363,11 +494,10 @@ Because the precedence is the same, a grant behaves like the rule it replaces:
 | `lab_6/notes.html` | one file | |
 | `lab` | every lab, as `lab_6` | boxes with their own rule |
 | `lab/lab-solution` | the solution box of every lab | |
-| `*` | everything, always (the instructor) | - |
+| `*` | as v4: the weakest target, so only what no other rule decides | most things |
 
 This matches the first notes, which list lab 6 **and** its solution as separate grants.
-`*` is the one exception: in v4 order it would lose to every other rule, so it is checked first
-and means "everything".
+Complete access is not a grant: it is `instructor = true`.
 
 ## Keys (Proposed)
 
@@ -418,7 +548,7 @@ pointer to any one course. Instead:
 | 1 | Material layout | Calendar 4's: `class/<sort>.<Title>/`, boxes by file name |
 | 2 | Compatibility | None required; a converter is a future enhancement |
 | 3 | Pointer file | None: `<course>/config/`, found from the request path |
-| 4 | Instructor | A user in `config/auth/` with the grant `*` |
+| 4 | Instructor | A user in `config/auth/` with `instructor = true` |
 | 5 | Scripts in pages | JavaScript passed through; PHP only through `<calphp>`, output passed through |
 | 6 | Tags | Every Calendar 4 tag except `<ace>`; Ace removed |
 | 7 | Search | Removed (with `<keyword>` / `<search>`) |
