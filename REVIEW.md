@@ -12,13 +12,12 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-No critical, high or medium item is open. Open now:
+No critical, high, medium or low item is open. Open now:
 
-1. **L-19**: the deployment setup script deletes fixed paths; guard it before anyone runs it on a
-   real server.
-2. **L-18**, then **DOC-9**.
-3. **T-9** (an nginx deployment job), when nginx deployments matter.
-4. **E** items as the front end (E-1) needs them; E-1 is the next big piece of work.
+1. **T-10**: keep the tests from writing into the repository.
+2. **DOC-10**: one note in `DESIGN.md`.
+3. **E** items as the front end (E-1) needs them; E-1 is the next big piece of work, then
+   E-5 (`bin/cal6 check`, `user add`), E-4 (a login log), E-3 (CSP), E-7 (a status view).
 
 ## Critical
 
@@ -34,22 +33,19 @@ None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-18 | 3 | `lib/Http/Fingerprint.php` | The software version is a hash of the names, sizes and modification times of `lib/` and `php/` files; a deployment that keeps times and sizes (`rsync -t` of a same-size edit, or files restored from an archive) would not invalidate the caches. | Add a `Version` constant to the hash (bumped by each release), or hash file contents when the stat data is unchanged since a recorded deploy. |
-| L-19 | 3 | `tests/deploy/apache-setup.sh` | The script removes `/opt/calendar6` and `/var/www/html/AB123` and rewrites Apache's configuration without asking; it says "CI, or a throwaway machine", but run by mistake on a real server it deletes a course called AB123. | Refuse to run unless `CI=true` or `--yes` is given, and refuse when the target exists and was not made by the script (a marker file). |
+None open.
 
 ## Documentation
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| DOC-9 | 3 | `README.md` | The README's test section does not mention the deployment smoke test (`tests/deploy/`) or the test clock (`CAL6_TEST_CLOCK`, built-in server only). | Two short paragraphs. |
+| DOC-10 | 4 | `DESIGN.md` ("Implementation notes", Caching) | The caching note still describes the cache key as the course fingerprint only; since `0118054`/`f87fe96` it also contains a hash of the software's files. | Update the note. |
 
 ## Testing
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| T-9 | 3 | `.github/workflows/ci.yml` | Only Apache is tested as a real deployment; the nginx rules in "Deploying" (dot files, `.ini`, the protected directories, `SCRIPT_FILENAME` from `$document_root$fastcgi_script_name`) are untested. | A second deployment job with nginx + PHP-FPM running `tests/deploy/smoke.php`. |
+| T-10 | 4 | `tests/unit/CacheTest.php:81` | `testSoftwareVersionFollowsContentsNotTimes` writes `lib/Version.php` into the repository for a moment; if the test is interrupted, the file stays and changes the software version (and `git status`). | Point `Fingerprint::software()` at a directory the test can choose (a parameter or a test copy of `lib/`), or remove the file in a `finally`. |
 
 ## Enhancements
 
@@ -97,6 +93,8 @@ None open.
 | L-15 | 2 | `b07f6bf` | The cached model contains the course configuration, including `[course] secret` (confirmed), in the private temporary directory. It is protected like the sessions (owner-only directory), but the secret now exists in a second place. | The model cache stores neither the secret nor the parsed `.ini` files; the secret comes back from `config.ini`. |
 | L-16 | 2 | `b07f6bf` | One counter file per address, address+username and username, never removed: someone trying many usernames or addresses grows the directory without limit. | The rate limiter sweeps old counters (1 request in 100) and keeps at most 20000 files. |
 | L-17 | 2 | `b07f6bf` | Logging out removes the login but keeps the session's unlocked `<lock>` codes and `<url>` values, so the next person at a shared computer still sees unlocked sections. | Logging out clears the whole session. |
+| L-18 | 3 | `f87fe96` | The software version is a hash of the names, sizes and modification times of `lib/` and `php/` files; a deployment that keeps times and sizes (`rsync -t` of a same-size edit, or files restored from an archive) would not invalidate the caches. | The software version hashes the contents of the `lib/` and `php/` files, not their times or sizes. |
+| L-19 | 3 | `f3ae06e` | The script removes `/opt/calendar6` and `/var/www/html/AB123` and rewrites Apache's configuration without asking; it says "CI, or a throwaway machine", but run by mistake on a real server it deletes a course called AB123. | `tests/deploy/course-setup.sh` (used by both setup scripts) runs only with `--yes` or `CI=true` and never replaces a directory without its marker file; a unit test checks the refusal. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -105,6 +103,7 @@ None open.
 | DOC-6 | 1 | `f686841` | The template's `index.html` redirects to `calendar/app/`, which does not exist yet. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-7 | 2 | `b07f6bf` | Targets are case-sensitive (`Class_1` is not `class_1`, `Notes.html` is not `notes.html`), as in v4; not written down. | Targets are case-sensitive: in `DESIGN.md` and the template. |
 | DOC-8 | 2 | `8ff3e50` | The nginx notes deny `calendar/lib/` and `calendar/tests/` but not `calendar/template/` or dot files (`.git`) anywhere under the course. | `template/.htaccess` at the course root refuses dot names and `.ini` files everywhere (needs only `AllowOverride AuthConfig`); nginx equivalents documented; `tests/deploy/` serves a template course with Apache + PHP-FPM through a `calendar` link and checks it, in CI. |
+| DOC-9 | 3 | `68d3125` | The README's test section does not mention the deployment smoke test (`tests/deploy/`) or the test clock (`CAL6_TEST_CLOCK`, built-in server only). | README: the test clock and the deployment checks (`smoke.php`, the setup scripts, the reference nginx configuration). |
 | T-1 | 1 | `628734a`, `467a23d` | No tests for the course boundary: a material link that leads outside the course or into `config/`, `virtual.ini` with `..` or an absolute path, `paths.ini` outside the course, `<inject src="../../config/config.ini">`, `<calphp>` outside. These are the core security promises. | `BoundaryTest`, renderer boundary cases, `TemplateTest`. |
 | T-2 | 1 | `467a23d` | Nothing checks that `template/` itself loads without problems, although every new course starts from it. | `BoundaryTest`, renderer boundary cases, `TemplateTest`. |
 | T-3 | 1 | `9870c0b` | Time-dependent behaviour is only tested in unit tests: the HTTP tests can not move the clock, so the cache expiring at `next_change`, `<postmeeting>` before the meeting ends, session expiry and an account window ending during a session are untested end to end. | `CAL6_TEST_CLOCK` (built-in server only) and `tests/http/TimeTest.php`. |
@@ -113,6 +112,7 @@ None open.
 | T-6 | 1 | `8be0d30`, `8cb4efd` | `config.php` `days` and `sections`, and Markdown pages, are only checked lightly. | New cases in `PolicyTest`, `RendererTest` and `EndpointsTest`. |
 | T-7 | 2 | `0118054` | Nothing checks that the caches are dropped when the software changes (M-11). | Cache keys combine the course fingerprint with `Fingerprint::software()`, a hash of the software's PHP files. |
 | T-8 | 2 | `8cb4efd` | `X-Forwarded-For` from a trusted proxy is tested, `X-Forwarded-Proto` (the `Secure` cookie behind a proxy) and an untrusted sender of both headers are not. | New cases in `PolicyTest`, `RendererTest` and `EndpointsTest`. |
+| T-9 | 3 | `f3ae06e` | Only Apache is tested as a real deployment; the nginx rules in "Deploying" (dot files, `.ini`, the protected directories, `SCRIPT_FILENAME` from `$document_root$fastcgi_script_name`) are untested. | `tests/deploy/nginx-site.conf` (a complete, tested server block) and `nginx-setup.sh`; a CI job serves a linked course with nginx + PHP-FPM and runs the smoke test. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
@@ -123,6 +123,7 @@ None open.
 | 1 | 2026-11-09 | `ca77445` | everything: `lib/`, `php/`, `tests/`, `template/`, `DESIGN.md` | H-1..H-3, M-1..M-10, L-1..L-14, DOC-1..DOC-6, T-1..T-6, E-1..E-7 |
 | 2 | 2026-11-09 | `467a23d` | everything again, after fixing every H, M, L and DOC item of review 1 (`29ca3f2`..`467a23d`) | M-11, M-12, L-15..L-17, DOC-7, DOC-8, T-7, T-8 |
 | 3 | 2026-11-09 | `78086bf` | everything again, after fixing every M, L, DOC and T item of review 2 (`0118054`..`8cb4efd`); the dot-file rule probed on a real Apache with encoded paths (`%2egit`, `.%67it`, `config%2eini`, `..%2f`): all refused | L-18, L-19, DOC-9, T-9 |
+| 4 | 2026-11-09 | `68d3125` | everything again, after fixing every L, DOC and T item of review 3 (`f87fe96`..`68d3125`); both deployments (Apache and nginx + PHP-FPM) probed with encoded paths; CI green on all four jobs | DOC-10, T-10 |
 
 ## CI notes
 
