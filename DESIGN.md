@@ -59,7 +59,7 @@ status code (400, 401, 403, 404, 405, 429).
 ### `auth.php` (Decided: POST only, session, JSON)
 
 - `POST username + password`: checks `config/auth/<username>.ini` (hashed password,
-  `password_verify`), checks the account's valid-from / valid-to, then stores the login in the
+  `password_verify`), checks the account's `valid` window, then stores the login in the
   PHP session and returns `{"user": "...", "valid_until": "...", "grants": [...]}`.
 - `POST` without credentials: logs out (destroys the login) and returns `{"user": null}`.
 - Anything other than POST: `405`.
@@ -119,6 +119,28 @@ processed and returned as `text/html`:
 | **A user** (`auth/<username>.ini`) | Everything anonymous sees, plus the user's **grants**, during the user's valid period |
 | **Instructor** (proposed) | Everything, always: a user with the grant `*` |
 
+### Dates, times and windows (Decided)
+
+Every date and time a person writes, in every file, uses one grammar:
+
+```
+window := when [ "until" when ]        ; the time in which the thing is available
+when   := "always" | "never"
+        | YYYY-MM-DD [HH:MM]           ; absolute, in the course time zone
+        | (+|-)N [HH:MM]               ; N days after / before the event's date
+        | (+|-)weekday [HH:MM]         ; -monday: on or before; +monday: strictly after
+        | start [(+|-)N(m|h)] | end    ; the meeting's start / end time (config.ini schedule)
+```
+
+- **Dates are `YYYY-MM-DD`**, everywhere. v4's `M D Y` and `M D` are not read; the converter
+  rewrites them (`1 1 1999` becomes `always`, `99 99 9999` becomes `never`).
+- **`HH:MM` (24-hour) is allowed everywhere** a date is. Without it, an opening time is 00:00 and
+  an `until` date means through the end of that day (`until 2026-10-22` includes the 22nd).
+- **Everything is a window:** `open until close`, visible when `open <= now < close`. A relative
+  `until` is measured from the event, like the opening time. Without `until`, it stays available.
+- This applies to: `default.ini` rules, grants, an account's validity, the lockdown, and the days
+  in `dates.ini` (`2026-11-25 until 2026-11-27 = holiday`).
+
 ### `default.ini` (Decided: when things are available to anonymous users)
 
 Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manual
@@ -151,9 +173,7 @@ The order, from strongest to weakest (v4's `get_file_security()`, kept exactly):
 and targets may contain spaces (R16, no more tabs).
 
 ```ini
-# when := always | never | YYYY-MM-DD [HH:MM] | (+|-)N [HH:MM] | (+|-)weekday [HH:MM]
-#         | start[(+|-)N(m|h)] | end        ; the meeting's start/end time, from config.ini
-#         optionally followed by: until <when>
+# target = window   (see "Dates, times and windows")
 class_1                 = always
 class/notes             = always
 class/instructor        = never
@@ -166,6 +186,9 @@ exam                    = never
 class_20..27            = never              ; R11: a range
 class_20..27/notes      = never              ; a range with a box
 class_25                = always             ; R9: later line wins, so class 25 is open
+class/quiz.html         = start until end    ; only during the meeting
+exam_2/notes            = 2026-11-06 08:00 until 2026-11-06 09:50
+lab/slides              = -monday 08:00 until +14 23:59
 ```
 
 Decided:
@@ -177,18 +200,16 @@ Decided:
 - **Ranges** (R11): `class_20..27` is the same as eight lines, `class_20` ... `class_27`, written
   where the range is, so a later line for one of them still wins. Allowed wherever `T_N` is:
   `class_20..27/notes`, `class_20..27/slides.pdf`.
-- **Lockdown** (R12) is a setting: `config.ini` `[access] lockdown = 2026-12-18` (optionally
-  with a time). From then on, anonymous viewers see a file only when the rule that decides it is
+- **Lockdown** (R12) is a setting, a window like everything else: `config.ini` `[access]
+  lockdown = 2026-12-18 17:00` (or `2026-12-18 17:00 until 2027-01-04 08:00` to end it). From then on, anonymous viewers see a file only when the rule that decides it is
   `always`. Precedence still runs, so in the example `class_1 = always` keeps class 1 open,
   `class/notes = always` keeps every class's notes open, and `class/instructor = never` still
   hides instructor material in class 1. Users' grants are not affected (they have their own
-  `valid_to`).
+  `valid` window).
 
 Proposed:
 
-- v4's `M D Y` and `M D` dates are not read; the converter rewrites them as `YYYY-MM-DD`
-  (`1 1 1999` becomes `always`, `99 99 9999` becomes `never`, a missing year comes from the
-  semester).
+- The converter fills a missing v4 year (`12 15`) from the semester.
 - The manual shows `class/01.Course Overview/intro.html` as a target, but v4 never matched
   course-relative paths (only `T_N/F` and `F`); Calendar 6 keeps that and writes it
   `class_1/intro.html`. The converter reports such lines.
@@ -204,7 +225,7 @@ These are decided per request on the server, so hidden content never reaches the
 | `<inst>` | only for the logged-in instructor | removed unless the viewer has `*` |
 | `<student>` | answers behind a "reveal" icon (sent to everyone, only hidden visually) | kept as is (it never protected anything) |
 | `<postmeeting>` | shown once the meeting is over | kept, decided on the server |
-| `<lock code="a,b">` | a section unlocked by a shared password | kept; a grant could also unlock it (`lock` = the code name?) |
+| `<lock code="a,b">` | a section unlocked by a shared password | kept, shared codes only (Decided); grants do not unlock it |
 | `<host server="name">` | shown only when served by that server | kept |
 
 Other v4 security behaviour to keep: names starting with a dot are ignored everywhere; content
@@ -216,21 +237,21 @@ lock codes are removed from any log.
 
 ```ini
 password_hash = $2y$12$...          ; password_hash(), never plain text
-valid_from    = 2026-08-24          ; optional: the default comes from config.ini
-valid_to      = 2026-12-18          ; optional
+valid         = 2026-08-24 until 2026-12-18 17:00   ; optional window; default from config.ini
 
 [grants]                            ; the same targets and "when" as default.ini
 lab_6              = always
-lab_6/lab-solution = always
+lab_6/lab-solution = +7 08:00 until +7 17:00             ; relative to lab 6, like default.ini
 lab/lab-solution   = 2026-10-15 13:30 until 2026-10-22   ; an extension, with its own window
-exam               = always
+exam_2             = 2026-11-06 08:00 until 2026-11-06 11:50   ; extra time
+class_20..27       = always                             ; ranges work in grants too
 ```
 
 **How grants combine with `default.ini` (proposed):** a user's rules are `default.ini` with the
 user's grants laid over it (a grant replaces the rule for the same target), evaluated with the
 **same precedence**. The user sees a file if anonymous viewers see it **or** the user's rules
-allow it, so a grant can only add, never hide. Grants apply only between `valid_from` and
-`valid_to`.
+allow it, so a grant can only add, never hide. Grants apply only inside the account's
+`valid` window, and each grant only inside its own window.
 
 Because the precedence is the same, a grant behaves like the rule it replaces:
 
@@ -308,4 +329,3 @@ The software is shared by many courses through a link, so a single JSON pointer 
    hash the password properly?
 10. **Root pages:** how `default.ini` and grants name pages outside events (`home`, `syllabus`,
     `policy`), for example `page/syllabus`.
-11. **`<lock>`:** keep shared codes only, or let a user's grant unlock a lock section too?
