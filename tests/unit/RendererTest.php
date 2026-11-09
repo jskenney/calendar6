@@ -354,6 +354,28 @@ final class RendererTest extends TestCase
         }
     }
 
+    public function testTagsAreProcessedOnlyWhereTheBrowserSeesTags(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/url.html' => '<button onclick="show(\'<url value="n" default="1">\')">x</button><script>var n = <url value="n" default="1">;</script><p><url value="n" default="1"></p>',
+            'class/01.Introduction/attr.html' => '<img alt="<inject src=\'secret.txt\'>" src="a.png"><p>A-END</p>',
+            'class/01.Introduction/secret.txt' => 'INJECTED',
+            'class/01.Introduction/lock.html' => '<lock code="a>b">LOCKED</lock>',
+            'class/01.Introduction/many.html' => str_repeat('<script></script><inject src="nope.html">', 20000),
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $place = static fn (string $f) => $course->places[$course->keysByEvent['class_1'][$f]];
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['n' => 'EVIL']))->render($place('url.html'));
+        $this->assertSame(1, substr_count($page, 'EVIL'), '<url> is substituted only in text, not in handlers or scripts (M-28): ' . $page);
+        $this->assertNotContains('INJECTED', $this->render($course, 'class_1/attr.html'), 'an <inject> inside an attribute value is text (L-47)');
+        $this->assertSame(['a>b'], PageRenderer::lockCodes('<lock code="a>b">x</lock>'), 'a lock code may contain > (L-45)');
+        $unlocked = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', ['a>b']))->render($place('lock.html'));
+        $this->assertContains('LOCKED', $unlocked, 'and unlocks');
+        $start = microtime(true);
+        $this->render($course, 'class_1/many.html');
+        $this->assertTrue(microtime(true) - $start < 3.0, 'many scripts and injects stay fast (L-44)');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

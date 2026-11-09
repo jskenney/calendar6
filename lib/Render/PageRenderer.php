@@ -114,40 +114,56 @@ final class PageRenderer
         return $out . substr($html, $pos);
     }
 
-    /** [start, end) of <script>/<style> bodies. @return list<array{0: int, 1: int}> */
-    private static function scriptRanges(string $html): array
+    /**
+     * Replaces the real tags named $names: only tags HtmlLexer sees, so a tag written inside a
+     * quoted attribute value or a <script>/<style> body is left alone (M-28, L-47), in one
+     * linear pass (L-44).  $fn gets the lower-case name and the tag's text; closing tags of the
+     * names in $dropClosing (</url>, </replace>) are removed.
+     *
+     * @param list<string> $names
+     * @param callable(string, string): string $fn
+     * @param list<string> $dropClosing
+     */
+    private static function replaceTags(string $html, array $names, callable $fn, array $dropClosing = []): string
     {
-        $ranges = [];
+        $out = '';
+        $pos = 0;
         foreach (HtmlLexer::scan($html) as $token) {
-            if ($token[0] === 'raw') {
-                $ranges[] = [$token[1], $token[2]];
+            if ($token[0] !== 'tag') {
+                continue;
             }
+            [, $start, $end, $name, $closing] = $token;
+            if ($closing ? !in_array($name, $dropClosing, true) : !in_array($name, $names, true)) {
+                continue;
+            }
+            $out .= substr($html, $pos, $start - $pos);
+            if (!$closing) {
+                $out .= $fn($name, substr($html, $start, $end - $start));
+            }
+            $pos = $end;
         }
-        return $ranges;
+        return $out . substr($html, $pos);
     }
 
-    /** @param list<array{0: int, 1: int}> $ranges */
-    private static function inRanges(int $offset, array $ranges): bool
+    /** The real tags named $name, as their text (for reading attributes). @return list<string> */
+    private static function tagsNamed(string $html, string $name): array
     {
-        foreach ($ranges as [$start, $end]) {
-            if ($offset >= $start && $offset < $end) {
-                return true;
+        $tags = [];
+        foreach (HtmlLexer::scan($html) as $token) {
+            if ($token[0] === 'tag' && !$token[4] && $token[3] === $name) {
+                $tags[] = substr($html, $token[1], $token[2] - $token[1]);
             }
         }
-        return false;
+        return $tags;
     }
 
     /** <inject src="file"> and <codeinject src="file">: relative to the page, inside the course. */
     private function injects(string $html, string $dir, int $depth, Place $place, array $ancestors = []): string
     {
-        $scripts = self::scriptRanges($html);
         $ancestors[] = $place->file->realPath;
-        return preg_replace_callback('/<(code)?inject\b[^>]*>/i', function (array $m) use ($dir, $depth, $place, $scripts, $ancestors): string {
-            if (self::inRanges($m[0][1], $scripts)) {
-                return $m[0][0]; // text inside a script or style body, not a tag (M-23)
-            }
-            $code = ($m[1][0] ?? '') !== '' && ($m[1][1] ?? -1) >= 0;
-            $m = [$m[0][0]];
+        return self::replaceTags($html, ['inject', 'codeinject'], function (string $name, string $tag) use ($dir, $depth, $place, $ancestors): string {
+            $code = $name === 'codeinject';
+            $m = [$tag];
             $src = self::attribute($m[0], 'src');
             $real = $src === null ? null : $this->course->boundary->resolve($dir . '/' . $src);
             if ($real === null || !is_file($real) || Boundary::neverServed($real) || !$this->mayInject($real)) {
@@ -175,7 +191,7 @@ final class PageRenderer
             $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1, $owner, [...$ancestors, $real]) : $inner;
             // its links, <calphp> and <showlink> are relative to the injected file, not the page (L-21)
             return dirname($real) === $dir ? $inner : self::rebase($inner, dirname($real), $dir);
-        }, $html, -1, $count, PREG_OFFSET_CAPTURE) ?? self::failed();
+        });
     }
 
     /** A page's source with the blocks this viewer may not see removed (for <codeinject>). */
@@ -243,7 +259,7 @@ final class PageRenderer
             }
             return self::relativePath($toDir, $fromDir . '/' . $url) . $suffix;
         };
-        $html = preg_replace_callback(self::LINK_ELEMENTS, static function (array $tag) use ($fix): string {
+        $html = self::replaceTags($html, self::LINK_ELEMENTS, static function (string $element, string $tag) use ($fix): string {
             return preg_replace_callback(self::LINK_ATTRIBUTES, static function (array $m) use ($fix): string {
                 $value = self::attributeValue($m);
                 if (strtolower($m[2]) === 'srcset') {
@@ -255,12 +271,12 @@ final class PageRenderer
                     $value = $fix($value);
                 }
                 return $m[1] . $m[2] . '="' . htmlspecialchars($value) . '"';
-            }, $tag[0]) ?? self::failed();
-        }, $html) ?? self::failed();
-        return preg_replace_callback('/<(calphp|showlink)\b[^>]*>/i', static function (array $m) use ($fix): string {
-            $src = self::attribute($m[0], 'src');
-            return $src === null ? $m[0] : '<' . $m[1] . ' src="' . htmlspecialchars($fix($src)) . '">';
-        }, $html) ?? self::failed();
+            }, $tag) ?? self::failed();
+        });
+        return self::replaceTags($html, ['calphp', 'showlink'], static function (string $name, string $tag) use ($fix): string {
+            $src = self::attribute($tag, 'src');
+            return $src === null ? $tag : '<' . $name . ' src="' . htmlspecialchars($fix($src)) . '">';
+        });
     }
 
     /** The relative path from directory $from to $to (both absolute, not resolved). */
@@ -291,12 +307,8 @@ final class PageRenderer
     /** <calphp src="file.php">: runs the course's own PHP file and puts its output in place, as-is. */
     private function calphp(string $html, string $dir, Place $place): string
     {
-        $scripts = self::scriptRanges($html);
-        return preg_replace_callback('/<calphp\b[^>]*>/i', function (array $m) use ($dir, $place, $scripts): string {
-            if (self::inRanges($m[0][1], $scripts)) {
-                return $m[0][0];
-            }
-            $m = [$m[0][0]];
+        return self::replaceTags($html, ['calphp'], function (string $name, string $tag) use ($dir, $place): string {
+            $m = [$tag];
             $src = self::attribute($m[0], 'src');
             $real = $src === null ? null : $this->course->boundary->resolve($dir . '/' . $src);
             if ($real === null || !is_file($real) || !preg_match('/\.php$/i', $real)) {
@@ -328,7 +340,7 @@ final class PageRenderer
             $placeholder = "\x00cal6-calphp-" . count($this->outputs) . "\x00";
             $this->outputs[$placeholder] = $output;
             return $placeholder;
-        }, $html, -1, $count, PREG_OFFSET_CAPTURE) ?? self::failed();
+        });
     }
 
     /** <postmeeting>: once the last section's meeting that day is over (instructors always). */
@@ -388,9 +400,8 @@ final class PageRenderer
     /** All lock codes on a page (to check a code that was sent). @return list<string> */
     public static function lockCodes(string $html): array
     {
-        preg_match_all('/<lock\b[^>]*>/i', $html, $m);
         $codes = [];
-        foreach ($m[0] as $tag) {
+        foreach (self::tagsNamed($html, 'lock') as $tag) { // read with the lexer, so a code may contain ">" (L-45)
             foreach (explode(',', (string) self::attribute($tag, 'code')) as $code) {
                 if (trim($code) !== '') {
                     $codes[] = trim($code);
@@ -413,17 +424,20 @@ final class PageRenderer
             'coursename' => $this->course->config->name,
         ];
         $values = $this->course->config->replace + $values; // not array_merge: numeric names (L-26)
-        $html = preg_replace_callback('/<replace\b[^>]*>/i', static function (array $m) use ($values): string {
-            $name = (string) self::attribute($m[0], 'value');
-            return htmlspecialchars($values[$name] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        }, $html) ?? self::failed();
-        return preg_replace('/<\/replace\s*>/i', '', $html) ?? self::failed();
+        return self::replaceTags($html, ['replace'], static function (string $name, string $tag) use ($values): string {
+            return htmlspecialchars($values[(string) self::attribute($tag, 'value')] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }, ['replace']);
     }
 
-    /** <url value="name" default="x">: from the page's URL (remembered in the session), HTML-escaped. */
+    /**
+     * <url value="name" default="x">: from the page's URL (remembered in an existing session),
+     * HTML-escaped.  Only a real tag in the page's text is replaced: one inside a script or
+     * style body or an attribute value (onclick, style, href) is not (M-28).
+     */
     private function url(string $html): string
     {
-        $html = preg_replace_callback('/<url\b[^>]*>/i', function (array $m): string {
+        return self::replaceTags($html, ['url'], function (string $tagName, string $tag): string {
+            $m = [$tag];
             $name = (string) self::attribute($m[0], 'value');
             if (isset($this->urlValues[$name]) && !self::hasUnsafeScheme($this->urlValues[$name])) {
                 $this->usedUrlValues[] = $name;
@@ -432,8 +446,7 @@ final class PageRenderer
                 $value = (string) self::attribute($m[0], 'default');
             }
             return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        }, $html) ?? self::failed();
-        return preg_replace('/<\/url\s*>/i', '', $html) ?? self::failed();
+        }, ['url']);
     }
 
     /** A value that would make a link run script (javascript:, data:, vbscript:, ...): only http(s) and plain text pass (L-39). */
@@ -445,23 +458,26 @@ final class PageRenderer
 
     private function showlinks(string $html, string $dir, Place $place): string
     {
-        return preg_replace_callback('/<showlink\b[^>]*>/i', function (array $m) use ($dir, $place): string {
-            $src = (string) self::attribute($m[0], 'src');
+        return self::replaceTags($html, ['showlink'], function (string $name, string $tag) use ($dir, $place): string {
+            $src = (string) self::attribute($tag, 'src');
             $target = $this->visiblePlace($place, $dir, $src);
             $text = htmlspecialchars(basename($src), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             return $target === null ? $text : '<a href="' . htmlspecialchars($this->urlFor($target, 'a')) . '">' . $text . '</a>';
-        }, $html) ?? self::failed();
+        });
     }
 
-    private const LINK_ELEMENTS = '/<(a|img|source|video|audio|track|iframe|embed|object|script|link)\b[^>]*>/i';
+    private const LINK_ELEMENTS = ['a', 'img', 'source', 'video', 'audio', 'track', 'iframe', 'embed', 'object', 'script', 'link'];
     private const LINK_ATTRIBUTES = '/(\s)(href|src|poster|data|srcset)\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i';
 
     /** The relative URLs a page links to (without #fragment or ?query). @return list<string> */
     public static function linkTargets(string $html): array
     {
         $links = [];
-        preg_match_all(self::LINK_ELEMENTS, $html, $tags);
-        foreach ($tags[0] as $tag) {
+        $tags = [];
+        foreach (self::LINK_ELEMENTS as $element) {
+            array_push($tags, ...self::tagsNamed($html, $element));
+        }
+        foreach ($tags as $tag) {
             preg_match_all(self::LINK_ATTRIBUTES, $tag, $attributes, PREG_SET_ORDER);
             foreach ($attributes as $m) {
                 $value = self::attributeValue($m);
@@ -483,8 +499,7 @@ final class PageRenderer
      */
     private function links(string $html, string $dir, Place $place): string
     {
-        return preg_replace_callback(self::LINK_ELEMENTS, function (array $tag) use ($dir, $place): string {
-            $element = strtolower($tag[1]);
+        return self::replaceTags($html, self::LINK_ELEMENTS, function (string $element, string $tag) use ($dir, $place): string {
             return preg_replace_callback(self::LINK_ATTRIBUTES, function (array $m) use ($dir, $place, $element): string {
                 $value = self::attributeValue($m);
                 if (strtolower($m[2]) === 'srcset') {
@@ -500,8 +515,8 @@ final class PageRenderer
                 }
                 $url = $this->rewrite($value, $dir, $place, $element);
                 return $url === null ? $m[1] . 'data-cal6-hidden="1"' : ($url === $value ? $m[0] : $m[1] . $m[2] . '="' . htmlspecialchars($url) . '"');
-            }, $tag[0]) ?? self::failed();
-        }, $html) ?? self::failed();
+            }, $tag) ?? self::failed();
+        });
     }
 
     /** The URL to use for a link: unchanged, a key URL, or null when it leads to a file the viewer may not see. */
