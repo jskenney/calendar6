@@ -6,6 +6,7 @@ namespace Cal6\Render;
 
 use Cal6\Access\Policy;
 use Cal6\Access\Viewer;
+use Cal6\Content\ContentFile;
 use Cal6\Course\Boundary;
 use Cal6\Course\Course;
 use Cal6\Course\Place;
@@ -48,7 +49,7 @@ final class PageRenderer
     /** The page after <inject>: what its <lock> codes are looked for in. */
     public function expandedSource(Place $place): string
     {
-        return $this->injects($this->load($place->file->realPath), dirname($place->file->realPath), 0);
+        return $this->injects($this->load($place->file->realPath), dirname($place->file->realPath), 0, $place);
     }
 
     /** Constant-time comparison of a code with each of the page's codes (L-5). @param list<string> $codes */
@@ -65,7 +66,7 @@ final class PageRenderer
     {
         $dir = dirname($place->file->realPath);
         $html = $this->load($place->file->realPath);
-        $html = $this->injects($html, $dir, 0);
+        $html = $this->injects($html, $dir, 0, $place);
         $html = $this->postmeeting($html, $place);
         $html = self::block($html, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
         $html = $this->host($html);
@@ -94,22 +95,45 @@ final class PageRenderer
     }
 
     /** <inject src="file"> and <codeinject src="file">: relative to the page, inside the course. */
-    private function injects(string $html, string $dir, int $depth): string
+    private function injects(string $html, string $dir, int $depth, Place $place): string
     {
-        return preg_replace_callback('/<(code)?inject\b[^>]*>/i', function (array $m) use ($dir, $depth): string {
+        return preg_replace_callback('/<(code)?inject\b[^>]*>/i', function (array $m) use ($dir, $depth, $place): string {
             $src = self::attribute($m[0], 'src');
             $real = $src === null ? null : $this->course->boundary->resolve($dir . '/' . $src);
             if ($real === null || !is_file($real) || Boundary::neverServed($real) || !$this->mayInject($real)) {
                 return '';
             }
             if (($m[1] ?? '') !== '') {
-                return htmlspecialchars((string) file_get_contents($real), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $source = (string) file_get_contents($real);
+                if (ContentFile::isPage($real)) {
+                    // the source of a page, shown as code, still loses what this viewer may
+                    // not see: raw page source never leaves the server (L-30, C-1)
+                    $source = $this->hideForSource($source, $place);
+                }
+                return htmlspecialchars($source, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
             $inner = $this->load($real);
-            $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1) : $inner;
+            $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1, $place) : $inner;
             // its links, <calphp> and <showlink> are relative to the injected file, not the page (L-21)
             return dirname($real) === $dir ? $inner : self::rebase($inner, dirname($real), $dir);
         }, $html) ?? self::failed();
+    }
+
+    /** A page's source with the blocks this viewer may not see removed (for <codeinject>). */
+    private function hideForSource(string $source, Place $place): string
+    {
+        $source = $this->postmeeting($source, $place);
+        $source = self::block($source, 'inst', fn (string $inner, string $opening): string => $this->viewer->instructor ? $opening . $inner . '</inst>' : '');
+        $source = $this->host($source);
+        return self::block($source, 'lock', function (string $inner, string $opening): string {
+            $codes = array_values(array_filter(array_map('trim', explode(',', (string) self::attribute($opening, 'code'))), static fn (string $c): bool => $c !== ''));
+            foreach ($this->unlocked as $entered) {
+                if (self::codeMatches($entered, $codes)) {
+                    return $inner;
+                }
+            }
+            return $this->viewer->instructor ? $opening . $inner . '</lock>' : '<lock>(locked)</lock>';
+        });
     }
 
     /**
@@ -461,85 +485,134 @@ final class PageRenderer
 
     /**
      * Replaces each <tag ...>inner</tag> block with $replace(inner, openingTag), without
-     * regular expressions (H-4, M-13):
+     * regular expressions (H-4, M-13, L-29, L-34):
      *
-     * - nested blocks of the same tag are matched by depth, and the inner content is
-     *   processed first, so <inst>A<inst>B</inst>C</inst> is one block;
-     * - a block that is never closed runs to the end of the page (fail closed: the rest
-     *   is treated as inside it);
-     * - it works on any size of content (no backtracking limit).
+     * - one linear pass finds every opening and closing tag; nested blocks of the same tag
+     *   are matched by depth and the inner content is processed first, so
+     *   <inst>A<inst>B</inst>C</inst> is one block;
+     * - tags inside HTML comments, CDATA sections and <script>/<style> bodies are not tags,
+     *   so a "</inst>" in a comment does not end the block early;
+     * - a block that is never closed runs to the end of the page (fail closed);
+     * - a closing tag with no opening one is left as text;
+     * - any size and any depth of nesting works in linear time.
      *
      * @param callable(string, string): string $replace
      */
     public static function block(string $html, string $tag, callable $replace): string
     {
+        $tokens = self::tagTokens($html, $tag, self::opaqueRanges($html));
+        $match = [];
+        $stack = [];
+        foreach ($tokens as $i => [$kind]) {
+            if ($kind === 'open') {
+                $stack[] = $i;
+            } elseif ($stack !== []) {
+                $match[array_pop($stack)] = $i;
+            }
+        }
+        return self::renderBlocks($html, $tokens, $match, 0, count($tokens), 0, strlen($html), $replace);
+    }
+
+    /**
+     * @param list<array{0: string, 1: int, 2: int}> $tokens [kind, start, end]
+     * @param array<int, int> $match opening token => closing token
+     */
+    private static function renderBlocks(string $html, array $tokens, array $match, int $from, int $to, int $start, int $end, callable $replace): string
+    {
         $out = '';
-        $pos = 0;
-        while (($start = self::findOpen($html, $tag, $pos)) !== null) {
-            $out .= substr($html, $pos, $start - $pos);
-            $openEnd = strpos($html, '>', $start);
-            if ($openEnd === false) {
-                return $out; // an opening tag that never ends: drop the rest
+        $pos = $start;
+        $i = $from;
+        while ($i < $to) {
+            [$kind, $tokenStart, $tokenEnd] = $tokens[$i];
+            if ($kind !== 'open') {
+                $i++; // a closing tag with no opening one: left as text
+                continue;
             }
-            $opening = substr($html, $start, $openEnd - $start + 1);
-            $depth = 1;
-            $cursor = $openEnd + 1;
-            $innerEnd = strlen($html);
-            $after = strlen($html);
-            while ($depth > 0) {
-                $close = self::findClose($html, $tag, $cursor);
-                $open = self::findOpen($html, $tag, $cursor);
-                if ($close === null) {
-                    break; // never closed: the block runs to the end
-                }
-                if ($open !== null && $open < $close[0]) {
-                    $depth++;
-                    $openEndInner = strpos($html, '>', $open);
-                    $cursor = $openEndInner === false ? strlen($html) : $openEndInner + 1;
-                    continue;
-                }
-                $depth--;
-                $cursor = $close[1];
-                if ($depth === 0) {
-                    [$innerEnd, $after] = $close;
-                }
-            }
-            $inner = substr($html, $openEnd + 1, $innerEnd - $openEnd - 1);
-            $out .= $replace(self::block($inner, $tag, $replace), $opening);
+            $out .= substr($html, $pos, $tokenStart - $pos);
+            $opening = substr($html, $tokenStart, $tokenEnd - $tokenStart);
+            $close = $match[$i] ?? null;
+            [$innerEnd, $after, $innerTo] = $close === null ? [$end, $end, $to] : [$tokens[$close][1], $tokens[$close][2], $close];
+            $inner = self::renderBlocks($html, $tokens, $match, $i + 1, $innerTo, $tokenEnd, $innerEnd, $replace);
+            $out .= $replace($inner, $opening);
             $pos = $after;
+            $i = $close === null ? $to : $close + 1;
         }
-        return $out . substr($html, $pos);
+        return $out . substr($html, $pos, max(0, $end - $pos));
     }
 
-    /** The position of the next "<tag" followed by a space, ">" or "/", or null. */
-    private static function findOpen(string $html, string $tag, int $from): ?int
+    /**
+     * Every "<tag ...>" and "</tag>" outside the opaque ranges, in order.
+     *
+     * @param list<array{0: int, 1: int}> $opaque
+     * @return list<array{0: string, 1: int, 2: int}>
+     */
+    private static function tagTokens(string $html, string $tag, array $opaque): array
     {
-        $length = strlen($tag) + 1;
-        while (($at = stripos($html, '<' . $tag, $from)) !== false) {
-            $next = $html[$at + $length] ?? '';
-            if ($next === '>' || $next === '/' || ctype_space($next)) {
-                return $at;
+        $tokens = [];
+        $length = strlen($html);
+        $name = strlen($tag);
+        $r = 0;
+        $from = 0;
+        while (($at = stripos($html, '<', $from)) !== false) {
+            $from = $at + 1;
+            while ($r < count($opaque) && $opaque[$r][1] <= $at) {
+                $r++;
             }
-            $from = $at + $length;
+            if ($r < count($opaque) && $opaque[$r][0] <= $at) {
+                $from = $opaque[$r][1];
+                continue; // inside a comment, CDATA or script/style body
+            }
+            $closing = ($html[$at + 1] ?? '') === '/';
+            $nameAt = $at + ($closing ? 2 : 1);
+            if (strncasecmp(substr($html, $nameAt, $name), $tag, $name) !== 0) {
+                continue;
+            }
+            $next = $html[$nameAt + $name] ?? '';
+            if ($closing) {
+                $endAt = $nameAt + $name;
+                while ($endAt < $length && ctype_space($html[$endAt])) {
+                    $endAt++;
+                }
+                if (($html[$endAt] ?? '') === '>') {
+                    $tokens[] = ['close', $at, $endAt + 1];
+                    $from = $endAt + 1;
+                }
+            } elseif ($next === '>' || $next === '/' || ($next !== '' && ctype_space($next))) {
+                $gt = strpos($html, '>', $nameAt);
+                $tokens[] = ['open', $at, $gt === false ? $length : $gt + 1];
+                $from = $gt === false ? $length : $gt + 1;
+            }
         }
-        return null;
+        return $tokens;
     }
 
-    /** [start, end] of the next "</tag>" (spaces allowed before ">"), or null. @return array{0: int, 1: int}|null */
-    private static function findClose(string $html, string $tag, int $from): ?array
+    /** [start, end) of HTML comments, CDATA sections and <script>/<style> bodies. @return list<array{0: int, 1: int}> */
+    private static function opaqueRanges(string $html): array
     {
-        $length = strlen($tag) + 2;
-        while (($at = stripos($html, '</' . $tag, $from)) !== false) {
-            $end = $at + $length;
-            while ($end < strlen($html) && ctype_space($html[$end])) {
-                $end++;
+        $ranges = [];
+        $from = 0;
+        $length = strlen($html);
+        while (($at = strpos($html, '<', $from)) !== false) {
+            if (substr_compare($html, '<!--', $at, 4) === 0) {
+                $end = strpos($html, '-->', $at + 4);
+                $stop = $end === false ? $length : $end + 3;
+            } elseif (substr_compare($html, '<![CDATA[', $at, 9) === 0) {
+                $end = strpos($html, ']]>', $at + 9);
+                $stop = $end === false ? $length : $end + 3;
+            } elseif (preg_match('/\G<(script|style)\b[^>]*>/Ai', $html, $m, 0, $at)) {
+                $body = $at + strlen($m[0]);
+                $end = stripos($html, '</' . $m[1], $body);
+                $ranges[] = [$body, $end === false ? $length : $end];
+                $from = $end === false ? $length : $end + 2;
+                continue;
+            } else {
+                $from = $at + 1;
+                continue;
             }
-            if (($html[$end] ?? '') === '>') {
-                return [$at, $end + 1];
-            }
-            $from = $at + $length;
+            $ranges[] = [$at, $stop];
+            $from = $stop;
         }
-        return null;
+        return $ranges;
     }
 
     /** A pattern that failed (backtracking or another PCRE limit): never send the page half processed. */

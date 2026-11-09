@@ -219,4 +219,40 @@ final class RendererTest extends TestCase
         $this->assertSame(2, substr_count($page, 'get.php?file='), 'the image and <showlink>');
         $this->assertContains('href="#/view/' . $course->keysByEvent['class_1']['notes.md'] . '#x"', $page, 'and its link back into the event');
     }
+
+    public function testCommentsScriptsAndDeepNesting(): void
+    {
+        $deep = str_repeat('<inst>', 4000) . 'DEEP-SECRET' . str_repeat('</inst>', 4000);
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<inst>A<!-- </inst> -->SECRET-COMMENT</inst><inst><script>var s = "</inst>";</script>SECRET-SCRIPT</inst><p>AFTER</p>',
+            'class/01.Introduction/deep.html' => $deep . '<p>DEEP-AFTER</p>',
+            'class/01.Introduction/quote.md' => str_repeat('> ', 20000) . 'quoted',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/index.html');
+        $this->assertNotContains('SECRET-COMMENT', $page, 'a closing tag in a comment does not end the block (L-29)');
+        $this->assertNotContains('SECRET-SCRIPT', $page, 'nor one in a script');
+        $this->assertContains('AFTER', $page);
+        $start = microtime(true);
+        $deepPage = $this->render($course, 'class_1/deep.html');
+        $this->assertTrue(microtime(true) - $start < 2.0, 'deep nesting is fast (L-34)');
+        $this->assertNotContains('DEEP-SECRET', $deepPage);
+        $this->assertContains('DEEP-AFTER', $deepPage);
+        $this->assertContains('quoted', $this->render($course, 'class_1/quote.md'), 'a very deep Markdown quote does not exhaust memory (L-34)');
+    }
+
+    public function testCodeinjectOfAPageHidesWhatTheViewerMayNotSee(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<pre><codeinject src="other.html"></pre>',
+            'class/01.Introduction/other.html' => '<p>shown</p><inst>INST-TEXT</inst><lock code="s3cret">LOCKED-TEXT</lock>',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/index.html');
+        $this->assertContains('&lt;p&gt;shown&lt;/p&gt;', $page, 'the source is shown');
+        foreach (['INST-TEXT', 'LOCKED-TEXT', 's3cret'] as $hidden) {
+            $this->assertNotContains($hidden, $page, "but not what the viewer may not see (L-30): $hidden");
+        }
+        $this->assertContains('INST-TEXT', $this->render($course, 'class_1/index.html', [], Viewer::account($course->config, 'prof')), 'instructors see all of it');
+    }
 }

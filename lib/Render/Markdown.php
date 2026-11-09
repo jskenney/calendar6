@@ -33,6 +33,7 @@ final class Markdown
     private $refs = array();
     private $slugs = array();
     private $holds = array();
+    private $quoteDepth = 0;
 
     # Elements that start an inline run rather than an HTML block
     private static $inlineTags = array('a', 'abbr', 'b', 'bdi', 'bdo', 'br', 'cite', 'code', 'data', 'dfn', 'em', 'i', 'img',
@@ -264,8 +265,9 @@ final class Markdown
                 continue;
             }
 
-            # Block quote
-            if (preg_match('/^ {0,3}>/', $line)) {
+            # Block quote (at most 16 deep: deeper ">" are text, so a line of thousands of
+            # ">" can not exhaust memory, L-34)
+            if ($this->quoteDepth < 16 && preg_match('/^ {0,3}>/', $line)) {
                 $quote = array();
                 while ($i < $n && !$this->isBlank($lines[$i])) {
                     if (preg_match('/^ {0,3}> ?(.*)$/', $lines[$i], $m)) {
@@ -282,7 +284,12 @@ final class Markdown
                         $i++;
                     }
                 }
-                $out[] = "<blockquote>\n" . $this->blocks($quote) . "\n</blockquote>";
+                $this->quoteDepth++;
+                try {
+                    $out[] = "<blockquote>\n" . $this->blocks($quote) . "\n</blockquote>";
+                } finally {
+                    $this->quoteDepth--;
+                }
                 continue;
             }
 
