@@ -48,6 +48,8 @@ AB123/                        the course's web directory
 │   ├── dates.ini             days that differ from the weekly schedule
 │   ├── default.ini           when things become available to anonymous users
 │   ├── paths.ini             where the course's own pages are (resources, policy, ...)
+│   ├── virtual.ini           files shown in an event but stored elsewhere
+│   ├── duplicate.ini         events that are used again (class 5 also as class 6)
 │   └── auth/
 │       └── <username>.ini    one file per user, instructors included
 ├── class/
@@ -78,6 +80,50 @@ resources = resources.html
 policy    = syllabus.html        ; shown as "Policy" / the syllabus
 ; more named pages later
 ```
+
+### `virtual.ini` (Decided: files shown in an event but stored elsewhere)
+
+Calendar 4's class file, as `event/name = real file` (the real file relative to the course
+directory):
+
+```ini
+lab_1/notes.html       = homework/homework01.html
+class_4/notes.tex      = docs/latex-template.tex
+class_1..30/style.css  = shared/style.css        ; ranges and lists work here too
+lab_2,4,6/checklist.md = shared/checklist.md
+```
+
+- The virtual file is part of that event like any other: it can fill a box (by its name), its
+  links are rewritten relative to its **real** directory, and it gets its own key.
+- Access is checked under the virtual name (`lab_1/notes.html`) **and** under the real file's
+  path; both must allow it (R13).
+- The real file must be inside the course; its directory (`homework/`, `shared/`, ...) needs the
+  same `.htaccess` as the material directories. Later lines win, as everywhere.
+
+### `duplicate.ini` (Decided: an event used again)
+
+One event's material used for other calendar slots, with or without a new number:
+
+```ini
+# copies = source [numbered | same]
+class_6       = class_5            ; numbered (the default): the calendar shows class 5 and class 6
+class_6..10   = class_5            ; five more slots with class 5's material
+class_6,8,22  = class_5 same       ; the calendar shows "class 5" on each of those days
+```
+
+Proposed meaning:
+
+- Event numbers on the left are **slots on the calendar** (the 6th class meeting, ...). The copies
+  take those slots, and the remaining event directories fill the other slots in order, so with
+  `class_6 = class_5` the directory that would have been class 6 moves to the next slot.
+- **`numbered`**: each copy is a separate event with its own number (`class_6`), title and date;
+  the following events keep counting (directory 6 becomes class 7).
+- **`same`**: each copy is shown as the source again (`class 5`, same title); the repeat does not
+  use up a number (directory 6 stays class 6, on the next free slot).
+- Rules and grants use the numbers the calendar shows: a `numbered` copy is `class_6` (its own
+  rules; relative times from its own date); a `same` copy is `class_5` (relative times from each
+  day it appears on). A grant for `class_5` covers every `same` repeat.
+- The source and copies are the same type (proposed); a copy of a copy is not allowed.
 
 Proposed: each page gets a key like any file, is served by `html.php`, appears in the menus that
 `config.php` returns, and can be targeted by rules and grants as `page/<name>`
@@ -222,7 +268,7 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | R10 | **`#` comments**, used to switch rules on and off during the semester; blank lines ignored | `#project 99 99 9999` |
 | R11 | **Many events at once** | `class_20` ... `class_27`, one line each |
 | R12 | **A semester-end lockdown** | the block at the top of the example |
-| R13 | **Virtual files** (`$CLASS_FILE`: a file shown in an event but stored elsewhere) are checked under both names; the stricter answer wins (Calendar 5 behaviour; v4 mixed them up) | `notes.html  homework/homework01.html  lab  1` |
+| R13 | **Virtual files** (v4 `$CLASS_FILE`, now `virtual.ini`: a file shown in an event but stored elsewhere) are checked under both names; the stricter answer wins (Calendar 5 behaviour; v4 mixed them up) | `notes.html  homework/homework01.html  lab  1` |
 | R14 | **Events that are on no calendar day** are never shown to anonymous viewers | a third exam folder with two exam days |
 | R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable file** hides everything (fail closed) | |
 | R16 | **Paths with spaces** | tab-separated lines |
@@ -259,9 +305,11 @@ Decided:
 - **The later line wins** (R9), as v4. `bin/cal6 check` (or the instructor's status view) lists
   lines that a later line overrides, as information, since that is how the lockdown example
   silently failed to lock labs.
-- **Ranges** (R11): `class_20..27` is the same as eight lines, `class_20` ... `class_27`, written
-  where the range is, so a later line for one of them still wins. Allowed wherever `T_N` is:
-  `class_20..27/notes`, `class_20..27/slides.pdf`.
+- **Ranges and lists** (R11): `class_20..27` is the same as eight lines, `class_20` ...
+  `class_27`, written where the range is, so a later line for one of them still wins. Lists
+  (`class_6,8,22`) and both together (`class_1..3,7`) work the same way. Allowed wherever `T_N`
+  is, in every file (`default.ini`, grants, `virtual.ini`, `duplicate.ini`):
+  `class_20..27/notes`, `class_6,8,22/slides.pdf`.
 - **Lockdown** (R12) is a setting, a window like everything else: `config.ini` `[access]
   lockdown = 2026-12-18 17:00` (or `2026-12-18 17:00 until 2027-01-04 08:00` to end it). From then on, anonymous viewers see a file only when the rule that decides it is
   `always`. Precedence still runs, so in the example `class_1 = always` keeps class 1 open,
@@ -323,10 +371,12 @@ and means "everything".
 
 ## Keys (Proposed)
 
-A key identifies a file; it is **not** a capability, because `get.php` and `html.php` check
-access on every request. Proposed: `HMAC-SHA256(secret, relative path)`, shortened, so keys are
-stable (bookmarks keep working), and hidden file names can not be guessed or enumerated. The
-secret lives in `config.ini`.
+A key identifies a file **in a place**; it is **not** a capability, because `get.php` and
+`html.php` check access on every request. Proposed: `HMAC-SHA256(secret, "class_6/notes.html")`
+(the event as the calendar shows it, plus the name in it; `page/policy` for pages), shortened.
+So keys are stable (bookmarks keep working), hidden file names can not be guessed or
+enumerated, and a file that appears in several places (a virtual file, a duplicated event) has
+one key per place, each checked with that place's rules. The secret lives in `config.ini`.
 
 ## Finding the course (Decided)
 
@@ -375,6 +425,8 @@ pointer to any one course. Instead:
 | 8 | Config format | INI, so instructors can edit it |
 | 9 | Users | Created by hand; a tool is a future enhancement |
 | 10 | Course pages | `config/paths.ini` (resources, policy, ...) |
+| - | Virtual files | `config/virtual.ini` |
+| - | Reusing an event | `config/duplicate.ini`, `numbered` or `same` |
 
 ## Future enhancements
 
