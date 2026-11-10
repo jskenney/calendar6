@@ -170,6 +170,7 @@ final class AuthEndpoint
         Session::regenerate();
         Session::set('user', $account->user);
         Session::set('login', $c->now);
+        Session::set('secret', Context::secretMark($account->passwordHash));
         Session::forget('csrf');
         $csrf = Session::csrf();
         Session::close();

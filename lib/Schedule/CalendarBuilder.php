@@ -263,6 +263,15 @@ final class CalendarBuilder
                 $day->events[] = $event->id;
             }
         }
+        // a line whose number no meeting reaches (after the material runs out, or beyond the
+        // semester) does nothing: say so (L-99)
+        foreach ($copies as $type => $byNumber) {
+            foreach ($byNumber as $number => $copy) {
+                if (!isset($used[$type][$number])) {
+                    $this->problems[] = new Problem("{$type}_$number = {$type}_{$copy['source']}: no meeting is numbered $number (the material or the calendar ends first), so this line does nothing", 'duplicate.ini', $copy['line']);
+                }
+            }
+        }
         foreach ($this->folders as $type => $folders) {
             $nextNumber[$type] ??= 1;
             for ($d = $nextDir[$type] ?? 1; $d <= count($folders); $d++) {

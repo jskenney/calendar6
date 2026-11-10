@@ -384,6 +384,17 @@ HTML;
         $this->assertContains('cal6_', $open->header('set-cookie'), 'a reachable code is');
     }
 
+    public function testAChangedPasswordEndsSessions(): void
+    {
+        $client = $this->start();
+        $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
+        $this->assertSame(200, $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf])->status);
+        $this->assertSame('prof', $client->get('calendar/php/calendar.php')->json()['viewer']['user'] ?? null);
+        $file = "$this->dir/config/auth/prof.ini";
+        file_put_contents($file, str_replace('password_hash = ', 'password_hash = ' . password_hash('new', PASSWORD_DEFAULT) . "\n;old = ", (string) file_get_contents($file)));
+        $this->assertSame(null, $client->get('calendar/php/calendar.php')->json()['viewer']['user'] ?? null, 'a new password ends the session (L-100)');
+    }
+
     public function testRateLimitsAndProxies(): void
     {
         $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');

@@ -95,6 +95,12 @@ final class Context
     }
 
     /** The logged-in account (read from config/auth/ now), or anonymous. */
+    /** What a session remembers of the password it logged in with (a hash of its hash). */
+    public static function secretMark(string $passwordHash): string
+    {
+        return hash('sha256', 'cal6-session|' . $passwordHash);
+    }
+
     public function viewer(bool $createSession = false): Viewer
     {
         if ($this->viewer !== null) {
@@ -106,11 +112,15 @@ final class Context
             $login = (int) Session::get('login', 0);
             if (is_string($user)) {
                 $account = Viewer::account($this->config, $user);
-                if ($account !== null && $login + $this->config->sessionSeconds > $this->now && $account->isValidAt($this->now, $this->config->zone)) {
+                // a changed password ends every session of that account (L-100)
+                $sameSecret = is_string(Session::get('secret')) && $account !== null
+                    && hash_equals(self::secretMark($account->passwordHash), (string) Session::get('secret'));
+                if ($account !== null && $sameSecret && $login + $this->config->sessionSeconds > $this->now && $account->isValidAt($this->now, $this->config->zone)) {
                     $viewer = $account;
                 } else {
                     Session::forget('user');
                     Session::forget('login');
+                    Session::forget('secret');
                 }
             }
         }

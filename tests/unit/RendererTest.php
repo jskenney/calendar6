@@ -676,6 +676,38 @@ final class RendererTest extends TestCase
         $this->assertContains('get.php?file=', $page);
     }
 
+    public function testReview15Leftovers(): void
+    {
+        $cases = [
+            'svgmi' => 'A<svg><mi><style><inst><p>V1</p></inst></style></mi></svg> Z',
+            'nested' => 'A<svg><foreignObject><svg><style><inst><p>V2</p></inst></style></svg></foreignObject></svg> Z',
+            'annot' => 'A<math><annotation-xml><style><inst><p>V3</p></inst></style></annotation-xml></math> Z',
+            'bogus' => '<!x <img alt=">" <inst>V4</inst>',
+            'bogus2' => '<? <b title=">" <lock code=k>V5</lock>',
+        ];
+        $files = [
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/inj.html' => '<script>var a = 1;</scirpt><inject src="../../shared/part.html"> <url value=n>',
+            'shared/part.html' => 'Hello <url value=n>!',
+            'class/01.Introduction/ok.html' => 'A<svg><foreignObject><style>p{}</style><p>ok</p></foreignObject></svg><inst>H</inst> Z',
+            'class/01.Introduction/many.html' => str_repeat('<!---->x', 80000),
+        ];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html;
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $this->assertSame(0, preg_match('/V[1-5]\b/', $this->render($course, "class_1/$name.html")), "hidden (L-95, L-96): $name");
+        }
+        $this->assertContains('<p>ok</p></foreignObject></svg> Z', $this->render($course, 'class_1/ok.html'), 'HTML inside foreignObject is HTML');
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['n' => 'EVIL']))
+            ->render($course->places[$course->keysByEvent['class_1']['inj.html']]);
+        $this->assertNotContains('EVIL', $page, 'an injected <url> after an unclosed script is not filled in (L-97)');
+        $start = microtime(true);
+        $this->render($course, 'class_1/many.html');
+        $this->assertTrue(microtime(true) - $start < 3.0, 'many comments stay fast (L-98)');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

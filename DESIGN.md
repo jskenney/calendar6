@@ -419,6 +419,8 @@ Meaning (Decided, M-38):
   copies that event. The source must be on the calendar before the copy, it must not be a copy
   itself, and it must be the same type; otherwise the line is listed as a problem and that
   meeting stays empty.
+- A line whose number no meeting reaches (the material or the calendar ends first) does nothing
+  and is listed as a problem (L-99).
 
 Pages from `paths.ini` (Decided): each gets a key like any file, is served by `html.php`, is
 listed in `calendar.php`'s `pages` when visible, and is targeted by rules and grants as
@@ -483,7 +485,8 @@ No `username`/`password`: log out. Any method other than POST: `405`.
   `[server] trusted_proxies` so the client's address is used (see "Deploying").
 - Hardening: cookie flags `HttpOnly`, `Secure` (on HTTPS, also behind a trusted proxy that says
   so), `SameSite=Strict`; a session lifetime from `config.ini`; the login ends by itself when the
-  `valid` window does.
+  `valid` window does, and when the account's `password_hash` changes (a reset after a leak ends
+  every session of that account at once, L-100).
 
 ### `config.php` (Decided: the site config without secrets)
 
@@ -706,11 +709,14 @@ tag counts only where both readings see a closing tag (with and without these el
 `<inst>` opened outside it. End tags are read as a browser reads them (quoted attributes, and
 `</` followed by a non-letter is a comment). A comment ends at `-->` or `--!>` (M-42); a bogus
 comment (`<!DOCTYPE ...>`, `<![CDATA[ ...` outside `<svg>`/`<math>`, `<? ...>`) ends at the first
-`>` as in a browser, but before an opening tag written in it, so that tag still counts (L-84).
+`>` as in a browser, but before an opening block tag written in it, so that tag still counts (L-84, L-96).
 Inside `<svg>`/`<math>`, the content of `<foreignObject>`, `<desc>`, `<title>`, `<mi>` and the
-like is HTML again (L-88). In an injected file, hidden blocks in attribute values follow that
-file's own place, and its `<replace>` and `<url>` values are filled in before its links are made
-relative to the page (L-87, L-90); `<codeinject>` hides blocks in attribute values too (L-86). `<replace>` and `<url>` tags end where a browser
+like is HTML again (L-88); this follows the namespace an element is in (`<desc>` only under
+`<svg>`, `<mi>` only under `<math>`, `<annotation-xml>` only with an HTML encoding, and an
+`<svg>` inside `<foreignObject>` is foreign again, L-95). In an injected file, hidden blocks in attribute values follow that
+file's own place, and its `<replace>` values are filled in before its links are made relative
+to the page (L-87, L-90); its `<url>` values are filled in with the whole page, so the page's
+context counts (L-97), and a `<url>` in the path of its link is relative to the page; `<codeinject>` hides blocks in attribute values too (L-86). `<replace>` and `<url>` tags end where a browser
 would end them. `<codeinject>` of a Markdown page sets its code aside before hiding, so a code
 sample such as `` `<a href="` `` can not swallow the blocks after it. Inside `<svg>` and `<math>`,
 where a browser reads `<script>` and `<style>` as markup, they are read both ways too (L-77). A

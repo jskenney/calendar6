@@ -252,9 +252,10 @@ final class PageRenderer
                 return $inner;
             }
             // its links, <calphp> and <showlink> are relative to the injected file, not the page
-            // (L-21); value tags are filled in first, so href="page.html#<url ...>" and
-            // src="logo-<replace ...>.png" are rebased as the values make them (L-90)
-            return self::rebase($this->url($this->replace($inner, $place)), dirname($real), $dir);
+            // (L-21); <replace> is filled in first, so src="logo-<replace ...>.png" is rebased as
+            // its value makes it (L-90); <url> waits for the whole page, so its context (an
+            // unclosed script, say) is the page's (L-97), and rebase keeps its tags
+            return self::rebase($this->replace($inner, $place), dirname($real), $dir);
         });
     }
 
@@ -351,6 +352,9 @@ final class PageRenderer
             // needs it, M-36)
             $cut = strcspn($url, '?#');
             [$path, $suffix] = [substr($url, 0, $cut), substr($url, $cut)];
+            if (stripos($path, '<url') !== false) {
+                return $url; // a path from <url> is relative to the page (it is filled in later)
+            }
             $mark = str_contains($path, self::URL_MARK) ? self::URL_MARK : '';
             $path = str_replace(self::URL_MARK, '', $path);
             if ($path === '' || self::isAbsolute($path . str_replace(self::URL_MARK, '', $suffix))) {
@@ -367,7 +371,7 @@ final class PageRenderer
                     }, explode(',', $value)));
                 }
                 return $fix($value);
-            });
+            }, true);
         });
         return self::replaceTags($html, ['calphp', 'showlink'], static function (string $name, string $tag) use ($fix): string {
             $src = self::attribute($tag, 'src');
@@ -783,7 +787,7 @@ final class PageRenderer
      *
      * @param callable(string, string): ?string $fn
      */
-    private static function editLinks(string $tag, callable $fn): string
+    private static function editLinks(string $tag, callable $fn, bool $keepUrlTags = false): string
     {
         $out = '';
         $pos = 0;
@@ -802,7 +806,13 @@ final class PageRenderer
                 $out .= $hidden ? '' : 'data-cal6-hidden="1"';
                 $hidden = true;
             } else {
-                $out .= $name . '="' . htmlspecialchars($new, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"';
+                $escaped = htmlspecialchars($new, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                // when rebasing an injected file (the author's text, before <url> runs), a <url>
+                // tag waiting in the value stays a tag; never later, where a visitor's value is in it
+                if ($keepUrlTags) {
+                    $escaped = preg_replace_callback('/&lt;\/?url\b.*?&gt;/i', static fn (array $m): string => html_entity_decode($m[0], ENT_QUOTES | ENT_HTML5, 'UTF-8'), $escaped) ?? $escaped;
+                }
+                $out .= $name . '="' . $escaped . '"';
             }
             $pos = $attributeEnd;
         }

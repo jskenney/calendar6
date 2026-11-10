@@ -141,4 +141,11 @@ final class CalendarTest extends TestCase
         $this->assertSame('class_2', $course->events['class_6']->copyOf, 'class_6 = class_2 is the event numbered 6 (M-38), not the 6th meeting');
         $this->assertSame('Class 6', $title('class_7'), 'and the 6th folder becomes class 7');
     }
+
+    public function testACopyLineNoMeetingReachesIsAProblem(): void
+    {
+        $course = $this->course('', "class_99 = class_1\n", '2026-09-30');
+        $messages = implode("\n", array_map(static fn ($p): string => $p->message, $course->problems));
+        $this->assertContains('class_99 = class_1: no meeting is numbered 99', $messages, 'an unplaced copy line is a problem (L-99)');
+    }
 }

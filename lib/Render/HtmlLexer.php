@@ -28,33 +28,30 @@ final class HtmlLexer
     /**
      * Where a bogus comment (<!DOCTYPE ...>, <![CDATA[ ...>, <? ...>, </1 ...>) ends: a browser
      * ends it at the first ">", even one inside a tag written in it (<![CDATA[ <inst>S</inst>
-     * shows S); the lexer ends it before an opening tag instead, so that tag still counts, and
-     * lets it swallow a closing tag as the browser does: hidden under both readings (L-84).
+     * shows S); the lexer ends it before an opening block tag instead, so that tag still counts,
+     * and otherwise where the browser does: hidden under both readings (L-84, L-96).
      */
     private static function bogusEnd(string $html, int $from): int
     {
         $gt = strpos($html, '>', $from);
-        $lt = strpos($html, '<', $from);
-        // an opening tag inside still counts (fail closed); a closing tag the browser swallows
-        // does not, as in the browser
-        if ($lt !== false && ($gt === false || $lt < $gt) && ctype_alpha($html[$lt + 1] ?? '')) {
-            return $lt;
+        $end = $gt === false ? strlen($html) : $gt + 1;
+        // only an opening block tag inside still counts (fail closed); anything else, a closing
+        // tag too, is part of the comment as in the browser, so no other tag can swallow the
+        // block tag the browser sees after the comment (L-96)
+        if (preg_match('/<(?:inst|lock|postmeeting|host|student)(?=[\t\n\f\r \/>]|$)/i', substr($html, $from, $end - $from), $m, PREG_OFFSET_CAPTURE) === 1) {
+            return $from + $m[0][1];
         }
-        return $gt === false ? strlen($html) : $gt + 1;
+        return $end;
     }
 
     /** Where a comment whose text starts at $from ends: after "-->" or "--!>", as in a browser (M-42). */
     public static function commentEnd(string $html, int $from): int
     {
-        $a = strpos($html, '-->', $from);
-        $b = strpos($html, '--!>', $from);
-        if ($a === false && $b === false) {
+        // one search for either ending, so many comments stay linear (L-98)
+        if (preg_match('/--!?>/', $html, $m, PREG_OFFSET_CAPTURE, $from) !== 1) {
             return strlen($html);
         }
-        if ($b === false || ($a !== false && $a < $b)) {
-            return $a + 3;
-        }
-        return $b + 4;
+        return $m[0][1] + strlen($m[0][0]);
     }
 
     /** The end of the tag that starts at $lt (its name included), read with the browser's quote rules. */
@@ -179,9 +176,6 @@ final class HtmlLexer
      */
     private const BOUNDED = ['textarea', 'title', 'noscript', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext'];
 
-    /** Elements inside <svg>/<math> whose content a browser reads as HTML. */
-    private const INTEGRATION = ['foreignobject', 'desc', 'title', 'mi', 'mo', 'mn', 'ms', 'mtext', 'annotation-xml'];
-
     /** Tags that end <svg>/<math> foreign content in a browser. */
     private const BREAKOUT = ['b', 'big', 'blockquote', 'body', 'br', 'center', 'code', 'dd', 'div', 'dl', 'dt', 'em', 'embed',
         'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'hr', 'i', 'img', 'li', 'listing', 'menu', 'meta', 'nobr', 'ol', 'p', 'pre',
@@ -210,8 +204,7 @@ final class HtmlLexer
     {
         $tokens = [];
         $noClose = [];
-        $foreign = 0;
-        $integration = 0;
+        $stack = []; // namespaces: [svg|math|html, element name] (L-95)
         $length = strlen($html);
         $pos = 0;
         while (($lt = strpos($html, '<', $pos)) !== false) {
@@ -228,7 +221,7 @@ final class HtmlLexer
                 $pos = $end;
                 continue;
             }
-            if ($foreign > 0 && substr_compare($html, '<![CDATA[', $lt, 9, true) === 0) {
+            if ($stack !== [] && end($stack)[0] !== 'html' && substr_compare($html, '<![CDATA[', $lt, 9, true) === 0) {
                 // a real CDATA section only inside <svg> or <math>; elsewhere a browser reads it
                 // as a bogus comment up to the first ">" (below), and so does the lexer (L-84)
                 $close = strpos($html, ']]>', $lt + 9);
@@ -268,15 +261,26 @@ final class HtmlLexer
             // (inside an integration point such as <foreignObject> or <mi> content is HTML again:
             // breakout tags do not end the foreign content there, and script/style are raw, L-88)
             $selfClosing = str_ends_with(substr($html, $lt, $end - $lt), '/>');
-            $inForeign = $foreign > 0 && $integration === 0; // where this tag itself stands
-            if ($name === 'svg' || $name === 'math') {
-                if ($integration === 0) {
-                    $foreign = $closing ? max(0, $foreign - 1) : $foreign + ($selfClosing ? 0 : 1);
+            // a stack of namespaces (L-95): svg and math push their own, an integration point
+            // pushes HTML only in the namespace it belongs to (foreignObject, desc, title under
+            // svg; mi, mo, mn, ms, mtext and annotation-xml with an HTML encoding under math),
+            // and a breakout tag in foreign content pops back to HTML
+            $current = $stack === [] ? 'html' : end($stack)[0];
+            $inForeign = $current !== 'html'; // where this tag itself stands
+            if ($closing) {
+                if ($stack !== [] && end($stack)[1] === $name) {
+                    array_pop($stack);
                 }
-            } elseif ($foreign > 0 && in_array($name, self::INTEGRATION, true) && !$selfClosing) {
-                $integration = $closing ? max(0, $integration - 1) : $integration + 1;
-            } elseif (!$closing && $foreign > 0 && $integration === 0 && in_array($name, self::BREAKOUT, true)) {
-                $foreign = 0;
+            } elseif (!$selfClosing && ($name === 'svg' || $name === 'math')) {
+                $stack[] = [$name, $name];
+            } elseif (!$selfClosing && (($current === 'svg' && in_array($name, ['foreignobject', 'desc', 'title'], true))
+                || ($current === 'math' && (in_array($name, ['mi', 'mo', 'mn', 'ms', 'mtext'], true)
+                    || ($name === 'annotation-xml' && preg_match('/\bencoding\s*=\s*["\']?\s*(text\/html|application\/xhtml\+xml)/i', substr($html, $lt, $end - $lt))))))) {
+                $stack[] = ['html', $name];
+            } elseif ($inForeign && in_array($name, self::BREAKOUT, true)) {
+                while ($stack !== [] && end($stack)[0] !== 'html') {
+                    array_pop($stack);
+                }
             }
             $asBounded = !$closing && !$plain && (in_array($name, self::BOUNDED, true) || ($inForeign && ($name === 'script' || $name === 'style')));
             if ($asBounded) {
