@@ -13,9 +13,9 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. No critical, high, medium, low, documentation or testing items are open. A further
-   independent review would show whether the review-21 fixes hold.
-2. Other **E** items; E-1 (the front end) is the next big piece of work.
+1. Review 22's L, DOC and T items (being fixed).
+2. **Owner questions:** E-11 (the `calendar` directory name), E-12 (`valid_until` after a reload).
+3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -31,15 +31,32 @@ None open.
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-132 | 22 | `lib/Endpoint/HtmlEndpoint.php:124` | Unlocking a page loses its `<url>` values: the lock form posts to, and the 303 returns to, `html.php?file=KEY` only, so a page opened with `&week=5` shows week 1 after the unlock (no session existed to remember the value). Reproduced in Chromium. | Carry the page's query (without reserved names) in the form's `action` and in `Location`. |
+| L-133 | 22 | `lib/Endpoint/AuthEndpoint.php:91`, `:129`, `:195` | auth.php error answers say `user: null`, `csrf: null` while the session is still logged in and its token still valid; API 10.6's "keep a.csrf" then makes the next try a 403. | Fill in the current viewer and token on errors (or document that they mean nothing). |
+| L-134 | 22 | `lib/Course/Course.php:390` | L-131 over-reports: `index.css`, `index.js`, `title.png` (ordinary page assets) are listed, and `index.md`/`notes.md` (listed in config.ini as second choices) are said to be "not the file config.ini lists". | Skip web-asset types; word the second-choice case separately. |
+| L-135 | 22 | `lib/Endpoint/CalendarEndpoint.php:68` | `at=2026-13-01` is accepted (overflows to 2027-01-01) where API.md promises 400. | Reject a date that does not format back to the input. |
+| L-136 | 22 | `lib/Render/PageRenderer.php:472` | A block opened inside an attribute value leaks when its tag has a quoted `>`: `<p title="<inst title=">">SECRET</inst> tail` gives `<p title="">">SECRET</inst>`, and Chromium shows SECRET. Malformed markup only; same family as L-79/L-114. Reproduced by the reviewer in Chromium. | When an attribute value opens a block, hide up to the block's real end (fail closed). |
+| L-137 | 22 | `lib/Endpoint/CalendarJson.php:28`; `lib/Render/Markdown.php` | Leftovers: a notes file with more than 8 KB of leading whitespace comes back as `""`; a `.md` page's `<!DOCTYPE html>` is shown as escaped text (CommonMark reads it as raw HTML). | Skip leading whitespace before the 2000-byte cut; pass a doctype line through as HTML in Markdown. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-30 | 22 | `DESIGN.md:272`; `API.md` 5, 6 | A cancel window that contains the type's first section start drops the event from that day for every section and renumbers the later ones (keys change); DESIGN says only whole-day cancellations move the calendar, API says only that meetings are cancelled. | Document it in API.md and DESIGN. |
+| DOC-31 | 22 | `API.md` 10.4 | The advice for whole-document pages does not work as written: the answer may start with a newline or BOM or lower-case doctype; in `<iframe srcdoc>` links resolve against the app (a `#/view/` click loads the app inside the frame); a blob frame can not resolve the absolute `get.php` paths. Checked in Chromium. | Recommend DOMParser into the app; trim and compare without case; drop the blob option. |
+| DOC-32 | 22 | `API.md` 10.4 | Script traps not mentioned: `DOMContentLoaded`/`load` handlers never fire, top-level `let`/`const` fail on a second visit, a page's `<style>`/`<base>`/`<title>` affect the whole app, `#/view/` links inside an `<iframe src=html.php>` do nothing. | Document them. |
+| DOC-33 | 22 | `API.md` 4, 6, 7, 9 | Undocumented: calendar.php leaves out a page whose file is missing; a JSON-body list is silently dropped (a query list is 400); a repeated query parameter's last value wins; get.php sends files without an extension as `text/plain`; a malformed or multi-range `Range` is 416 with no body; auth.php's 500s carry only `error`; config.php also changes when material folders change and when the software is updated. | Document (and make a JSON list a 400). |
+| DOC-34 | 22 | `API.md` | Missing for a front end: section meetings on weekdays without events never show up; the `<url>`-filled link rule and DOC-21 (an event page's link outside its event loses its target) are only in DESIGN; no row for `<showlink>`; "log out with a plain link" leaves the browser on JSON; comments inside textarea/xmp/title are kept. | Add them. |
+| DOC-35 | 22 | `API.md` 6 | The example shows `class_35` (period 1) cancelled on a `2_hour_delay` day whose period 1 is 09:45-10:35. | Use `4_hour_delay`. |
+| DOC-36 | 22 | `php/*.php`, `lib/Http/Response.php`, `lib/Endpoint/HtmlEndpoint.php:17` | Comments still point to DESIGN.md "The PHP endpoints" for what is now in API.md; HtmlEndpoint's comment still says "by default an HTML fragment". | Point to API.md; fix the comment. |
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-28 | 22 | `tests/` | No tests for: a cancel window over the first section's start; auth error answers while logged in; the old session id after a GET logout; `<url>` values surviving an unlock; doctype variants (textarea/xmp/title, attributes, `<!doctypehtml>`, Markdown); the L-131 false positives; calendar.php pages with a missing file; `at` overflow dates. | Tests with the fixes. |
 
 ## Enhancements
 
@@ -52,6 +69,7 @@ None open.
 | E-7 | 1 | `calendar.php` | Instructors get `problems` in JSON but nothing shows them yet. | A status view in the front end. |
 | E-10 | owner | `calendar.php` | `next_change` was removed from the answer (owner): a browser that trusted it would keep an old answer when the instructor edits material before then (say, notes students should not have seen). The server's own cache is safe (the fingerprint changes with any edit), but the front end has no way to know when to reload. | A cheap change signal for the front end: an `ETag`/`If-None-Match` poll (already answered with 304), a short polling interval, or a version number in `config.php`. |
 | E-11 | owner | `lib/Http/Locator.php:23` | The owner wants calendar6 to be reachable as `<course>/calendar` by convention ("should, not must"); the code requires that exact name (any other name is a 500), which API.md documents as current behaviour. | Owner to decide: accept any directory name two levels above `php/` whose parent holds `config/config.ini` (still checking that it resolves to the running code), or keep the fixed name. |
+| E-12 | 22 | `config.php`, `auth.php` | `valid_until` is only in the login answer: after a reload the front end can not know when the login ends (GET auth.php logs out, so it can not be asked). | Owner to decide: add `valid_until` to `viewer` in config.php/calendar.php. |
 | E-9 | 19 | `PageRenderer` links | Relative URLs in CSS (`style="background:url(x.png)"`, `url()` in `<style>`) are not rewritten. | Rewrite them, or say so in DESIGN. |
 
 ## Fixed items
@@ -331,6 +349,7 @@ None open.
 | 19 | 2026-11-10 | `d0766a2` | an **independent** review again (cleanup cycle 5), after fixing every review-18 item (`6d36770`); ~9,000 lexer fragments against Chromium, 3,000 well-formed pages, 2,000 `.ini` fuzz rounds, ~45 direct-access probes; M-46 reproduced by the reviewer's harness before recording. Nothing found that reads `config/`, `auth/`, code or files outside the course | M-46..M-48, L-117..L-122, E-9, T-24 |
 | 20 | 2026-11-10 | `af9b622` | an **independent** review again (cleanup cycle 6, the last), after fixing every review-19 item (`717f821`); 27,000 random fragments, 7,000 `srcdoc`/attribute cases and 10,500 well-formed pages checked against Chromium (no leaks), 1,600 `.ini` fuzz rounds, ~40 direct-access probes per server; M-49 confirmed by the reviewer over HTTP before recording. Nothing found that reads `config/`, `auth/`, code, raw page source or files outside the course | M-49, L-123..L-127, DOC-21, T-25 |
 | 21 | 2026-11-10 | `7590d11` | an **independent** full review after the calendar.php reshaping (E-8, `[notes]`, days by date, sections, no `next_change`): the full diff since `af9b622` read; ~60 calendar.php probes as anonymous, a user without grants, a granted TA and an instructor (no hints reached anonymous viewers or users without grants; hidden pages title-only; answers cached per viewer and section with no mixing; `section` by GET, form and JSON POST, odd values 404 or ignored); 5,000 entity-encoded `srcdoc` payloads against Chromium (no leaks); 800 `.ini` fuzz rounds (~3,200 requests, no PHP warnings); nginx and Apache deploys, both smoke tests passing, 44 direct-access probes all refused. H-7 reproduced over HTTP by the reviewer and again before recording. Nothing else reads `config/`, `auth/`, code or files outside the course | H-7, L-128..L-131, DOC-22, T-27 |
+| 22 | 2026-11-10 | `79c587e` | an **independent** full review after API.md was written: API.md checked line by line against the code and ~60 live probes (sections and previews by GET/POST/JSON, lists, auth error shapes, HEAD/PUT, the link and markup tables) on a course with cancel windows, duplicates and 21 extra events; 7 Chromium flows for the front-end advice (srcdoc, blob frames, innerHTML, scripts, the lock form through the 303, GET logout); 12,139 fuzz cases (8,625 HTML, 3,510 Markdown) against the doctype exception, every output holding the secret rendered in Chromium (no leak through the doctype). Logout by GET creates or fixes no session. | L-132..L-137, DOC-30..DOC-36, T-28, E-12 |
 
 ## CI notes
 
