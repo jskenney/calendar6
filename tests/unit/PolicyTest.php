@@ -180,6 +180,21 @@ INI;
         $this->assertTrue(self::sees($course, Viewer::anonymous(), 'class_1/logo.png', $now), 'a visible page\'s attachment stays visible');
     }
 
+    public function testSectionsInDefaultIniAndAccountKeysAfterGrants(): void
+    {
+        $course = $this->load([
+            'config/default.ini' => "[rules]\nclass_1 = always\nlab/lab-solution = never\nexam = never\n",
+            'config/auth/late.ini' => "password_hash = \$2y\$x\n[grants]\nlab_1 = always\nvalid = 2020-01-01 until 2020-01-02\ninstructor = true\n",
+        ]);
+        $now = self::now($course);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/lab-solution.html', $now), 'a rule under a header still applies (M-33)');
+        $this->assertTrue(self::sees($course, Viewer::anonymous(), 'class_1/index.html', $now));
+        $this->assertTrue(count(array_filter($course->problems, static fn ($p): bool => str_contains($p->message, '[rules]'))) === 1, 'and the header is a problem');
+        $late = Viewer::account($course->config, 'late');
+        $this->assertTrue($late !== null && !$late->isValidAt($now, $course->config->zone), 'valid after [grants] is the account\'s own window');
+        $this->assertTrue($late !== null && $late->instructor && $late->grants->get('valid') === null, 'not a grant');
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);

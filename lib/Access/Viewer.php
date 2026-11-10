@@ -37,6 +37,9 @@ final class Viewer
     }
 
     /** The account, or null when there is no such usable account. */
+    /** Keys of the account itself, never grants. */
+    private const OWN_KEYS = ['valid', 'instructor', 'password_hash'];
+
     public static function account(CourseConfig $config, string $name): ?self
     {
         if (!self::validUsername($name)) {
@@ -51,8 +54,19 @@ final class Viewer
         if (!$ini->readable) {
             return null;
         }
+        // valid, instructor and password_hash are read wherever they are written: one placed
+        // after [grants] is still the account's own (not a grant on a target named "valid", M-33)
+        $own = static function (string $key, ?string $default = null) use ($ini): ?string {
+            $value = $default;
+            foreach ($ini->lines as $line) {
+                if (strcasecmp($line->key, $key) === 0 && ($line->section === '' || strcasecmp($line->section, 'grants') === 0)) {
+                    $value = $line->value;
+                }
+            }
+            return $value;
+        };
         $valid = $config->usersValid;
-        $text = $ini->get('', 'valid');
+        $text = $own('valid');
         if ($text !== null && $text !== '') {
             try {
                 $valid = Window::parse($text, false);
@@ -60,9 +74,10 @@ final class Viewer
                 return null; // an account whose window can not be read can not log in
             }
         }
-        $instructor = in_array(strtolower((string) $ini->get('', 'instructor', 'false')), ['true', 'yes', '1', 'on'], true);
-        return new self($name, $instructor, $valid, Rules::fromLines($ini->section('grants'), "auth/$name.ini", true),
-            (string) $ini->get('', 'password_hash', ''), (int) filemtime($path));
+        $instructor = in_array(strtolower((string) $own('instructor', 'false')), ['true', 'yes', '1', 'on'], true);
+        $grants = array_values(array_filter($ini->section('grants'), static fn ($line): bool => !in_array(strtolower($line->key), self::OWN_KEYS, true)));
+        return new self($name, $instructor, $valid, Rules::fromLines($grants, "auth/$name.ini", true),
+            (string) $own('password_hash', ''), (int) filemtime($path));
     }
 
     public function isValidAt(int $now, \DateTimeZone $zone): bool

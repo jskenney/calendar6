@@ -62,7 +62,16 @@ final class Course
         if (!$default->exists) {
             $course->problems[] = new Problem('config/default.ini is missing: nothing is shown to anonymous viewers until it exists', 'default.ini');
         }
-        $course->rules = Rules::fromIni($default);
+        // default.ini has no sections: a line under a header such as [rules] is still a rule
+        // (dropping it would publish what it hides), in file order, and the header is a
+        // problem (M-33)
+        $course->rules = Rules::fromLines($default->lines, $default->label);
+        array_unshift($course->rules->problems, ...$default->problems);
+        foreach ($default->sections() as $section) {
+            if ($section !== '') {
+                $course->problems[] = new Problem("[$section]: default.ini has no sections; the lines under it are read as rules all the same", 'default.ini');
+            }
+        }
         array_push($course->problems, ...$course->rules->problems);
         foreach ($course->rules->overridden as $note) {
             $course->problems[] = new Problem($note, 'default.ini');
