@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Cal6\Schedule;
 
+use Cal6\Course\CourseConfig;
+
 use Cal6\Ini\IniFile;
 use Cal6\Support\Problem;
 
@@ -35,8 +37,12 @@ final class Periods
                 $periods->problems[] = new Problem("not a period name: $line->key", $ini->label, $line->line);
             } elseif (strtolower($line->value) === 'cancelled') {
                 $schedule['periods'][strtoupper($line->key)] = null;
-            } elseif (preg_match('/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/', $line->value, $m)) {
-                $schedule['periods'][strtoupper($line->key)] = [sprintf('%02d:%s', $m[1], $m[2]), sprintf('%02d:%s', $m[3], $m[4])];
+            } elseif (preg_match('/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/', $line->value, $m)) {
+                try {
+                    $schedule['periods'][strtoupper($line->key)] = CourseConfig::timeRange($m[1], $m[2]);
+                } catch (\InvalidArgumentException $e) {
+                    $periods->problems[] = new Problem($e->getMessage() . ": $line->key = $line->value", $ini->label, $line->line);
+                }
             } else {
                 $periods->problems[] = new Problem("expected HH:MM-HH:MM or cancelled: $line->key = $line->value", $ini->label, $line->line);
             }

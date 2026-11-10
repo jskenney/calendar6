@@ -125,9 +125,12 @@ final class CourseConfig
                 continue;
             }
             try {
-                $config->schedule[$day] = ['type' => $type, 'start' => isset($m[2]) ? self::hhmm($m[2]) : null, 'end' => isset($m[3]) ? self::hhmm($m[3]) : null];
+                [$start, $end] = isset($m[2]) ? self::timeRange($m[2], $m[3]) : [null, null];
+                $config->schedule[$day] = ['type' => $type, 'start' => $start, 'end' => $end];
             } catch (InvalidArgumentException $e) {
-                $config->problems[] = new Problem($e->getMessage(), 'config.ini', $line->line);
+                // the day keeps its type; only the times are dropped
+                $config->problems[] = new Problem($e->getMessage() . ' (the times are ignored)', 'config.ini', $line->line);
+                $config->schedule[$day] = ['type' => $type, 'start' => null, 'end' => null];
             }
         }
         foreach ($ini->section('boxes') as $line) {
@@ -202,9 +205,24 @@ final class CourseConfig
     public static function hhmm(string $time): string
     {
         [$h, $i] = array_map('intval', explode(':', $time));
-        if ($h > 24 || $i > 59) {
+        if ($h > 24 || $i > 59 || ($h === 24 && $i > 0)) {
             throw new InvalidArgumentException("not a time of day: $time");
         }
         return sprintf('%02d:%02d', $h, $i);
+    }
+
+    /**
+     * A meeting's start and end, "HH:MM" each: the end must be after the start on the same day
+     * (24:00 at most), or <postmeeting> would open before the meeting (L-53).
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function timeRange(string $start, string $end): array
+    {
+        [$start, $end] = [self::hhmm($start), self::hhmm($end)];
+        if ($end <= $start) {
+            throw new InvalidArgumentException("the end ($end) must be after the start ($start) on the same day");
+        }
+        return [$start, $end];
     }
 }

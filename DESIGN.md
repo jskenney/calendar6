@@ -290,7 +290,9 @@ label = 4 Hour Delay
 ```
 
 A copy lives in each course (the course directory is the boundary). `config.ini` names the
-default (`[course] period = normal`).
+default (`[course] period = normal`). Every meeting time (a period here, or `[schedule]` times in
+`config.ini`) must end after it starts on the same day (`24:00` at most); one that does not is
+listed as a problem and its times are not used (L-53), so `<postmeeting>` never opens early.
 
 #### `sections.ini`: the course's sections
 

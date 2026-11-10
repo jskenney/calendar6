@@ -28,6 +28,20 @@ final class IniAndTimeTest extends TestCase
         return (new DateTimeImmutable($time, $this->zone()))->getTimestamp();
     }
 
+    public function testAMeetingMustEndAfterItStarts(): void
+    {
+        $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $dir = Fixture::course(['config/config.ini' => str_replace("mon = class\n", "mon = class 22:00-00:30\n", $template)]);
+        $config = CourseConfig::load($dir);
+        Fixture::remove($dir);
+        $this->assertSame(1, count(array_filter($config->problems, static fn ($p): bool => str_contains($p->message, 'must be after'))), 'a reversed meeting is a problem (L-53)');
+        $monday = array_values(array_filter($config->schedule, static fn (array $d): bool => $d['type'] === 'class'))[0] ?? [];
+        $this->assertSame(['type' => 'class', 'start' => null, 'end' => null], $monday, 'the day keeps its type without the times');
+        $periods = \Cal6\Schedule\Periods::fromIni(IniFile::parse("[normal]\n1 = 10:00-09:00\n2 = 25:00-26:00\n3 = 08:00-08:50\n", 'periods.ini'));
+        $this->assertSame(2, count($periods->problems), 'reversed and impossible periods are problems');
+        $this->assertSame(['3'], array_map('strval', array_keys($periods->schedules['normal']['periods'])));
+    }
+
     public function testOddLoginAttemptsKeepTheDefault(): void
     {
         $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
