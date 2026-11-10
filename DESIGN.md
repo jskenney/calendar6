@@ -645,7 +645,16 @@ processed:
   `<video poster>` and each `srcset` candidate become `get.php` URLs; `<iframe>`, `<embed>` and
   `<object>` pointing at a page get `html.php?file=KEY&full=1` (a page is never sent by
   `get.php`, and is never an image or script); links to files the viewer may not see keep their
-  text but lose their target (`data-cal6-hidden="1"`);
+  text but lose their target (`data-cal6-hidden="1"`). Links follow this table (Decided, M-36):
+
+  | Link | Result |
+  |---|---|
+  | external (`https://…`, `mailto:`, `/path`, `#anchor`, `?query`) | unchanged |
+  | written by the author, to a course file this viewer may see | rewritten to `#/view/KEY` (pages) or `get.php?file=KEY` |
+  | written by the author, to a course file this viewer may not see (or one never served) | text kept, target removed (`data-cal6-hidden`) |
+  | written by the author, to a missing file, or a path outside the course (or into `config/`, `calendar/`) | left exactly as written, as in Calendar 4; nothing is said about the disk outside the course |
+  | filled in by `<url>` (the visitor chose it) | rewritten only to a visible file with a rule of its own (an event's own file or a `paths.ini` page, as `calendar.php` lists them); anything else (a missing file, a path outside the course, a file in a subfolder or one that borrows a page's rule) loses its target, all alike |
+
 - files that a `paths.ini` page links to (its images, style sheets, the pages next to it) get
   keys of their own, decided by that page's rule;
 - every Calendar 4 tag except `<ace>` is processed on the server (see "Tags");
@@ -1087,8 +1096,9 @@ Choices the code made where the design left room (change them here if they are w
   `html.php` (a POST).
 - **html.php:** links to pages become `#/view/KEY`, other files the absolute path
   `/<course>/calendar/php/get.php?file=KEY`; links to files the viewer may not see keep their
-  text but lose their target (`data-cal6-hidden`), and so do links to files that do not exist
-  (the same answer, so a link can not tell whether a path exists, L-51). `<student>` becomes `<details>`; `<ace>` shows its text in `<pre>`; `<lock>` becomes
+  text but lose their target (`data-cal6-hidden`); links to missing files are left as written,
+  and a target filled in by `<url>` resolves only to a visible file with a rule of its own (see
+  the table under `html.php`, M-36). `<student>` becomes `<details>`; `<ace>` shows its text in `<pre>`; `<lock>` becomes
   a small form that posts the code (with the CSRF token) back to `html.php`; `<host>` matches the
   server's host name or address, never the request's `Host` header; `<calphp>` runs after
   hidden sections are removed and its output is not processed. A Markdown page is converted

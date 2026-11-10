@@ -21,6 +21,8 @@ final class PageRenderer
 {
     private const MAX_INJECT_DEPTH = 5;
     private const MAX_INJECT_BYTES = 4_000_000;
+    /** Marks a value filled in by <url> until links are rewritten (a private-use character). */
+    private const URL_MARK = "\u{E000}";
     /** Deeper blocks of one tag are dropped with their content, so kept nesting stays linear (L-67). */
     private const MAX_BLOCK_DEPTH = 256;
 
@@ -101,6 +103,7 @@ final class PageRenderer
         $html = self::replaceTags($html, ['keyword', 'search'], static fn (): string => '', ['keyword', 'search']);
         $html = $this->showlinks($html, $dir, $place);
         $html = $this->links($html, $dir, $place);
+        $html = str_replace(self::URL_MARK, '', $html);
         $html = $this->anchors($html);
         return strtr($html, $this->outputs);
     }
@@ -554,7 +557,9 @@ final class PageRenderer
             } else {
                 $value = (string) self::attribute($tag, 'default');
             }
-            return htmlspecialchars(str_replace("\0", '', $value), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            // marked, so link rewriting knows the visitor chose this value (M-36); the marks
+            // are removed once links are rewritten
+            return self::URL_MARK . htmlspecialchars(str_replace(["\0", self::URL_MARK], '', $value), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         });
     }
 
@@ -658,7 +663,7 @@ final class PageRenderer
                         if (in_array($attribute, ['href', 'src'], true)) {
                             // the whole value as it will be sent decides the scheme, so two
                             // values side by side can not spell javascript: (M-34)
-                            $final = preg_replace_callback('/' . $marker . '(\d+)x/', static fn (array $m): string => $fn($tags[(int) $m[1]]), $value) ?? self::failed();
+                            $final = preg_replace_callback('/' . $marker . '(\d+)x/', static fn (array $m): string => str_replace(self::URL_MARK, '', $fn($tags[(int) $m[1]])), $value) ?? self::failed();
                             if (self::hasUnsafeScheme($final)) {
                                 continue;
                             }
@@ -831,6 +836,9 @@ final class PageRenderer
     /** The URL to use for a link: unchanged, a key URL, or null when it leads to a file the viewer may not see. */
     private function rewrite(string $value, string $dir, Place $place, string $element): ?string
     {
+        // a value filled in by <url> carries the marker: the visitor chose this target (M-36)
+        $fromUrl = str_contains($value, self::URL_MARK);
+        $value = str_replace(self::URL_MARK, '', $value);
         if ($value === '' || self::isAbsolute($value)) {
             return $value;
         }
@@ -840,16 +848,39 @@ final class PageRenderer
             $value = substr($value, 0, $hash);
         }
         $path = explode('?', $value, 2)[0];
-        $target = $this->visiblePlace($place, $dir, $path);
+        $target = $path === '' ? null : $this->course->placeForPath($place, $dir, $path);
+        if ($target !== null && $fromUrl && !$this->hasOwnRule($target)) {
+            // a target chosen through <url> may only be a file with a rule of its own, as
+            // calendar.php lists them: never one that borrows a page's rule (M-36)
+            return null;
+        }
+        if ($target !== null && !$this->policy->decide($this->viewer, $target, $this->now)->visible) {
+            return null;
+        }
         if ($target !== null && $target->file->kind() === 'page' && !in_array($element, ['a', 'iframe', 'embed', 'object'], true)) {
-            $target = null; // a page can not be an image, script or style sheet: get.php never sends pages
+            return null; // a page can not be an image, script or style sheet: get.php never sends pages
         }
         if ($target !== null) {
             return $this->urlFor($target, $element) . $fragment;
         }
-        // a file this viewer may not see and a file that does not exist get the same answer, so
-        // links (also ones filled in by <url>) can not tell whether a path exists (L-51)
-        return null;
+        if ($fromUrl) {
+            return null; // missing, outside the course or never served: all look alike (L-51)
+        }
+        // a link the author wrote: a file of the course without a key (one never served) loses
+        // its target; a missing file, or a path outside the course (or in config/ or calendar/),
+        // is left as written, as in Calendar 4, and says nothing about the disk outside it
+        $inside = $this->course->boundary->resolve($dir . '/' . rawurldecode($path));
+        return $inside !== null ? null : $value . $fragment;
+    }
+
+    /** An event's own file or a paths.ini page: the places calendar.php lists. */
+    private function hasOwnRule(Place $target): bool
+    {
+        if ($target->event !== null) {
+            return $target->file->topLevel && $target->assetOf === null;
+        }
+        return $target->page !== null && !$target->asset && $target->assetOf === null
+            && ($this->course->pageKeys[$target->page] ?? null) === $target->key;
     }
 
     private static function isAbsolute(string $url): bool

@@ -255,7 +255,7 @@ HTML;
         $this->assertNotContains('instructor.html', $body);
         $this->assertContains('href="https://example.com/x"', $body);
         $this->assertContains('href="#top"', $body);
-        $this->assertContains('<a data-cal6-hidden="1">missing</a>', $body, 'a link to nothing looks like a hidden one (L-51)');
+        $this->assertContains('<a href="missing.html">missing</a>', $body, 'a link the author wrote to a missing file is left as written, as in v4');
         $this->assertNotContains('INST-ONLY', $body);
         $this->assertNotContains('secret.pdf', $body, 'links inside removed content');
         $this->assertContains('<details class="cal6-student"><summary>Show answer</summary>ANSWER</details>', $body);

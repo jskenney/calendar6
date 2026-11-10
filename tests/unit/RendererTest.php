@@ -313,8 +313,8 @@ final class RendererTest extends TestCase
             'class/01.Introduction/index.html' => '<img src="z%00.png">',
             'config/default.ini' => "class_1 = always\n",
         ]);
-        $this->assertContains('<img data-cal6-hidden="1">', $this->render($course, 'page/home'), 'the course loads and the link is a missing file (L-35, L-51)');
-        $this->assertContains('<img data-cal6-hidden="1">', $this->render($course, 'class_1/index.html'));
+        $this->assertContains('x%00.png', $this->render($course, 'page/home'), 'the course loads and the link is a missing file, left as written (L-35)');
+        $this->assertContains('z%00.png', $this->render($course, 'class_1/index.html'));
     }
 
     public function testLinksDoNotTellWhetherAPathExists(): void
@@ -329,7 +329,32 @@ final class RendererTest extends TestCase
             $answers[] = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['a' => $value]))
                 ->render($course->places[$course->keysByEvent['class_1']['index.html']]);
         }
-        $this->assertSame(1, count(array_unique($answers)), 'hidden, missing and outside give the same answer (L-51): ' . implode(' | ', $answers));
+        $this->assertSame(1, count(array_unique($answers)), 'through <url>, hidden, missing and outside give the same answer (L-51): ' . implode(' | ', $answers));
+    }
+
+    public function testUrlTargetsMayOnlyBeFilesWithTheirOwnRule(): void
+    {
+        $course = $this->course([
+            'config/paths.ini' => "[pages]\nhome = pages/home.html\n",
+            'config/default.ini' => "class_1 = always\n",
+            'pages/home.html' => '<inst><a href="answers/exam-key.pdf">key</a></inst><a href="https://cnn.com/x">news</a> <a href="gone.html">gone</a> <a href="../../../../../../etc/passwd">p</a> <a href="../config/config.ini">c</a>',
+            'pages/answers/exam-key.pdf' => 'KEY',
+            'class/01.Introduction/index.html' => '<a href="<url value=next>">next</a>',
+            'class/01.Introduction/notes.html' => 'N',
+            'class/01.Introduction/img/pic.png' => 'P',
+        ]);
+        $home = $this->render($course, 'page/home');
+        $this->assertContains('<a href="https://cnn.com/x">news</a>', $home, 'external links are unchanged');
+        $this->assertContains('<a href="gone.html">gone</a>', $home, 'a missing file the author linked is left as written');
+        $this->assertContains('href="../../../../../../etc/passwd"', $home, 'a path outside the course is left as written, whether it exists or not');
+        $this->assertContains('href="../config/config.ini"', $home, 'and so is one into config/');
+        $place = $course->places[$course->keysByEvent['class_1']['index.html']];
+        $link = fn (string $next): string => (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['next' => $next]))->render($place);
+        $this->assertContains('<a data-cal6-hidden="1">next</a>', $link('../../pages/answers/exam-key.pdf'), 'a <url> target that borrows a page\'s rule is not handed out (M-36)');
+        $this->assertContains('<a data-cal6-hidden="1">next</a>', $link('img/pic.png'), 'nor a file in a subfolder');
+        $this->assertContains('#/view/', $link('notes.html'), 'an event\'s own file still works through <url>');
+        $this->assertContains('#/view/', $link('../../pages/home.html'), 'and so does a paths.ini page');
+        $this->assertContains('href="https://cnn.com/"', $link('https://cnn.com/'), 'and an external address');
     }
 
     public function testUrlValuesAndNumericNames(): void
