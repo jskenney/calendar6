@@ -13,8 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **M-42** first (a comment ending in `--!>`), then **L-91** (lock codes inside hidden blocks)
-   and **L-84..L-90, L-93, L-94**, **DOC-20**, **T-19**.
+1. Review 15 is in progress; its findings will be added here.
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -28,36 +27,19 @@ None open.
 
 ## Medium
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| M-42 | 14 | `lib/Render/HtmlLexer.php:189`, `lib/Render/Markdown.php:120` | **A comment ending in `--!>` runs on to the next `-->`**, removing the `<inst>` opening a browser sees: `<!-- old note --!> <inst>... <!-- x --> LEAK</inst>` sends `LEAK` (HTML and Markdown). Gap next to L-36. Confirmed. | End comments at `-->` or `--!>`; test. |
+None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-84 | 14 | `HtmlLexer.php:196-203` | A CDATA section removed whole up to `]]>` is not fail-closed: a browser ends it at the first `>`, so `<![CDATA[ a > b <inst> ]]> LEAK </inst>` sends `LEAK`. Gap after L-36/M-27. Confirmed. | Outside svg/math end it at `>`, or hide the rest when the removed stretch holds a block tag. |
-| L-85 | 14 | `lib/Render/Markdown.php:633` | Code spans are matched before raw HTML, so a backtick inside an attribute (`<kbd title="`">`) starts a code span that shows a later `<inst>` as text. Confirmed by the reviewer. | Hold quote-aware HTML tags before code spans (CommonMark precedence). |
-| L-86 | 14 | `PageRenderer::hideForSourceOnce()` | `<codeinject>` of a page leaves hidden blocks in attribute values (only `render()` calls `hideInAttributes()`). Gap after L-79. Confirmed by the reviewer. | Apply attribute hiding to the source too. |
-| L-87 | 14 | `PageRenderer.php:92, 435` | `<postmeeting>` in an attribute of an injected file follows the injecting page's event (attribute hiding runs with the page's place). Gap after M-24. Confirmed by the reviewer. | Hide attribute values in `injects()` with the owner place. |
-| L-88 | 14 | `HtmlLexer.php:236-238` | Breakout tags inside svg/math integration points (`foreignObject`, `desc`, `title`, `mi`, ...) end foreign content for the lexer but not the browser, so a later `<style>` in the svg is raw again and `<inst>` inside it is sent (in the DOM, not rendered). Gap after L-77. Confirmed by the reviewer. | Track integration points; apply breakout only outside them. |
-| L-89 | 14 | `PageRenderer::stripComments()` | Comments are kept in every bounded body (noscript, iframe, svg title/style, ...), not only textarea, xmp and title as DESIGN says. Gap after L-82. Confirmed by the reviewer. | Keep them only in textarea, xmp and title outside foreign content. |
-| L-90 | 14 | `PageRenderer::rebase()` | Injected files from another directory lose `<url>`/`<replace>` in link attributes (`href="page.html#<url ...>"` is escaped; `src="logo-<replace ...>.png"` is hidden): rebase runs before the value tags. Breaks a v4 idiom. Gap after L-21. Confirmed by the reviewer. | Rebase after `replace()`/`url()`, or leave values with value tags for later. |
-| L-91 | 14 | `lib/Endpoint/HtmlEndpoint.php:108` | Lock codes are taken from the whole page, also from `<lock>`s inside hidden blocks (`<inst>`, an unmet `<postmeeting>`, another `<host>`): such a code is accepted (303 with a session = "right") and then opens every lock with it. Confirmed by the reviewer (Apache). | Collect codes from the page as the viewer sees it (after postmeeting, inst, host). |
-| L-93 | 14 | `lib/Http/Context.php:130-136` | Behind a trusted proxy that writes ports or `unknown` in `X-Forwarded-For`, a non-IP hop is skipped and the client-chosen entry to its left is used, dodging rate limits. Confirmed by the reviewer. | Stop at the first hop that is not a bare IP (or strip the port). |
-| L-94 | 14 | `Markdown.php:646` | Math whose hidden-block tag has `>` inside a quoted attribute (`$$ <inst title="a>b">S</inst> $$`) hides the rest of the page (fails closed: a rendering bug). Gap after M-40. Confirmed by the reviewer. | Read the tag with quotes, as step 4 does. |
+None open.
 
 ## Documentation
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| DOC-20 | 14 | `DESIGN.md` (Deploying) | Files at the course root (the template's `README.md`) are served directly by the web server; DESIGN does not warn that any page or file kept there is served raw. | Warn, or deny `*.md`/`*.html` at the root except `index.html`. |
+None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-19 | 14 | `tests/` | No tests for `--!>`, CDATA with `>`, backticks in Markdown attributes, codeinject attribute hiding, injected postmeeting in attributes, svg integration points, comments in noscript/svg, rebased value tags, lock codes inside hidden blocks, `.mdN`, ports in X-Forwarded-For, math tags with `>`. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -122,6 +104,7 @@ None open.
 | M-39 | 12 | `5e1b1e1` | **A closing block tag inside a bounded element closes a block opened outside it** (residual of M-37): `<inst>Answer: write <textarea>the closing tag </inst> here</textarea> SECRET</inst>` sends `SECRET`; a browser reads that `</inst>` as text. Confirmed. | A closing block tag counts only where both readings (with and without bounded elements) see it; one inside a bounded element closes only a block opened there. |
 | M-40 | 13 | `c3e4a49` | **Markdown math shows hidden blocks to everyone**: math (`\( \)`, `\[ \]`, `$$ $$`) is held and escaped before raw HTML is recognised, so `\( x = <inst>42</inst> \)` is sent as visible `&lt;inst&gt;42&lt;/inst&gt;`. Confirmed (also on Apache). | Math keeps hidden-block tags as markup (only the text around them is held and escaped). |
 | M-41 | 13 | `c3e4a49` | **`instructor.md` or `lab-solution.md` on its own fills no box**, so `class/instructor = never` does not apply and it is released with the event. Confirmed by the reviewer. | The template's boxes (and DESIGN's sample) list the `.md` names; a page named like a box that fills none is a problem. |
+| M-42 | 14 | `57ea865` | **A comment ending in `--!>` runs on to the next `-->`**, removing the `<inst>` opening a browser sees: `<!-- old note --!> <inst>... <!-- x --> LEAK</inst>` sends `LEAK` (HTML and Markdown). Gap next to L-36. Confirmed. | `HtmlLexer::commentEnd()`: `-->` or `--!>`, in the lexer and in Markdown. |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -205,7 +188,17 @@ None open.
 | L-81 | 13 | `c3e4a49` | IPv4-mapped addresses (`::ffff:10.0.0.5`) never match an IPv4 entry (and the reverse). Residual of L-76/M-26. Confirmed by the reviewer. | `isTrusted()` reads `::ffff:a.b.c.d` as `a.b.c.d` on both sides. |
 | L-82 | 13 | `c3e4a49` | Comments and doctypes are removed from inside `<textarea>`, `<xmp>`, `<title>`, which a browser shows as text (starter code in a textarea loses `<!DOCTYPE html>` and `<!-- your code here -->`). Rendering regression from M-37. Confirmed by the reviewer. | `stripComments()` keeps comments in bounded bodies unless they hold a block tag. |
 | L-83 | 13 | `c3e4a49` | (suspected) "Inside an event directory" is decided from the first path segment, so if a type directory is a symbolic link elsewhere inside the course, its files without a key are injectable. | `mayInject()` also compares with the type directories' real paths. |
+| L-84 | 14 | `57ea865` | A CDATA section removed whole up to `]]>` is not fail-closed: a browser ends it at the first `>`, so `<![CDATA[ a > b <inst> ]]> LEAK </inst>` sends `LEAK`. Gap after L-36/M-27. Confirmed. | CDATA is a real section only inside svg/math; elsewhere a bogus comment ends at the first `>`, but before an opening tag written in it (a closing tag is swallowed, as in the browser). |
+| L-85 | 14 | `57ea865` | Code spans are matched before raw HTML, so a backtick inside an attribute (`<kbd title="`">`) starts a code span that shows a later `<inst>` as text. Confirmed by the reviewer. | Code spans and quote-aware tags are matched together; a tag that starts first is left for raw HTML. |
+| L-86 | 14 | `57ea865` | `<codeinject>` of a page leaves hidden blocks in attribute values (only `render()` calls `hideInAttributes()`). Gap after L-79. Confirmed by the reviewer. | `hideForSourceOnce()` hides blocks in attribute values. |
+| L-87 | 14 | `57ea865` | `<postmeeting>` in an attribute of an injected file follows the injecting page's event (attribute hiding runs with the page's place). Gap after M-24. Confirmed by the reviewer. | `injects()` hides attribute values with the injected file's own place. |
+| L-88 | 14 | `57ea865` | Breakout tags inside svg/math integration points (`foreignObject`, `desc`, `title`, `mi`, ...) end foreign content for the lexer but not the browser, so a later `<style>` in the svg is raw again and `<inst>` inside it is sent (in the DOM, not rendered). Gap after L-77. Confirmed by the reviewer. | Integration points (`foreignObject`, `desc`, `title`, `mi`, ...) are tracked; breakout and foreign script/style only outside them. |
+| L-89 | 14 | `57ea865` | Comments are kept in every bounded body (noscript, iframe, svg title/style, ...), not only textarea, xmp and title as DESIGN says. Gap after L-82. Confirmed by the reviewer. | Comments kept only in textarea, xmp and title outside svg/math. |
+| L-90 | 14 | `57ea865` | Injected files from another directory lose `<url>`/`<replace>` in link attributes (`href="page.html#<url ...>"` is escaped; `src="logo-<replace ...>.png"` is hidden): rebase runs before the value tags. Breaks a v4 idiom. Gap after L-21. Confirmed by the reviewer. | An injected file gets `replace()`/`url()` before `rebase()` (the `<url>` mark stays in the path or fragment where it was); course `<replace>` values fill links when assets get keys. |
+| L-91 | 14 | `57ea865` | Lock codes are taken from the whole page, also from `<lock>`s inside hidden blocks (`<inst>`, an unmet `<postmeeting>`, another `<host>`): such a code is accepted (303 with a session = "right") and then opens every lock with it. Confirmed by the reviewer (Apache). | `PageRenderer::visibleSource()`: lock codes after postmeeting, inst, host and comment hiding. |
 | L-92 | 14 | `c7b6e5e` | `notes.md1`, `notes.md2` are not backups (only `html\d+` is), so get.php serves the raw Markdown. Gap after L-78. Confirmed by the reviewer. | Decided: `notes.md2` (not `.md5`) is a plain file, never a page, never listed by `calendar.php`, not reachable through `<url>`; a page's own link to it works. |
+| L-93 | 14 | `57ea865` | Behind a trusted proxy that writes ports or `unknown` in `X-Forwarded-For`, a non-IP hop is skipped and the client-chosen entry to its left is used, dodging rate limits. Confirmed by the reviewer. | Ports are dropped; a hop that is not an address ends the walk (the proxy's own address is used). |
+| L-94 | 14 | `57ea865` | Math whose hidden-block tag has `>` inside a quoted attribute (`$$ <inst title="a>b">S</inst> $$`) hides the rest of the page (fails closed: a rendering bug). Gap after M-40. Confirmed by the reviewer. | The math split reads tags with quotes. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -225,6 +218,7 @@ None open.
 | DOC-17 | 8 | `e91a931`, `0682e5e` | Say that block tags inside `<script>`/`<style>` bodies are sent as written (a hiding hole authors should know), and how `<url>` behaves in script contexts. | DESIGN (Tags): which tags the lexer finds, value tags in attribute values, where `<url>` is not substituted, block tags inside script/style bodies are sent as written. |
 | DOC-18 | 11 | `4d84b3b` | Say that `<url>` in `src`/`href` accepts any `http(s)://` value, so `<script src="<url ...>">` or `<iframe src>` would load another site's content and `href` is an open redirect. | DESIGN warns that `<url>` in `src`/`href` accepts any `http(s)://` value. |
 | DOC-19 | 12 | `5e1b1e1` | `<postmeeting>` in a page without an event (a `paths.ini` page, its assets) is always shown; DESIGN covers only injected files. | DESIGN: `<postmeeting>` in a page without an event is always shown. |
+| DOC-20 | 14 | `57ea865` | Files at the course root (the template's `README.md`) are served directly by the web server; DESIGN does not warn that any page or file kept there is served raw. | DESIGN warns about files at the course root; Apache and nginx refuse `*.md` everywhere in the course; smoke check for `README.md`. |
 | T-1 | 1 | `628734a`, `467a23d` | No tests for the course boundary: a material link that leads outside the course or into `config/`, `virtual.ini` with `..` or an absolute path, `paths.ini` outside the course, `<inject src="../../config/config.ini">`, `<calphp>` outside. These are the core security promises. | `BoundaryTest`, renderer boundary cases, `TemplateTest`. |
 | T-2 | 1 | `467a23d` | Nothing checks that `template/` itself loads without problems, although every new course starts from it. | `BoundaryTest`, renderer boundary cases, `TemplateTest`. |
 | T-3 | 1 | `9870c0b` | Time-dependent behaviour is only tested in unit tests: the HTTP tests can not move the clock, so the cache expiring at `next_change`, `<postmeeting>` before the meeting ends, session expiry and an account window ending during a session are untested end to end. | `CAL6_TEST_CLOCK` (built-in server only) and `tests/http/TimeTest.php`. |
@@ -243,6 +237,7 @@ None open.
 | T-16 | 11 | `4d84b3b` | No tests for raw-text elements, comments formed after processing, nested blocks in Markdown attributes and references, login timing, `.INI` on nginx, `name_NN` file rules, long bracket spans, deep kept nesting. | Tests with the fixes. |
 | T-17 | 12 | `5e1b1e1` | `testLeadingZerosAndRulesForMissingEvents` loads two courses and leaves the first in `/tmp` on every run; no tests for M-39, L-68..L-74, L-76. | `PolicyTest::load()` removes the previous course; tests with the fixes. |
 | T-18 | 13 | `c3e4a49` | No tests for math with hidden blocks, `.md` box pages, svg/math style, digit backups, hidden blocks in attributes, tab-separated old lines, mapped proxy addresses, comments in textareas. | Tests with the fixes (and the trusted-proxy test meant for `5e1b1e1`). |
+| T-19 | 14 | `57ea865` | No tests for `--!>`, CDATA with `>`, backticks in Markdown attributes, codeinject attribute hiding, injected postmeeting in attributes, svg integration points, comments in noscript/svg, rebased value tags, lock codes inside hidden blocks, `.mdN`, ports in X-Forwarded-For, math tags with `>`. | Tests with the fixes. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
