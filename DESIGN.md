@@ -705,14 +705,19 @@ end of the file: `416`. Methods other than `GET` and `HEAD`: `405`. `.php` files
 
 ### `html.php` (Decided: one HTML page by key, processed inline)
 
+**html.php returns only the contents of an HTML or Markdown file, processed by the rules**
+(hidden blocks removed for viewers who may not see them, links rewritten, the other tags handled).
+**It never does anything else** (Decided, hard rule): no surrounding document, no site CSS or
+JavaScript, no other file types. Style sheets, scripts and every other file come from the front
+end itself or through `get.php`.
+
 **Inputs:**
 
 | Field | Required | Meaning |
 |---|---|---|
 | `file` | yes | the key of a page (`.html`, `.htm`, `.md`), from `calendar.php` or a rewritten link |
-| `full=1` | no | a whole HTML document for a new tab or printing, instead of the fragment the front end inserts: `<!doctype html>`, a `<title>` (`Class 1: Introduction`, or the page's label) and the page in `<main class="cal6-page">`. Links to pages in it go to `html.php?file=KEY&full=1` rather than the front end's `#/view/KEY`. (No site CSS, MathJax or highlight.js yet: those come with the front end, E-1.) |
 | `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The form's `csrf` is a token signed from the page and the hour (valid for up to two hours), so showing a page with `<lock>` creates no session. The answer is `303` back to the page (`GET`), so a reload does not resend it. A session is created only for a matching code. A POST from another site (`Sec-Fetch-Site: cross-site`, or without that header an `Origin` naming another host) is refused (`403`), because the token itself is not secret. Wrong codes are limited per address and page (four times `login_attempts`) and per address (twenty times); a right code does not count, so a classroom behind one address is not blocked by a few typos |
-| any other query parameter | no | values for `<url value="...">` tags: names of letters, digits, `_` and `-` (at most 64; not `file`, `full`, `lock` or `csrf`), values cut to 200 characters (HTML-escaped; a value with a URL scheme other than `http(s):`, such as `javascript:`, is ignored; remembered only in a session that already exists, so a link can not create or replace one) |
+| any other query parameter | no | values for `<url value="...">` tags: names of letters, digits, `_` and `-` (at most 64; not `file`, `lock` or `csrf`), values cut to 200 characters (HTML-escaped; a value with a URL scheme other than `http(s):`, such as `javascript:`, is ignored; remembered only in a session that already exists, so a link can not create or replace one) |
 
 `GET`, `HEAD` and `POST` (only for `lock`); anything else is `405`. A wrong or expired lock-form
 token: `403`; too many wrong codes: `429` with `Retry-After` (`503` when the limiter can not keep
@@ -728,14 +733,14 @@ processed:
   route `#/view/KEY`, `<a href="data.zip">`, `<script src>`, `<link href>`, `<source src>`,
   `<video poster>`, `<area href>`, `<input type=image src>`, svg `<image href>`/`xlink:href`,
   `background=` and each `srcset` candidate become `get.php` URLs (or page routes, L-122); `<iframe>`, `<embed>` and
-  `<object>` pointing at a page get `html.php?file=KEY&full=1` (a page is never sent by
+  `<object>` pointing at a page get `html.php?file=KEY`, the page's processed contents (a page is never sent by
   `get.php`, and is never an image or script); links to files the viewer may not see keep their
   text but lose their target (`data-cal6-hidden="1"`). Links follow this table (Decided, M-36):
 
   | Link | Result |
   |---|---|
   | external (`https://…`, `mailto:`, `/path`, `#anchor`, `?query`) | unchanged |
-  | written by the author, to a course file this viewer may see | rewritten to `#/view/KEY` (pages; a query string goes along: `#/view/KEY?week=3`, or `html.php?file=KEY&full=1&week=3` for frames) or `get.php?file=KEY` |
+  | written by the author, to a course file this viewer may see | rewritten to `#/view/KEY` (pages; a query string goes along: `#/view/KEY?week=3`, or `html.php?file=KEY&week=3` for frames) or `get.php?file=KEY` |
   | written by the author, to a course file this viewer may not see (or one never served) | text kept, target removed (`data-cal6-hidden`) |
   | written by the author, to a missing file, or a path outside the course (or into `config/`, `calendar/`) | left exactly as written, as in Calendar 4; nothing is said about the disk outside the course |
   | filled in by `<url>` (the visitor chose it) | rewritten only to a visible file `calendar.php` lists (a box file or a `paths.ini` page); anything else (a missing file, a path outside the course, any other file of an event, one that borrows a page's rule) loses its target, all alike |
@@ -1093,7 +1098,7 @@ What the endpoints expect from it (the contract):
 - **Routes:** `html.php` writes links to other pages as `#/view/KEY`, with the link's query string
   if it had one (`#/view/KEY?week=3`, L-75); the front end shows that page
   (`html.php?file=KEY&week=3`) when the route changes, so the query fills `<url>` tags there.
-  `file`, `full`, `lock` and `csrf` are never taken from a link's query, also not under a
+  `file`, `lock` and `csrf` are never taken from a link's query, also not under a
   spelling PHP reads as one of them (`file%00x`, `file[]`, L-104). Links to other files are absolute `get.php` URLs
   and work as they are.
 - **Hidden links:** `<a data-cal6-hidden="1">` (no `href`) is a link to something the viewer may

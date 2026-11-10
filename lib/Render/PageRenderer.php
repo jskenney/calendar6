@@ -48,7 +48,6 @@ final class PageRenderer
         private readonly array $urlValues = [],
         private readonly string $lockKey = '',
         private readonly string $csrf = '',
-        private readonly bool $full = false,
         /** names and addresses <host server="..."> matches: never anything the client chooses */
         private readonly array $hostNames = [],
     ) {
@@ -664,7 +663,7 @@ final class PageRenderer
             if ($this->viewer->instructor) {
                 return $inner;
             }
-            return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($this->lockKey) . ($this->full ? '&full=1' : '')) . '">'
+            return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($this->lockKey)) . '">'
                 . '<input type="hidden" name="csrf" value="' . htmlspecialchars($this->csrf) . '">'
                 . '<label>Enter the code to see this section <input type="password" name="lock" autocomplete="off"></label>'
                 . '<button type="submit">Unlock</button></form>';
@@ -1090,7 +1089,7 @@ final class PageRenderer
     {
         if ($target->file->kind() === 'page') {
             // pages are only ever served by html.php (C-1): links open them in the front end,
-            // frames get the whole processed document. A link's query string goes along, so
+            // frames get html.php's answer (the page's processed contents, nothing more). A link's query string goes along, so
             // notes.html?week=3 fills <url value="week"> on that page (L-75); html.php's own
             // parameters can not be set this way
             $kept = [];
@@ -1099,14 +1098,14 @@ final class PageRenderer
                 // go and space or "." become "_" (file%00x=, file[]=, L-104)
                 $name = explode("\0", urldecode(explode('=', $pair, 2)[0]), 2)[0];
                 $name = strtolower(strtr(explode('[', ltrim($name, ' '), 2)[0], ' .', '__'));
-                if ($pair !== '' && !in_array($name, ['file', 'full', 'lock', 'csrf'], true)) {
+                if ($pair !== '' && !in_array($name, ['file', 'lock', 'csrf'], true)) {
                     $kept[] = $pair;
                 }
             }
             $query = implode('&', $kept);
-            return in_array($element, ['a', 'area'], true) && !$this->full
+            return in_array($element, ['a', 'area'], true)
                 ? '#/view/' . rawurlencode($target->key) . ($query !== '' ? '?' . $query : '')
-                : $this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($target->key) . '&full=1' . ($query !== '' ? '&' . $query : '');
+                : $this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($target->key) . ($query !== '' ? '&' . $query : '');
         }
         return $this->baseUrl . 'calendar/php/get.php?file=' . rawurlencode($target->key);
     }

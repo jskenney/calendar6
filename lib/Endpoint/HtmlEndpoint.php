@@ -15,12 +15,12 @@ use Cal6\Render\PageRenderer;
 
 /**
  * html.php?file=KEY: one page, processed (DESIGN.md, `html.php`).  By default an
- * HTML fragment for the front end; full=1 gives a whole document.  POST lock=CODE
+ * HTML fragment: the page's processed contents and nothing else.  POST lock=CODE
  * (with csrf) unlocks <lock> sections; other parameters fill <url> tags.
  */
 final class HtmlEndpoint
 {
-    private const RESERVED = ['file', 'full', 'lock', 'csrf'];
+    private const RESERVED = ['file', 'lock', 'csrf'];
 
     /** The token of a page's <lock> form: the page key and the hour, signed with the course secret. */
     private static function lockToken(Context $c, string $key, int $hour): string
@@ -77,7 +77,6 @@ final class HtmlEndpoint
         // (with the codes this session has entered, so an inner lock opens once the outer one has, M-49)
         $source = (new PageRenderer($course, $policy, $viewer, $c->now, '', unlocked: array_map('strval', (array) Session::get('unlocked', [])),
             hostNames: PageRenderer::serverNames($c->server)))->visibleSource($place);
-        $full = $c->query('full') === '1';
 
         if ($method === 'POST') {
             // the form's token is public (page and hour), so a POST from another site is refused
@@ -122,7 +121,7 @@ final class HtmlEndpoint
             Session::close();
             Response::common();
             http_response_code(303);
-            header('Location: ' . Locator::coursePath($c->server) . 'calendar/php/html.php?file=' . rawurlencode($place->key) . ($full ? '&full=1' : ''));
+            header('Location: ' . Locator::coursePath($c->server) . 'calendar/php/html.php?file=' . rawurlencode($place->key));
             header('Cache-Control: no-store');
             return;
         }
@@ -140,7 +139,7 @@ final class HtmlEndpoint
         $hasLock = PageRenderer::lockCodes($source) !== [];
         $renderer = new PageRenderer($course, $policy, $viewer, $c->now, Locator::coursePath($c->server),
             array_map('strval', (array) Session::get('unlocked', [])), array_map('strval', $urlValues),
-            $place->key, $hasLock ? self::lockToken($c, $place->key, intdiv($c->now, 3600)) : '', $full, PageRenderer::serverNames($c->server));
+            $place->key, $hasLock ? self::lockToken($c, $place->key, intdiv($c->now, 3600)) : '', PageRenderer::serverNames($c->server));
         $html = $renderer->render($place);
         if ($renderer->usedUrlValues !== [] && Session::isOpen()) { // remembered only in an existing session (L-41)
             $remember = (array) Session::get('url', []);
@@ -151,10 +150,6 @@ final class HtmlEndpoint
         }
         Session::close();
 
-        if ($full) {
-            $title = htmlspecialchars($place->event !== null ? ucfirst($place->event->type) . ' ' . $place->event->number . ': ' . $place->event->title() : $course->config->pages[$place->page]['label'] ?? '', ENT_QUOTES, 'UTF-8');
-            $html = "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>$title</title>\n</head>\n<body>\n<main class=\"cal6-page\">\n$html\n</main>\n</body>\n</html>\n";
-        }
         Response::common();
         http_response_code(200);
         header('Content-Type: text/html; charset=utf-8');

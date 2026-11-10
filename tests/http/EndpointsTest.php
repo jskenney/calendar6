@@ -311,9 +311,7 @@ HTML;
         $this->assertContains('LOCKED-PART', $client->get("calendar/php/html.php?file=$index")->body, 'a shared code, remembered');
 
         $this->assertContains('INJECTED-LOCKED', $client->get("calendar/php/html.php?file=$index")->body, 'a lock inside an injected file can be opened too (L-4)');
-        $full = $client->get("calendar/php/html.php?file=$index&full=1")->body;
-        $this->assertContains('<!doctype html>', $full);
-        $this->assertContains('href="/calendar/php/html.php?file=' . $keys['class_1/reading.md'] . '&amp;full=1#part"', $full);
+        $this->assertNotContains('<!doctype', $client->get("calendar/php/html.php?file=$index&full=1")->body, 'only the page\'s contents: there is no full=1');
         $this->assertSame(404, $client->get('calendar/php/html.php?file=' . $keys['class_1/pic.png'])->status, 'only pages');
         $token = (string) $client->get('calendar/php/config.php')->json()['csrf'];
         $client->post('calendar/php/auth.php', ['csrf' => $token]);

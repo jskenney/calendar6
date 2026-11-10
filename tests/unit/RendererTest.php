@@ -128,7 +128,7 @@ final class RendererTest extends TestCase
         $page = $this->render($course, 'class_1/index.html');
         $other = $course->keysByEvent['class_1']['other.html'];
         $this->assertContains('href="#/view/' . $other . '"', $page);
-        $this->assertContains('<iframe src="/calendar/php/html.php?file=' . $other . '&amp;full=1"', $page, 'frames get the processed page (C-1)');
+        $this->assertContains('<iframe src="/calendar/php/html.php?file=' . $other . '"', $page, 'frames get the processed page (C-1)');
         $this->assertContains('<img data-cal6-hidden="1">', $page, 'a page is never an image');
         $this->assertContains('<script data-cal6-hidden="1">', $page, 'or a script');
         $this->assertSame(1, substr_count($page, 'get.php?file='), 'only the text file goes through get.php');
