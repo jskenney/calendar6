@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **M-40, M-41**, then **L-77..L-83**, **T-18**.
+1. Review 14 is in progress; its findings will be added here.
 2. **M-36, M-38, L-75** need the owner's decision (see their suggestions).
 3. **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -31,21 +31,12 @@ None open.
 |---|---|---|---|---|
 | M-36 | 11 | `lib/Course/Course.php:183-270` (`addPageAssets`, `addLinkedAssets`, `injectedFiles`) | **A file linked only from inside a hidden block gets a key anonymous viewers may use**: asset links are collected from the raw source, also inside `<inst>`, `<lock>`, `<postmeeting>`, `<host>`, and the asset follows the linking page's rule; any visible page with the v4 idiom `<a href="<url value=next>">` then hands out that key (`next=../../pages/answers/exam-key.pdf`). Confirmed by the reviewer. | **Needs a decision:** (a) ignore links inside hidden blocks when giving keys (instructors' links inside `<inst>` then go dead), or (b) give such files a stricter rule (instructor-only for `<inst>`; for `<lock>`: never, or only after the code; for `<postmeeting>`: after the meeting). |
 | M-38 | 11 | `lib/Schedule/CalendarBuilder.php:243` | **A numbered copy takes the next free number, not the slot written in `duplicate.ini`**: after `class_4 = class_1 same`, `class_6 = class_2` gives `class_5` = the copy and `class_6` = directory 05, so rules written for `class_6` apply to another folder. No problem listed. Confirmed. | **Needs a decision:** the copy takes the slot number written (later events shift), or a line whose slot and number differ is a problem. |
-| M-40 | 13 | `lib/Render/Markdown.php:592-594` | **Markdown math shows hidden blocks to everyone**: math (`\( \)`, `\[ \]`, `$$ $$`) is held and escaped before raw HTML is recognised, so `\( x = <inst>42</inst> \)` is sent as visible `&lt;inst&gt;42&lt;/inst&gt;`. Confirmed (also on Apache). | Remove hidden blocks before math is held (or keep their tags raw). |
-| M-41 | 13 | `template/config/config.ini` `[boxes]`, `DESIGN.md` | **`instructor.md` or `lab-solution.md` on its own fills no box**, so `class/instructor = never` does not apply and it is released with the event. Confirmed by the reviewer. | Add the `.md` names to the template's boxes; list a page whose stem is a box name but fills no box as a problem. |
 
 ## Low
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
 | L-75 | 12 | `PageRenderer::rewrite()` | Query strings are dropped from rewritten page links (`notes.html?week=3#q2` → `#/view/KEY#q2`), so the v4 idiom of passing a `<url>` value to the next page through a link does not work. Confirmed by the reviewer. | **Needs a decision** (front-end contract): keep the query (`#/view/KEY?week=3`) or document the change. |
-| L-77 | 13 | `lib/Render/HtmlLexer.php:242-254` | `<style>`/`<script>` inside `<svg>`/`<math>` are markup to a browser (they end at `</svg>` or a breakout tag), but raw text to the lexer up to the next `</style>`, so `<inst>` blocks between are sent. Foreign-content residual of M-27. Confirmed (Apache, Chromium). | In foreign content, treat script/style as never closed (fail closed). |
-| L-78 | 13 | `lib/Course/Boundary.php:112` | `index.html2`, `notes.mdold` are not backups (the suffix is a letter or digit), so they are served raw and shown by `<codeinject>` unhidden. Confirmed by the reviewer. | Digit suffixes and common backup words after a page extension are backups. |
-| L-79 | 13 | `PageRenderer::block()` | Hidden blocks inside attribute values are sent (`<abbr title="Hint: <inst>42</inst>">` shows as a tooltip); Markdown removes them from alt/title (L-56). Confirmed by the reviewer. | Remove hidden blocks from attribute values for viewers who may not see them (fail closed, as Markdown). |
-| L-80 | 13 | `lib/Course/Course.php:73` | An old-style tab-separated line with a space in its path (`class_1/Lecture Notes.pdf<TAB>99 99 9999`) hides `class_1/Lecture`, not the file. Residual of L-74. Confirmed by the reviewer. | With a tab, the target is everything before it. |
-| L-81 | 13 | `lib/Http/Context.php` (`isTrusted`) | IPv4-mapped addresses (`::ffff:10.0.0.5`) never match an IPv4 entry (and the reverse). Residual of L-76/M-26. Confirmed by the reviewer. | Normalise mapped addresses on both sides. |
-| L-82 | 13 | `PageRenderer::stripComments()` | Comments and doctypes are removed from inside `<textarea>`, `<xmp>`, `<title>`, which a browser shows as text (starter code in a textarea loses `<!DOCTYPE html>` and `<!-- your code here -->`). Rendering regression from M-37. Confirmed by the reviewer. | Keep comments in bounded bodies unless they contain a block tag. |
-| L-83 | 13 | `PageRenderer::mayInject()` | (suspected) "Inside an event directory" is decided from the first path segment, so if a type directory is a symbolic link elsewhere inside the course, its files without a key are injectable. | Compare with the scanned type directories' real paths. |
 
 ## Documentation
 
@@ -53,9 +44,7 @@ None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-18 | 13 | `tests/` | No tests for math with hidden blocks, `.md` box pages, svg/math style, digit backups, hidden blocks in attributes, tab-separated old lines, mapped proxy addresses, comments in textareas. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -115,6 +104,8 @@ None open.
 | M-35 | 10 | `83e058c` | **A target with a leading zero (`class_01/secret.pdf = never`) matches nothing, silently** (fails open); a list or range (`class_01,01`) is normalised. Folder names are written `01.Introduction`, so authors will type it. Also grants, `virtual.ini`, `duplicate.ini`. Confirmed. | A single event number is normalised (`class_01` is `class_1`); a rule for an event that does not exist is a problem. |
 | M-37 | 11 | `4d84b3b` | **`<textarea>`, `<title>`, `<noscript>`, `<xmp>`, `<iframe>`, `<noembed>`, `<noframes>` end at a closing tag inside a quoted attribute in a browser, not in the lexer**: a `<url>` value filled into such a "title" lands in a live `onerror` (the reviewer logged a marker in Chromium), and an `<inst>` there is sent. Needs unusual author markup. Confirmed. | The lexer bounds these elements at their closing tag as a browser does and lexes their content too (hidden under both readings); no `<url>` values inside them. |
 | M-39 | 12 | `5e1b1e1` | **A closing block tag inside a bounded element closes a block opened outside it** (residual of M-37): `<inst>Answer: write <textarea>the closing tag </inst> here</textarea> SECRET</inst>` sends `SECRET`; a browser reads that `</inst>` as text. Confirmed. | A closing block tag counts only where both readings (with and without bounded elements) see it; one inside a bounded element closes only a block opened there. |
+| M-40 | 13 | `c3e4a49` | **Markdown math shows hidden blocks to everyone**: math (`\( \)`, `\[ \]`, `$$ $$`) is held and escaped before raw HTML is recognised, so `\( x = <inst>42</inst> \)` is sent as visible `&lt;inst&gt;42&lt;/inst&gt;`. Confirmed (also on Apache). | Math keeps hidden-block tags as markup (only the text around them is held and escaped). |
+| M-41 | 13 | `c3e4a49` | **`instructor.md` or `lab-solution.md` on its own fills no box**, so `class/instructor = never` does not apply and it is released with the event. Confirmed by the reviewer. | The template's boxes (and DESIGN's sample) list the `.md` names; a page named like a box that fills none is a problem. |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -190,6 +181,13 @@ None open.
 | L-73 | 12 | `5e1b1e1` | `<replace>`/`<url>` are found by `<name\b[^>]*>`, which ends at a `>` inside a quoted value, after hiding: `<replace value="><inst>S</inst>">` sends `<inst>S</inst>`. Author-contrived. Confirmed. | `findValueTags()` ends each tag with `HtmlLexer::tagEnd()` (quote rules). |
 | L-74 | 12 | `5e1b1e1` | An old-style `default.ini` line without `=` (`lab\t99 99 9999`, `exam never`) is only a problem, and its target stays visible. Confirmed by the reviewer. | In `default.ini`, a line without `=` makes its first word's target `never`, with a problem. |
 | L-76 | 12 | `5e1b1e1` | `[server] trusted_proxies` entries must equal `REMOTE_ADDR` exactly: a CIDR range, host name or other IPv6 spelling silently never matches, and every client shares the proxy's address (the M-7 lockout again). Suspected (read). | Entries are validated (problems for others), compared in binary, CIDR supported. |
+| L-77 | 13 | `c3e4a49` | `<style>`/`<script>` inside `<svg>`/`<math>` are markup to a browser (they end at `</svg>` or a breakout tag), but raw text to the lexer up to the next `</style>`, so `<inst>` blocks between are sent. Foreign-content residual of M-27. Confirmed (Apache, Chromium). | Inside `<svg>`/`<math>` (until a breakout tag), `<script>`/`<style>` are read as bounded, both ways. |
+| L-78 | 13 | `c3e4a49` | `index.html2`, `notes.mdold` are not backups (the suffix is a letter or digit), so they are served raw and shown by `<codeinject>` unhidden. Confirmed by the reviewer. | `index.html2` and a page extension followed by `old`, `bak`, `orig`, `save`, `copy`, `prev`, `new`, `tmp`, `swp` are backups. |
+| L-79 | 13 | `c3e4a49` | Hidden blocks inside attribute values are sent (`<abbr title="Hint: <inst>42</inst>">` shows as a tooltip); Markdown removes them from alt/title (L-56). Confirmed by the reviewer. | `hideInAttributes()` removes hidden blocks from attribute values for viewers who may not see them; the tags always go. |
+| L-80 | 13 | `c3e4a49` | An old-style tab-separated line with a space in its path (`class_1/Lecture Notes.pdf<TAB>99 99 9999`) hides `class_1/Lecture`, not the file. Residual of L-74. Confirmed by the reviewer. | With a tab, the target is everything before it. |
+| L-81 | 13 | `c3e4a49` | IPv4-mapped addresses (`::ffff:10.0.0.5`) never match an IPv4 entry (and the reverse). Residual of L-76/M-26. Confirmed by the reviewer. | `isTrusted()` reads `::ffff:a.b.c.d` as `a.b.c.d` on both sides. |
+| L-82 | 13 | `c3e4a49` | Comments and doctypes are removed from inside `<textarea>`, `<xmp>`, `<title>`, which a browser shows as text (starter code in a textarea loses `<!DOCTYPE html>` and `<!-- your code here -->`). Rendering regression from M-37. Confirmed by the reviewer. | `stripComments()` keeps comments in bounded bodies unless they hold a block tag. |
+| L-83 | 13 | `c3e4a49` | (suspected) "Inside an event directory" is decided from the first path segment, so if a type directory is a symbolic link elsewhere inside the course, its files without a key are injectable. | `mayInject()` also compares with the type directories' real paths. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -226,6 +224,7 @@ None open.
 | T-15 | 10 | `83e058c` | No tests for `<url>` inside `title`/`alt`/`class` of link elements, adjacent `<url>` tags, leading-zero targets, heading ids with hidden blocks, the lexer cases of L-59, NUL in values. | Tests with the fixes. |
 | T-16 | 11 | `4d84b3b` | No tests for raw-text elements, comments formed after processing, nested blocks in Markdown attributes and references, login timing, `.INI` on nginx, `name_NN` file rules, long bracket spans, deep kept nesting. | Tests with the fixes. |
 | T-17 | 12 | `5e1b1e1` | `testLeadingZerosAndRulesForMissingEvents` loads two courses and leaves the first in `/tmp` on every run; no tests for M-39, L-68..L-74, L-76. | `PolicyTest::load()` removes the previous course; tests with the fixes. |
+| T-18 | 13 | `c3e4a49` | No tests for math with hidden blocks, `.md` box pages, svg/math style, digit backups, hidden blocks in attributes, tab-separated old lines, mapped proxy addresses, comments in textareas. | Tests with the fixes (and the trusted-proxy test meant for `5e1b1e1`). |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
