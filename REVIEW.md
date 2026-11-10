@@ -13,8 +13,11 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 10 is in progress; its findings will be added here.
-2. **E** items; E-1 (the front end) is the next big piece of work.
+1. **H-6** at once: links rewritten from parsed attributes, never by pattern over the tag text.
+2. **M-34, M-35**: the scheme check on whole values; leading-zero targets.
+3. **L-59, L-58, L-60**.
+4. **T-15** with the fixes.
+5. **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -22,15 +25,24 @@ None open.
 
 ## High
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| H-6 | 10 | `lib/Render/PageRenderer.php:580` (`LINK_ATTRIBUTES`), `links()`, `rebase()`, `linkTargets()` | **A `<url>` value in an allowed attribute adds attributes through link rewriting** (residual of M-32): `links()` matches `\s(href|src|...)=` anywhere in a link tag's text, also inside `title`/`alt`/`class` values that `<url>` filled (spaces and `=` are not escaped); the replacement ` data-cal6-hidden="1"` closes the quoted value, so the rest of the value (an `on*` handler) becomes attributes. A crafted link to `html.php?full=1&...` runs script on the course origin. Confirmed (an injected attribute appears; the reviewer ran a handler in headless Chrome). | Rewrite links from `HtmlLexer::attributes()` by position, never by pattern over the tag text; tests with `<url>` in `title`/`alt`/`class`. |
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-34 | 10 | `lib/Render/PageRenderer.php` (`urlTags`, `url`) | **Two adjacent `<url>` tags pass the scheme check**: each value is checked alone, so `href="<url value=a><url value=b>"` with `a=javascript`, `b=:...` gives `href="javascript:..."`. Needs such a page. Confirmed. | Fill the values in, then check the whole attribute value's scheme; restore the tags when it is not relative or http(s). |
+| M-35 | 10 | `lib/Access/Target.php:116-121` | **A target with a leading zero (`class_01/secret.pdf = never`) matches nothing, silently** (fails open); a list or range (`class_01,01`) is normalised. Folder names are written `01.Introduction`, so authors will type it. Also grants, `virtual.ini`, `duplicate.ini`. Confirmed. | Normalise the number (`(int)`); list a rule whose event or type matches nothing as a problem. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-58 | 10 | `lib/Render/Markdown.php:196-199` (`slug`) | A Markdown heading's id keeps hidden content: `## Quiz 3 <inst>answer is 42</inst>` gives `id="quiz-3-answer-is-42"` to anonymous viewers. Confirmed by the reviewer. | Remove hidden blocks with their content before slugging. |
+| L-59 | 10 | `lib/Render/HtmlLexer.php` (`rawEnd`, tag names) | Lexer and browser still differ on unusual markup: `<!-->` inside a script leaves the lexer "escaped"; `\s` includes vertical tab in `</script\x0B>`; tag names stop at characters a browser keeps (`<p"x="y>`, `<scripté>`). Each can hide an `<inst>` from the lexer or put a `<url>` into live script. Confirmed by the reviewer in Chrome. | `<!-->` returns to script data; use `[\t\n\f\r />]`; read tag names up to whitespace, `/` or `>`. |
+| L-60 | 10 | `lib/Render/PageRenderer.php:343, 89` | (suspected) A `<url>` value can contain the `<calphp>` output placeholder (`\x00cal6-calphp-N\x00`; NUL is not escaped), so calphp output lands in an attribute. Needs a page with both. | Strip NUL from values; a random placeholder per render. |
 
 ## Documentation
 
@@ -38,7 +50,9 @@ None open.
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-15 | 10 | `tests/` | No tests for `<url>` inside `title`/`alt`/`class` of link elements, adjacent `<url>` tags, leading-zero targets, heading ids with hidden blocks, the lexer cases of L-59, NUL in values. | Tests with each fix. |
 
 ## Enhancements
 
@@ -197,6 +211,7 @@ None open.
 | 7 | 2026-11-09 | `391a353` | an **independent** review again, after fixing every M, L and DOC item of review 6; probes on `php -S`, Apache + FPM and nginx; M-20, M-21, M-22, M-23 and M-25 reproduced again before recording | M-20..M-26, L-35..L-41, DOC-16, T-12 |
 | 8 | 2026-11-09 | `a21ac98` | an **independent** review again, after fixing every M, L, DOC and T item of review 7; probes on `php -S`, Apache + FPM and nginx (every direct-access probe refused); H-5, M-27, M-28 and M-29 reproduced again before recording | H-5, M-27..M-31, L-42..L-49, DOC-17, T-13 |
 | 9 | 2026-11-10 | `f0e61b3` | an **independent** review again, after fixing every H, M, L, DOC and T item of review 8 (`9270e6f`..`f0e61b3`); probes on Apache + FPM and nginx (about 25 direct-access probes each, all refused); fuzzed `.ini` files and request input (no 500s); M-32, L-52 and L-54 reproduced again and M-33 confirmed by reading before recording. Nothing found that reads hidden material, raw page source, `config/` or code through `get.php` or the web servers | M-32, M-33, L-50..L-57, T-14 |
+| 10 | 2026-11-10 | `7d33bdb` | an **independent** review again, after fixing every M, L and T item of review 9 (`bd9e2a5`..`7d33bdb`); `php -S` and headless Chrome (DOM checks); deployments not probed this time (read only); H-6, M-34 and M-35 reproduced again before recording. Nothing found that reads raw page source, `config/`, `auth/`, code or files outside the course | H-6, M-34, M-35, L-58..L-60, T-15 |
 
 ## CI notes
 
