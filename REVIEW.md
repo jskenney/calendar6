@@ -13,11 +13,11 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. No critical, high, medium, low, documentation or testing items are open (after six cleanup
-   cycles, reviews 15 to 20). A further independent review would show whether the last fixes
-   (`48b57b1`) hold.
-2. The owner is reviewing the shape of `calendar.php`'s answer (days by date, titles for everyone, section times; E-10 for change signals).
-3. Other **E** items; E-1 (the front end) is the next big piece of work.
+1. **H-7** first: raw notes reach anonymous viewers (`<inst>` text, lock codes) when the notes
+   file is, or points at, a page. A one-file fix plus a template change.
+2. L-129 and L-130 (calendar.php's section times and day markers), with DOC-22 and T-27.
+3. L-128 and L-131 (notes length; the warning E-8 removed).
+4. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -25,7 +25,9 @@ None open.
 
 ## High
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| H-7 | 21 | `lib/Endpoint/CalendarJson.php:23-30`, `:93`; `DESIGN.md:192`, `:603-607`; template `config.ini` | `notes` sends the notes file's raw bytes to everyone who may see the note. `notes.html`/`notes.md` (the template lists both), a `notes.txt` symlink or a `virtual.ini` name whose real file is a page all carry `<inst>` text and `<lock>` codes to anonymous viewers, against the rule that a page's raw source never leaves the server. Reproduced by the reviewer over HTTP (and again before recording: `<inst>SECRET-INST</inst><lock code="LOCKCODE-1">` in `lab/01.Setup/notes.html` came back in an anonymous answer). A `[notes]` key equal to a `[boxes]` key also makes that box's file notes, silently. | Take as notes only files whose name and real file are not pages (and not never-served); list a page among the notes candidates as a problem (or render it with the viewer's hiding and strip tags). List a `[notes]`/`[boxes]` name clash as a problem. Template: `notes = notes.txt`; update DESIGN. |
 
 ## Medium
 
@@ -33,15 +35,24 @@ None open.
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-128 | 21 | `lib/Endpoint/CalendarJson.php:25-27` | The 2000-byte notes limit is not kept: the cut adds a 3-byte `…` (2003 bytes back), and only 2004 bytes are read before `trim()`, so leading whitespace hides a cut (tail missing, no `…`). | Read more (say 8 KB), trim, then cut to 1997 bytes plus `…`. |
+| L-129 | 21 | `lib/Endpoint/CalendarJson.php:179-199` (`sectionTimes`) | Section times on cancelled meetings: a `dates.ini` window with times cancels only meetings whose first section starts inside it, yet later sections still get times inside the window (`2026-09-18 10:00 until 12:00 = holiday` with `?section=4345`: class at 10:45-11:35); on a period schedule where the section's period is `cancelled`, the event comes back with `start`/`end` null and a period, room and instructor, meaning undocumented. | Leave out the section fields, or add `"cancelled": true`, when the section's meeting is cancelled by the period schedule or starts inside a cancel window; document it. |
+| L-130 | 21 | `lib/Schedule/CalendarBuilder.php:164`; `lib/Endpoint/CalendarJson.php:124-140` | The day marker misses days dates.ini changes: `none` days get no `kind`, so `2026-09-22 = none` is `[]` like an ordinary empty day (and has no `as` in config.php); a type-only line without a label (`2026-09-03 = lab`) gets no marker, though DESIGN says it gets one with `title: ""`. | Keep `none` as the day's kind; emit the marker whenever the day is explicit in dates.ini or its period or label differs. |
+| L-131 | 21 | `lib/Course/Course.php:89`, `:203`, `:385`; `lib/Render/PageRenderer.php:1065` | E-8 removed the M-41 warning with box assets: `lab-solution.pdf` or `instructor.htm` next to the box files now follows the event's rule, served at once if a visible page links to it, and instructors are no longer told. `boxesOf()` still returns an always-empty `$assets`; `Place::asset` and the `!$target->asset` check are dead. | An informational problem ("named like box lab-solution's file but follows the event's rule"), guessing nothing about access; remove the dead assets code. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-22 | 21 | `DESIGN.md:540-545`; `lib/Endpoint/CalendarEndpoint.php:28`, `:39`, `:49` | DESIGN lists `as`/`at` under "GET or POST" but they are read only from the query; an empty `?section=` hides a POSTed `section`, and `section[]=` is silently ignored; no meaning given for null `start`/`end` (L-129); the notes text still says `.html`/`.md` notes are fine "as written" (H-7). | Say `as`/`at` are query-only (or accept both); use the first non-empty `section`; document the rest with L-129 and H-7. |
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-27 | 21 | `tests/http/EndpointsTest.php` | No tests for notes from a page or a symlinked page, notes truncation and leading whitespace, a `[notes]`/`[boxes]` clash; a `none` day or a type-only day without a label; section times on cancelled-period days and inside cancel windows; `?section=` first and the plain answer second (only one order of cache separation is tested); a logged-on user without grants getting no hints. | Tests with the fixes. |
 
 ## Enhancements
 
@@ -317,6 +328,7 @@ None open.
 | 18 | 2026-11-10 | `b7b9b4c` | an **independent** review again (cleanup cycle 4), after fixing every review-17 item (`2d76311`); Chromium checks, policy probes, direct-access probes on both servers, odd-input and speed probes; M-44 and M-45 confirmed by the reviewer (M-44 against the code before L-110) before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | M-44, M-45, L-111..L-116, T-23 |
 | 19 | 2026-11-10 | `d0766a2` | an **independent** review again (cleanup cycle 5), after fixing every review-18 item (`6d36770`); ~9,000 lexer fragments against Chromium, 3,000 well-formed pages, 2,000 `.ini` fuzz rounds, ~45 direct-access probes; M-46 reproduced by the reviewer's harness before recording. Nothing found that reads `config/`, `auth/`, code or files outside the course | M-46..M-48, L-117..L-122, E-9, T-24 |
 | 20 | 2026-11-10 | `af9b622` | an **independent** review again (cleanup cycle 6, the last), after fixing every review-19 item (`717f821`); 27,000 random fragments, 7,000 `srcdoc`/attribute cases and 10,500 well-formed pages checked against Chromium (no leaks), 1,600 `.ini` fuzz rounds, ~40 direct-access probes per server; M-49 confirmed by the reviewer over HTTP before recording. Nothing found that reads `config/`, `auth/`, code, raw page source or files outside the course | M-49, L-123..L-127, DOC-21, T-25 |
+| 21 | 2026-11-10 | `7590d11` | an **independent** full review after the calendar.php reshaping (E-8, `[notes]`, days by date, sections, no `next_change`): the full diff since `af9b622` read; ~60 calendar.php probes as anonymous, a user without grants, a granted TA and an instructor (no hints reached anonymous viewers or users without grants; hidden pages title-only; answers cached per viewer and section with no mixing; `section` by GET, form and JSON POST, odd values 404 or ignored); 5,000 entity-encoded `srcdoc` payloads against Chromium (no leaks); 800 `.ini` fuzz rounds (~3,200 requests, no PHP warnings); nginx and Apache deploys, both smoke tests passing, 44 direct-access probes all refused. H-7 reproduced over HTTP by the reviewer and again before recording. Nothing else reads `config/`, `auth/`, code or files outside the course | H-7, L-128..L-131, DOC-22, T-27 |
 
 ## CI notes
 
