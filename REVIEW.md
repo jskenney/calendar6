@@ -13,9 +13,10 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 14 is in progress; its findings will be added here.
-2. **M-36, M-38, L-75** need the owner's decision (see their suggestions).
-3. **E** items; E-1 (the front end) is the next big piece of work.
+1. **M-42** first (a comment ending in `--!>`), then **L-91** (lock codes inside hidden blocks)
+   and **L-84..L-90, L-93, L-94**, **DOC-20**, **T-19**.
+2. **M-36, M-38, L-75, L-92, E-8** need the owner's decision (see their suggestions).
+3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -31,20 +32,36 @@ None open.
 |---|---|---|---|---|
 | M-36 | 11 | `lib/Course/Course.php:183-270` (`addPageAssets`, `addLinkedAssets`, `injectedFiles`) | **A file linked only from inside a hidden block gets a key anonymous viewers may use**: asset links are collected from the raw source, also inside `<inst>`, `<lock>`, `<postmeeting>`, `<host>`, and the asset follows the linking page's rule; any visible page with the v4 idiom `<a href="<url value=next>">` then hands out that key (`next=../../pages/answers/exam-key.pdf`). Confirmed by the reviewer. | **Needs a decision:** (a) ignore links inside hidden blocks when giving keys (instructors' links inside `<inst>` then go dead), or (b) give such files a stricter rule (instructor-only for `<inst>`; for `<lock>`: never, or only after the code; for `<postmeeting>`: after the meeting). |
 | M-38 | 11 | `lib/Schedule/CalendarBuilder.php:243` | **A numbered copy takes the next free number, not the slot written in `duplicate.ini`**: after `class_4 = class_1 same`, `class_6 = class_2` gives `class_5` = the copy and `class_6` = directory 05, so rules written for `class_6` apply to another folder. No problem listed. Confirmed. | **Needs a decision:** the copy takes the slot number written (later events shift), or a line whose slot and number differ is a problem. |
+| M-42 | 14 | `lib/Render/HtmlLexer.php:189`, `lib/Render/Markdown.php:120` | **A comment ending in `--!>` runs on to the next `-->`**, removing the `<inst>` opening a browser sees: `<!-- old note --!> <inst>... <!-- x --> LEAK</inst>` sends `LEAK` (HTML and Markdown). Gap next to L-36. Confirmed. | End comments at `-->` or `--!>`; test. |
 
 ## Low
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
 | L-75 | 12 | `PageRenderer::rewrite()` | Query strings are dropped from rewritten page links (`notes.html?week=3#q2` → `#/view/KEY#q2`), so the v4 idiom of passing a `<url>` value to the next page through a link does not work. Confirmed by the reviewer. | **Needs a decision** (front-end contract): keep the query (`#/view/KEY?week=3`) or document the change. |
+| L-84 | 14 | `HtmlLexer.php:196-203` | A CDATA section removed whole up to `]]>` is not fail-closed: a browser ends it at the first `>`, so `<![CDATA[ a > b <inst> ]]> LEAK </inst>` sends `LEAK`. Gap after L-36/M-27. Confirmed. | Outside svg/math end it at `>`, or hide the rest when the removed stretch holds a block tag. |
+| L-85 | 14 | `lib/Render/Markdown.php:633` | Code spans are matched before raw HTML, so a backtick inside an attribute (`<kbd title="`">`) starts a code span that shows a later `<inst>` as text. Confirmed by the reviewer. | Hold quote-aware HTML tags before code spans (CommonMark precedence). |
+| L-86 | 14 | `PageRenderer::hideForSourceOnce()` | `<codeinject>` of a page leaves hidden blocks in attribute values (only `render()` calls `hideInAttributes()`). Gap after L-79. Confirmed by the reviewer. | Apply attribute hiding to the source too. |
+| L-87 | 14 | `PageRenderer.php:92, 435` | `<postmeeting>` in an attribute of an injected file follows the injecting page's event (attribute hiding runs with the page's place). Gap after M-24. Confirmed by the reviewer. | Hide attribute values in `injects()` with the owner place. |
+| L-88 | 14 | `HtmlLexer.php:236-238` | Breakout tags inside svg/math integration points (`foreignObject`, `desc`, `title`, `mi`, ...) end foreign content for the lexer but not the browser, so a later `<style>` in the svg is raw again and `<inst>` inside it is sent (in the DOM, not rendered). Gap after L-77. Confirmed by the reviewer. | Track integration points; apply breakout only outside them. |
+| L-89 | 14 | `PageRenderer::stripComments()` | Comments are kept in every bounded body (noscript, iframe, svg title/style, ...), not only textarea, xmp and title as DESIGN says. Gap after L-82. Confirmed by the reviewer. | Keep them only in textarea, xmp and title outside foreign content. |
+| L-90 | 14 | `PageRenderer::rebase()` | Injected files from another directory lose `<url>`/`<replace>` in link attributes (`href="page.html#<url ...>"` is escaped; `src="logo-<replace ...>.png"` is hidden): rebase runs before the value tags. Breaks a v4 idiom. Gap after L-21. Confirmed by the reviewer. | Rebase after `replace()`/`url()`, or leave values with value tags for later. |
+| L-91 | 14 | `lib/Endpoint/HtmlEndpoint.php:108` | Lock codes are taken from the whole page, also from `<lock>`s inside hidden blocks (`<inst>`, an unmet `<postmeeting>`, another `<host>`): such a code is accepted (303 with a session = "right") and then opens every lock with it. Confirmed by the reviewer (Apache). | Collect codes from the page as the viewer sees it (after postmeeting, inst, host). |
+| L-92 | 14 | `Boundary.php:113` | `notes.md1`, `notes.md2` are not backups (only `html\d+` is), so get.php serves the raw Markdown. Gap after L-78. Confirmed by the reviewer. | Treat `md\d+` as a backup except `md5` (**owner may see `.mdN` differently**). |
+| L-93 | 14 | `lib/Http/Context.php:130-136` | Behind a trusted proxy that writes ports or `unknown` in `X-Forwarded-For`, a non-IP hop is skipped and the client-chosen entry to its left is used, dodging rate limits. Confirmed by the reviewer. | Stop at the first hop that is not a bare IP (or strip the port). |
+| L-94 | 14 | `Markdown.php:646` | Math whose hidden-block tag has `>` inside a quoted attribute (`$$ <inst title="a>b">S</inst> $$`) hides the rest of the page (fails closed: a rendering bug). Gap after M-40. Confirmed by the reviewer. | Read the tag with quotes, as step 4 does. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-20 | 14 | `DESIGN.md` (Deploying) | Files at the course root (the template's `README.md`) are served directly by the web server; DESIGN does not warn that any page or file kept there is served raw. | Warn, or deny `*.md`/`*.html` at the root except `index.html`. |
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-19 | 14 | `tests/` | No tests for `--!>`, CDATA with `>`, backticks in Markdown attributes, codeinject attribute hiding, injected postmeeting in attributes, svg integration points, comments in noscript/svg, rebased value tags, lock codes inside hidden blocks, `.mdN`, ports in X-Forwarded-For, math tags with `>`. | Tests with each fix. |
 
 ## Enhancements
 
@@ -55,6 +72,7 @@ None open.
 | E-4 | 1 | `lib/` | No access or login log (Calendar 4 had one, with secrets removed). | Log logins, failed logins and lock-code attempts outside the web root. |
 | E-5 | 1 | `bin/` | `DESIGN.md` mentions `bin/cal6 check`; there is no command-line tool (problems, overridden lines, a check that material can not be fetched directly, `user add`). | Add `bin/cal6` with `check` and `user add`. |
 | E-7 | 1 | `calendar.php` | Instructors get `problems` in JSON but nothing shows them yet. | A status view in the front end. |
+| E-8 | 14 | `lib/Course/Course.php:89-95` | The M-41 warning covers only pages: when a box's file is missing, `lab-solution.pdf` follows the event's rule with no problem listed (as DESIGN says, but the realistic case). | **Needs a decision:** list non-page files named like a box that fills none, or make them box assets. |
 
 ## Fixed items
 
@@ -245,6 +263,7 @@ None open.
 | 11 | 2026-11-10 | `f30ba74` | an **independent** review again, after fixing every H, M, L and T item of review 10 (`83e058c`); probes on Apache + FPM and nginx; Chromium for markup checks; M-37, M-38 and L-61 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source through `get.php` | M-36..M-38, L-61..L-67, DOC-18, T-16 |
 | 12 | 2026-11-10 | `6b6df97` | an **independent** review again, after fixing review 11's items except M-36 and M-38 (`4d84b3b`); about 30 direct-access probes per server (all refused); Chromium for markup checks; M-39, L-68 and L-73 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source through `get.php` | M-39, L-68..L-76, DOC-19, T-17 |
 | 13 | 2026-11-10 | `7908929` | an **independent** review again, after fixing review 12's items except L-75 (`5e1b1e1`); lexer compared with Chromium on 17,000 random snippets, Markdown fuzzed (4,000 samples), probes on Apache + FPM and nginx; M-40 reproduced again before recording. Nothing found that reads `config/`, `auth/` or code, and no anonymous input that causes a 500 | M-40, M-41, L-77..L-83, T-18 |
+| 14 | 2026-11-10 | `c4ef039` | an **independent** review again, after fixing every review-13 item (`c3e4a49`); 12,000 fuzzed `<url>` contexts and about 30,000 `<inst>` cases parsed in Chromium, Markdown and `.ini` fuzzing, about 30 direct-access probes per server; M-42 and L-84 reproduced again before recording. No `<url>` injection found; nothing found that reads `config/`, `auth/` or code. (The last of four fix-and-review rounds; these items are recorded, not yet fixed.) | M-42, L-84..L-94, DOC-20, E-8, T-19 |
 
 ## CI notes
 
