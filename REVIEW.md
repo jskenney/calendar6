@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 20 (cleanup cycle 6, the last) is in progress; its findings will be added here.
+1. **M-49** first (a regression), then **L-123..L-127**, **DOC-21**, **T-25** (cleanup cycle 6, the last).
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -27,19 +27,31 @@ None open.
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-49 | 20 | `lib/Endpoint/HtmlEndpoint.php:76`, `PageRenderer::visibleSource()` | **Regression from L-120: an inner `<lock>` can never be opened**: the renderer that checks posted codes gets no unlocked codes, so every lock counts as unopened and a nested code is refused even after the outer one is in the session. Confirmed by the reviewer over HTTP. | Pass the session's unlocked codes to that renderer; an HTTP test that opens outer, then inner. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-123 | 20 | `PageRenderer::browserDecode()` | `srcdoc` numeric references with long zero padding (`&#00000060;inst>`) are still sent: the pattern reads at most 7 decimal or 6 hex digits; browsers take any number of leading zeros. Gap after M-47. Confirmed by the reviewer in Chromium. | Skip leading zeros; out-of-range values become U+FFFD. |
+| L-124 | 20 | `PageRenderer::browserDecode()` | A surrogate reference in `srcdoc` (`&#xD800;`) makes html.php answer 500 (`mb_chr()` returns false into a `string` callback). Confirmed by the reviewer. | U+FFFD for surrogates and anything `mb_chr()` refuses. |
+| L-125 | 20 | `lib/Http/RateLimiter.php:146` | The limiter keeps only the last 200 attempts per key, so limits above 200 never trigger: with `login_attempts` of 11 or more the per-address lock-code limit (x20) is off, from 21 the per-username gate, from 51 the per-address login limit. Confirmed by the reviewer. | Keep `max(limit, 200)` entries. |
+| L-126 | 20 | `lib/Endpoint/AuthEndpoint.php:28-55` | The device cookie survives a password reset: someone who logged in with a leaked password keeps, for 180 days, a cookie that skips the per-username gate and the per-address limit (against the spirit of L-100). Confirmed by the reviewer. | Include a mark of the password hash in the cookie's MAC: a password change invalidates it. |
+| L-127 | 20 | `lib/Render/Markdown.php:262-266` (`slug`) | Markdown heading ids are quadratic for repeated headings (`## h` 20,000 times: 10 s). Confirmed by the reviewer. | Remember the next number per base slug. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-21 | 20 | `DESIGN.md`, template | An event page linking `../../shared/style.css` loses the link (files outside the event get keys only through `virtual.ini` or a `paths.ini` page); a course-wide stylesheet is a common need. | Say so, with the `virtual.ini` way. |
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-25 | 20 | `tests/` | No tests for opening nested locks in turn, zero-padded and surrogate references in `srcdoc`, limits above 200, the device cookie after a password change, repeated headings. | Tests with each fix. |
 
 ## Enhancements
 
@@ -304,6 +316,7 @@ None open.
 | 17 | 2026-11-10 | `f1084cd` | an **independent** review again (cleanup cycle 3), after fixing every review-16 item (`3ceded2`); Chromium tree checks, 1500-round `.ini` fuzz, 30 Markdown speed patterns, direct-access probes on both servers; M-43 confirmed by the reviewer against the previous Policy before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | M-43, L-107..L-110, T-22 |
 | 18 | 2026-11-10 | `b7b9b4c` | an **independent** review again (cleanup cycle 4), after fixing every review-17 item (`2d76311`); Chromium checks, policy probes, direct-access probes on both servers, odd-input and speed probes; M-44 and M-45 confirmed by the reviewer (M-44 against the code before L-110) before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | M-44, M-45, L-111..L-116, T-23 |
 | 19 | 2026-11-10 | `d0766a2` | an **independent** review again (cleanup cycle 5), after fixing every review-18 item (`6d36770`); ~9,000 lexer fragments against Chromium, 3,000 well-formed pages, 2,000 `.ini` fuzz rounds, ~45 direct-access probes; M-46 reproduced by the reviewer's harness before recording. Nothing found that reads `config/`, `auth/`, code or files outside the course | M-46..M-48, L-117..L-122, E-9, T-24 |
+| 20 | 2026-11-10 | `af9b622` | an **independent** review again (cleanup cycle 6, the last), after fixing every review-19 item (`717f821`); 27,000 random fragments, 7,000 `srcdoc`/attribute cases and 10,500 well-formed pages checked against Chromium (no leaks), 1,600 `.ini` fuzz rounds, ~40 direct-access probes per server; M-49 confirmed by the reviewer over HTTP before recording. Nothing found that reads `config/`, `auth/`, code, raw page source or files outside the course | M-49, L-123..L-127, DOC-21, T-25 |
 
 ## CI notes
 
