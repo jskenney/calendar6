@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **M-43** first (a regression), then **L-107..L-110**, **T-22** (cleanup cycle 3).
+1. Review 18 (cleanup cycle 4) is in progress; its findings will be added here.
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -27,18 +27,11 @@ None open.
 
 ## Medium
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| M-43 | 17 | `lib/Access/Policy.php:158-162` | **Regression from L-105: a common file-name rule releases a hidden box's files**: the base-name target ranks above the box targets, so `index.html = always` or `data.csv = always` publishes `lab-solution/index.html` and `lab-solution/data.csv` while `lab/lab-solution = never` (DESIGN: a box's assets stay hidden as long as the box). Confirmed by the reviewer. | Rank the base-name target after the box targets (the box-asset promise wins over R2 for a box's files). |
+None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-107 | 17 | `lib/Render/HtmlLexer.php:281-305` | Quadratic on deeply nested `<svg>` since L-101: every tag walks the whole namespace stack (5000 nested `<svg>`: 5 s per render). Confirmed by the reviewer. | Keep a running count of foreign entries and per-name counts; cap the end-tag walk. |
-| L-108 | 17 | `PageRenderer::urlTags()` | Quadratic since L-103: each script/style tag not followed by its body is checked against every bounded range (16,000 `<textarea><script></textarea>`: 10 s). Confirmed by the reviewer. | One pointer through the bounded ranges. |
-| L-109 | 17 | `HtmlLexer::selfClosing()`, end-tag walk | Two more namespace gaps: `<svg / >` is not self-closing in a browser (the `/` must come right before `>`), and an end tag such as `</svg>` inside HTML content of a `<foreignObject>` is ignored by a browser but popped through by the lexer; in both cases an `<inst>` after a `<style>` is shown. Malformed markup. Confirmed by the reviewer in Chromium. | Self-closing only for `/` right before `>`; an end tag does not pop through an HTML integration entry. |
-| L-110 | 17 | `PageRenderer::block()` | An `<inst>` typed where a tag's attributes are (a missing `>`: `<div class="x"<inst>S</inst>`, `<p title=x<inst>S</inst>>`) never opens a block, so `S` is sent (and a browser shows it too); Calendar 4's patterns hid it. Confirmed by the reviewer. | Fail closed: a block tag in an attribute-name or unquoted-value position opens a block. |
+None open.
 
 ## Documentation
 
@@ -46,9 +39,7 @@ None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-22 | 17 | `tests/` | No tests for box assets against file-name rules, deep svg speed, many scripts in textareas with `<url>`, `<svg / >`, `</svg>` inside foreignObject HTML, block tags in attribute position. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -114,6 +105,7 @@ None open.
 | M-40 | 13 | `c3e4a49` | **Markdown math shows hidden blocks to everyone**: math (`\( \)`, `\[ \]`, `$$ $$`) is held and escaped before raw HTML is recognised, so `\( x = <inst>42</inst> \)` is sent as visible `&lt;inst&gt;42&lt;/inst&gt;`. Confirmed (also on Apache). | Math keeps hidden-block tags as markup (only the text around them is held and escaped). |
 | M-41 | 13 | `c3e4a49` | **`instructor.md` or `lab-solution.md` on its own fills no box**, so `class/instructor = never` does not apply and it is released with the event. Confirmed by the reviewer. | The template's boxes (and DESIGN's sample) list the `.md` names; a page named like a box that fills none is a problem. |
 | M-42 | 14 | `57ea865` | **A comment ending in `--!>` runs on to the next `-->`**, removing the `<inst>` opening a browser sees: `<!-- old note --!> <inst>... <!-- x --> LEAK</inst>` sends `LEAK` (HTML and Markdown). Gap next to L-36. Confirmed. | `HtmlLexer::commentEnd()`: `-->` or `--!>`, in the lexer and in Markdown. |
+| M-43 | 17 | `2d76311` | **Regression from L-105: a common file-name rule releases a hidden box's files**: the base-name target ranks above the box targets, so `index.html = always` or `data.csv = always` publishes `lab-solution/index.html` and `lab-solution/data.csv` while `lab/lab-solution = never` (DESIGN: a box's assets stay hidden as long as the box). Confirmed by the reviewer. | For a box’s own files the base-name target ranks after the box targets (the box-asset promise wins over R2 for a box’s files). |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -220,6 +212,10 @@ None open.
 | L-104 | 16 | `3ceded2` | The filter for html.php's own names in a page link's query ignores PHP's name mangling: `file%00x=K2` arrives as `file=K2`, so a frame (or the front end) can be steered to another known page key (access is still checked; only M-36's restriction is bypassed). Confirmed by the reviewer. | Query names are normalised as PHP reads them (NUL, `[`, space, `.`) before the filter. |
 | L-105 | 16 | `3ceded2` | An R2 file-name rule (`solution.pdf = never`) does not match the file in a subfolder (`class_1/img/solution.pdf` stays visible), though R2 says "a file name alone matches that file in every event". Confirmed by the reviewer. | R2: the base name of a file in a subfolder is a target too. |
 | L-106 | 16 | `3ceded2` | A long Markdown paragraph with many `<x` (`if x <y ` 4000 times, 32 KB) answers 500: the inline tag pattern backtracks quadratically and hits the PCRE limit (fails closed, but on plain prose). Confirmed by the reviewer. | Markdown tag patterns: possessive attribute loop, names never take `<`. |
+| L-107 | 17 | `2d76311` | Quadratic on deeply nested `<svg>` since L-101: every tag walks the whole namespace stack (5000 nested `<svg>`: 5 s per render). Confirmed by the reviewer. | Per-name and foreign counts; the end-tag walk is bounded (256). |
+| L-108 | 17 | `2d76311` | Quadratic since L-103: each script/style tag not followed by its body is checked against every bounded range (16,000 `<textarea><script></textarea>`: 10 s). Confirmed by the reviewer. | `urlTags()` tracks bounded bodies with one pointer. |
+| L-109 | 17 | `2d76311` | Two more namespace gaps: `<svg / >` is not self-closing in a browser (the `/` must come right before `>`), and an end tag such as `</svg>` inside HTML content of a `<foreignObject>` is ignored by a browser but popped through by the lexer; in both cases an `<inst>` after a `<style>` is shown. Malformed markup. Confirmed by the reviewer in Chromium. | Self-closing needs `/` right before `>`; an end tag never pops through an HTML integration entry. |
+| L-110 | 17 | `2d76311` | An `<inst>` typed where a tag's attributes are (a missing `>`: `<div class="x"<inst>S</inst>`, `<p title=x<inst>S</inst>>`) never opens a block, so `S` is sent (and a browser shows it too); Calendar 4's patterns hid it. Confirmed by the reviewer. | `block()` opens a block for a block tag in an attribute-name or unquoted-value position. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -261,6 +257,7 @@ None open.
 | T-19 | 14 | `57ea865` | No tests for `--!>`, CDATA with `>`, backticks in Markdown attributes, codeinject attribute hiding, injected postmeeting in attributes, svg integration points, comments in noscript/svg, rebased value tags, lock codes inside hidden blocks, `.mdN`, ports in X-Forwarded-For, math tags with `>`. | Tests with the fixes. |
 | T-20 | 15 | `af873f5` | No tests for namespaced foreign content, bogus comments before tags, injected `<url>` after an unclosed script, comment-scan speed, unplaced copies, sessions after a password change. | Tests with the fixes. |
 | T-21 | 16 | `3ceded2` | No tests for the L-101 namespace cases, Markdown codeinject masking cases, `<url>` after svg style/noscript script, mangled query names, R2 in subfolders, long prose with `<`. | Tests with the fixes. |
+| T-22 | 17 | `2d76311` | No tests for box assets against file-name rules, deep svg speed, many scripts in textareas with `<url>`, `<svg / >`, `</svg>` inside foreignObject HTML, block tags in attribute position. | Tests with the fixes. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
