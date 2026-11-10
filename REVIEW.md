@@ -13,13 +13,8 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **M-32**: `<url>` only in text and allowlisted quoted attributes, with the enclosing tag taken
-   from the lexer; with it **L-52** (script double-escaped state).
-2. **M-33**: sections in `default.ini` fail closed.
-3. **L-50, L-51**: cross-site lock POSTs; the link existence oracle.
-4. **L-54, L-55, L-53, L-56, L-57**.
-5. **T-14** with the fixes.
-6. **E** items; E-1 (the front end) is the next big piece of work.
+1. Review 10 is in progress; its findings will be added here.
+2. **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -31,23 +26,11 @@ None open.
 
 ## Medium
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| M-32 | 9 | `lib/Render/PageRenderer.php` (`valueTags`) | **`<url>` values still reach script contexts** (residual of M-28, L-39): the guard takes "the last `<`" as the enclosing tag and needs a space before `on*=`, so `onclick="if (n < 3) f('<url value=m>')"`, `<img/onerror="...">`, `href="x"onclick="..."` are substituted; also `href="javascript:go('<url value=m>')"` (only the value's scheme is checked), unquoted `href=<url value=m>` (spaces add attributes) and `srcdoc`. A link to `html.php?full=1&m=...` can then run script on the course origin. Confirmed. | Find the enclosing tag from the lexer and parse its attributes; substitute only in text and quoted values of an allowlist (href, src, title, alt, value, class, id, data-*); in href/src only when the text before the value has no scheme or http(s); never unquoted or `srcdoc`. |
-| M-33 | 9 | `lib/Access/Rules.php:62` (`fromIni`), `lib/Course/Course.php:65` | **A section header in `default.ini` drops every rule after it, silently** (fails open): `[rules]` above `exam = never` makes the exam visible, no problem listed. In account files a `valid =` after `[grants]` becomes a grant on a target named `valid`. Confirmed by reading and by the reviewer. | Lines outside the top section of `default.ini` are problems and fail closed (as M-19); unknown keys in account files are problems. |
+None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-50 | 9 | `lib/Endpoint/HtmlEndpoint.php:62-98` | Residual of L-43: the lock token is public (page and hour), so a cross-site POST with a known code (every student knows it) creates a session and may replace the instructor's cookie (browser behaviour suspected). Server side confirmed by the reviewer. | Refuse a lock POST with `Sec-Fetch-Site: cross-site` or a foreign `Origin` (403, no session). |
-| L-51 | 9 | `lib/Render/PageRenderer.php:606` | An existence oracle: a link that resolves to an existing file without a visible key gets `data-cal6-hidden`, a missing one is left as written, and the `realpath()` has no boundary check; with `<url>` in an `href`, anyone can probe `../../../../etc/shadow` or a hidden course file. Confirmed by the reviewer. | Resolve with the course boundary; give hidden and missing the same answer (at least for values from `<url>`). |
-| L-52 | 9 | `lib/Render/HtmlLexer.php:227-242` | The lexer ends a script at a `</script>` that a browser reads as part of the double-escaped state (`<script><!-- document.write('<script>..</script>'); ...`), so `<url>` is substituted inside live JavaScript. Confirmed. | Model the script-data escaped states, or treat a script body containing `<!--` as running to the last `</script>` for the `<url>` guard. |
-| L-53 | 9 | `lib/Schedule/Periods.php:38`, `lib/Course/CourseConfig.php:117-129` | A meeting whose end is before its start (`22:00-00:30`, `10:00-09:00`) or with an hour above 23 is accepted, and `<postmeeting>` opens before the meeting. Confirmed by the reviewer. | List end <= start and impossible times as problems (or roll a midnight end to the next day). |
-| L-54 | 9 | `lib/Render/PageRenderer.php:84`, `:647` (`anchors`) | `<keyword>`/`<search>` removal (and `anchors()`) are regular expressions over the whole page, so they edit script bodies: `if (a<search.length) ... // > end` loses code. Confirmed. | Use the lexer's tags (`replaceTags`). |
-| L-55 | 9 | `lib/Render/HtmlLexer.php:229` | Quadratic on many unclosed `<script>`/`<style>` (residual of L-37, from M-27's change): each searches to the end again; 160 KB takes about 1 s per scan, about 15 scans per render. Confirmed by the reviewer. | Remember that no closing tag follows an offset and skip later searches for that name. |
-| L-56 | 9 | `lib/Render/Markdown.php:637-640` | An `<inst>` in Markdown image alt text or a link title is sent (`alt="diagram ALT-SECRET"`, `title="<inst>...</inst>"` read as attribute text). Needs an unusual author choice. Confirmed by the reviewer. | Remove hidden blocks from alt/title, or drop raw HTML there. |
-| L-57 | 9 | `lib/Course/Boundary.php:84-94` | Pages named `menu.inc.html` / `x.inc.md` match the PHP rule and are dropped silently (never listed, served or injected; no problem). Confirmed by the reviewer. | List them as problems, or document it. |
+None open.
 
 ## Documentation
 
@@ -55,9 +38,7 @@ None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-14 | 9 | `tests/` | No tests for `<url>` in the contexts of M-32 and L-52, sections in `default.ini`, cross-site lock POSTs, the link existence oracle, reversed meeting times, keyword removal in scripts, many unclosed scripts, Markdown alt/title, `.inc.html` pages. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -110,6 +91,8 @@ None open.
 | M-29 | 8 | `a9f24b9` | **More editor backups of pages pass as plain files** (residual of M-22): `index.html.~1~`, `notes.md.~3~`, `index.html.bak~`, `index.html_bak`, `.new`, `-`, `,v`, `.prev`, `.dist`, `.swo`; also `x.pht.bak`, `x.phar~`, `x.phtm`. They are listed and served raw. Confirmed. | Any `.html`/`.htm`/`.md` followed by a non-alphanumeric character is a backup unless the name ends in a served type; one PHP extension list (`php\d*`, `phtml?`, `phar`, `phps`, `pht`, `inc`) for scripts and their backups, also in `template/.htaccess` and `nginx-site.conf`; smoke checks. |
 | M-30 | 8 | `b66d78f` | **In Markdown, a comment that starts mid-line and spans a blank line is shown as text** (it is escaped before the comment removal sees it). Confirmed by the reviewer. | Comments are removed from Markdown source before conversion (outside code; a tag is copied whole so `<!--` in an attribute value is not a comment). |
 | M-31 | 8 | `16f77fb` | **Anyone at the same address can lock out the instructor and a whole room's lock codes:** the device cookie skips only the per-username gate, so 20 bad logins from a shared address (campus NAT, one IPv6 /64) block the instructor; the lock-code limit (10 per 15 minutes) is shared by everyone in a classroom. Confirmed by the reviewer on Apache. | A device cookie skips the per-address login limit (keeps its own pair limit); lock codes are limited per address and page (4x) and per address (20x), and a right code does not count. |
+| M-32 | 9 | `bd9e2a5` | **`<url>` values still reach script contexts** (residual of M-28, L-39): the guard takes "the last `<`" as the enclosing tag and needs a space before `on*=`, so `onclick="if (n < 3) f('<url value=m>')"`, `<img/onerror="...">`, `href="x"onclick="..."` are substituted; also `href="javascript:go('<url value=m>')"` (only the value's scheme is checked), unquoted `href=<url value=m>` (spaces add attributes) and `srcdoc`. A link to `html.php?full=1&m=...` can then run script on the course origin. Confirmed. | Each `<url>` is swapped for an alphanumeric marker so the tag around it lexes as the browser reads it; it is replaced only in text and in quoted values of `href`, `src`, `title`, `alt`, `value`, `class`, `id`, `name`, `placeholder`, `label`, `data-*` (href/src only after no scheme or http(s)). |
+| M-33 | 9 | `2f7b714` | **A section header in `default.ini` drops every rule after it, silently** (fails open): `[rules]` above `exam = never` makes the exam visible, no problem listed. In account files a `valid =` after `[grants]` becomes a grant on a target named `valid`. Confirmed by reading and by the reviewer. | Lines under any header in `default.ini` are read as rules (file order) and the header is a problem; `valid`, `instructor`, `password_hash` after `[grants]` stay the account's own. |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -159,6 +142,14 @@ None open.
 | L-47 | 8 | `e91a931` | These are found by regular expressions, so they work inside quoted attribute values, where an injected `<inst>` then hides from the lexer. Needs an author mistake. Confirmed by the reviewer. | `<inject>`, `<codeinject>`, `<calphp>`, `<showlink>` are found by the lexer, so inside attribute values and script bodies they are text. |
 | L-48 | 8 | `be5ab7e` | (suspected) The size cap is checked before adding the file, so one huge injected file is read whole and can exhaust memory. | The size is checked (`injectedBytes + filesize`) before the file is read. |
 | L-49 | 8 | `f0e61b3` | A virtual file whose real file is a hidden page's attachment (`class_1/answers.pdf = pages/answers.pdf`, linked only from a `never` page) is visible: the page rule is never checked. Needs an instructor's `virtual.ini` line. Confirmed by the reviewer. | A virtual file whose real file `paths.ini` pages link to must also be allowed under each of those pages' rules; virtual places no longer stop per-page keys. |
+| L-50 | 9 | `4616d95` | Residual of L-43: the lock token is public (page and hour), so a cross-site POST with a known code (every student knows it) creates a session and may replace the instructor's cookie (browser behaviour suspected). Server side confirmed by the reviewer. | A lock POST with `Sec-Fetch-Site: cross-site` (or, without that header, an `Origin` for another host) is refused with 403 and no session. |
+| L-51 | 9 | `4616d95` | An existence oracle: a link that resolves to an existing file without a visible key gets `data-cal6-hidden`, a missing one is left as written, and the `realpath()` has no boundary check; with `<url>` in an `href`, anyone can probe `../../../../etc/shadow` or a hidden course file. Confirmed by the reviewer. | A link to a missing file (or one outside the course) loses its target like a hidden one. |
+| L-52 | 9 | `bd9e2a5` | The lexer ends a script at a `</script>` that a browser reads as part of the double-escaped state (`<script><!-- document.write('<script>..</script>'); ...`), so `<url>` is substituted inside live JavaScript. Confirmed. | The lexer follows the script escaped and double-escaped states. |
+| L-53 | 9 | `a42e8df` | A meeting whose end is before its start (`22:00-00:30`, `10:00-09:00`) or with an hour above 23 is accepted, and `<postmeeting>` opens before the meeting. Confirmed by the reviewer. | `CourseConfig::timeRange()`: the end must be after the start (24:00 at most) in `[schedule]` and `periods.ini`; otherwise a problem and the times are not used. |
+| L-54 | 9 | `7c9211a` | `<keyword>`/`<search>` removal (and `anchors()`) are regular expressions over the whole page, so they edit script bodies: `if (a<search.length) ... // > end` loses code. Confirmed. | `<keyword>`/`<search>` removal and anchor ids use the lexer's tags. |
+| L-55 | 9 | `bd9e2a5` | Quadratic on many unclosed `<script>`/`<style>` (residual of L-37, from M-27's change): each searches to the end again; 160 KB takes about 1 s per scan, about 15 scans per render. Confirmed by the reviewer. | The lexer remembers that no closing tag follows and does not search again. |
+| L-56 | 9 | `7d33bdb` | An `<inst>` in Markdown image alt text or a link title is sent (`alt="diagram ALT-SECRET"`, `title="<inst>...</inst>"` read as attribute text). Needs an unusual author choice. Confirmed by the reviewer. | Markdown alt text and link titles drop hidden blocks with their content. |
+| L-57 | 9 | `7d33bdb` | Pages named `menu.inc.html` / `x.inc.md` match the PHP rule and are dropped silently (never listed, served or injected; no problem). Confirmed by the reviewer. | `*.inc.html` / `*.inc.md` are pages; a page with a PHP extension in its name is listed as a problem. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -189,6 +180,7 @@ None open.
 | T-11 | 5 | `72580cf`, `4c14a1b` | No test caught C-1, H-4 or M-13: nothing checks that `get.php` refuses page keys, or that hidden blocks stay hidden when large or nested. | Tests: `get.php` refuses page keys (also for instructors); 1.2 MB, nested, unclosed and upper-case blocks; they fail on the previous renderer. |
 | T-12 | 7 | `0f91c9b`, `e2886f4`, `f8d901e`, `2bbb19f`, `8562407`, `feb2c85`, `04563f4`, `2df4f8e`, `a21ac98` | No tests for the PATH_INFO form and nginx extension/case variants (smoke), page backups, inject inside comments/scripts, `<postmeeting>` through inject, box-name case, mapped IPv4 keys, `%00` links. | Tests (and smoke checks) with each fix; the renderer tests fail on the previous renderer. |
 | T-13 | 8 | `9270e6f`..`f0e61b3` | No tests for quotes in unquoted attribute values, unclosed script/style, `<url>` in script/handler contexts, the further backup names, mid-line Markdown comments, shared-address lockouts, `>` in lock codes, odd `login_attempts`. | Tests with each fix (scanner cases, `<url>` contexts, backup names, Markdown comments and indents, shared-address lockouts, `>` in lock codes, `login_attempts`, inject size, virtual attachments). |
+| T-14 | 9 | `bd9e2a5`..`7d33bdb` | No tests for `<url>` in the contexts of M-32 and L-52, sections in `default.ini`, cross-site lock POSTs, the link existence oracle, reversed meeting times, keyword removal in scripts, many unclosed scripts, Markdown alt/title, `.inc.html` pages. | Tests with each fix. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
