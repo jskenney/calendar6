@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 17 (cleanup cycle 3) is in progress; its findings will be added here.
+1. **M-43** first (a regression), then **L-107..L-110**, **T-22** (cleanup cycle 3).
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -27,11 +27,18 @@ None open.
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-43 | 17 | `lib/Access/Policy.php:158-162` | **Regression from L-105: a common file-name rule releases a hidden box's files**: the base-name target ranks above the box targets, so `index.html = always` or `data.csv = always` publishes `lab-solution/index.html` and `lab-solution/data.csv` while `lab/lab-solution = never` (DESIGN: a box's assets stay hidden as long as the box). Confirmed by the reviewer. | Rank the base-name target after the box targets (the box-asset promise wins over R2 for a box's files). |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-107 | 17 | `lib/Render/HtmlLexer.php:281-305` | Quadratic on deeply nested `<svg>` since L-101: every tag walks the whole namespace stack (5000 nested `<svg>`: 5 s per render). Confirmed by the reviewer. | Keep a running count of foreign entries and per-name counts; cap the end-tag walk. |
+| L-108 | 17 | `PageRenderer::urlTags()` | Quadratic since L-103: each script/style tag not followed by its body is checked against every bounded range (16,000 `<textarea><script></textarea>`: 10 s). Confirmed by the reviewer. | One pointer through the bounded ranges. |
+| L-109 | 17 | `HtmlLexer::selfClosing()`, end-tag walk | Two more namespace gaps: `<svg / >` is not self-closing in a browser (the `/` must come right before `>`), and an end tag such as `</svg>` inside HTML content of a `<foreignObject>` is ignored by a browser but popped through by the lexer; in both cases an `<inst>` after a `<style>` is shown. Malformed markup. Confirmed by the reviewer in Chromium. | Self-closing only for `/` right before `>`; an end tag does not pop through an HTML integration entry. |
+| L-110 | 17 | `PageRenderer::block()` | An `<inst>` typed where a tag's attributes are (a missing `>`: `<div class="x"<inst>S</inst>`, `<p title=x<inst>S</inst>>`) never opens a block, so `S` is sent (and a browser shows it too); Calendar 4's patterns hid it. Confirmed by the reviewer. | Fail closed: a block tag in an attribute-name or unquoted-value position opens a block. |
 
 ## Documentation
 
@@ -39,7 +46,9 @@ None open.
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-22 | 17 | `tests/` | No tests for box assets against file-name rules, deep svg speed, many scripts in textareas with `<url>`, `<svg / >`, `</svg>` inside foreignObject HTML, block tags in attribute position. | Tests with each fix. |
 
 ## Enhancements
 
@@ -275,6 +284,7 @@ None open.
 | 14 | 2026-11-10 | `c4ef039` | an **independent** review again, after fixing every review-13 item (`c3e4a49`); 12,000 fuzzed `<url>` contexts and about 30,000 `<inst>` cases parsed in Chromium, Markdown and `.ini` fuzzing, about 30 direct-access probes per server; M-42 and L-84 reproduced again before recording. No `<url>` injection found; nothing found that reads `config/`, `auth/` or code. (The last of four fix-and-review rounds; these items are recorded, not yet fixed.) | M-42, L-84..L-94, DOC-20, E-8, T-19 |
 | 15 | 2026-11-10 | `b603b16` | an **independent** review again, after the owner's decisions (M-36, M-38, L-75, L-92) and fixing every review-14 item (`57ea865`); 24,000 Markdown and about 30,000 HTML samples compared in Chromium, about 22 direct-access probes per server, odd-input probes; L-96 and L-98 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source; no 500s | L-95..L-100, T-20 |
 | 16 | 2026-11-10 | `5c74628` | an **independent** review again (cleanup cycle 2), after fixing every review-15 item (`af873f5`); Chromium namespace checks, about 25 extra direct-access probes per server, speed inputs up to 0.8 MB; L-103 and L-104 confirmed by reading and the reviewer's runs before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | L-101..L-106, T-21 |
+| 17 | 2026-11-10 | `f1084cd` | an **independent** review again (cleanup cycle 3), after fixing every review-16 item (`3ceded2`); Chromium tree checks, 1500-round `.ini` fuzz, 30 Markdown speed patterns, direct-access probes on both servers; M-43 confirmed by the reviewer against the previous Policy before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | M-43, L-107..L-110, T-22 |
 
 ## CI notes
 
