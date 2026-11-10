@@ -16,7 +16,7 @@ A running list of code and security findings for the whole project, and their hi
 1. No critical, high, medium, low, documentation or testing items are open (after six cleanup
    cycles, reviews 15 to 20). A further independent review would show whether the last fixes
    (`48b57b1`) hold.
-2. **E-8** needs the owner's decision (see its suggestion).
+2. The owner is reviewing the shape of `calendar.php`'s answer (lists for menus, what anonymous viewers learn).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
@@ -52,7 +52,6 @@ None open.
 | E-4 | 1 | `lib/` | No access or login log (Calendar 4 had one, with secrets removed). | Log logins, failed logins and lock-code attempts outside the web root. |
 | E-5 | 1 | `bin/` | `DESIGN.md` mentions `bin/cal6 check`; there is no command-line tool (problems, overridden lines, a check that material can not be fetched directly, `user add`). | Add `bin/cal6` with `check` and `user add`. |
 | E-7 | 1 | `calendar.php` | Instructors get `problems` in JSON but nothing shows them yet. | A status view in the front end. |
-| E-8 | 14 | `lib/Course/Course.php:89-95` | The M-41 warning covers only pages: when a box's file is missing, `lab-solution.pdf` follows the event's rule with no problem listed (as DESIGN says, but the realistic case). | **Needs a decision:** list non-page files named like a box that fills none, or make them box assets. |
 | E-9 | 19 | `PageRenderer` links | Relative URLs in CSS (`style="background:url(x.png)"`, `url()` in `<style>`) are not rewritten. | Rewrite them, or say so in DESIGN. |
 
 ## Fixed items
@@ -290,6 +289,7 @@ None open.
 | T-25 | 20 | `48b57b1` | No tests for opening nested locks in turn, zero-padded and surrogate references in `srcdoc`, limits above 200, the device cookie after a password change, repeated headings. | Tests with the fixes. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
+| E-8 | 14 | `75aa172` | The M-41 warning covers only pages: when a box's file is missing, `lab-solution.pdf` follows the event's rule with no problem listed (as DESIGN says, but the realistic case). | Decided: names are never guessed. A box holds exactly the files config.ini names for it; box assets and the named-like-a-box problem (M-41) are gone; calendar.php lists box files and notes only (no files list). |
 
 ## Reviews
 
