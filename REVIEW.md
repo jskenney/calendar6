@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 22's items are fixed; review 23 checks them.
+1. L-138 (a regression from L-136) with L-139..L-141, then DOC-37..DOC-40.
 2. **Owner questions:** E-11 (the `calendar` directory name), E-12 (`valid_until` after a reload).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -31,11 +31,21 @@ None open.
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-138 | 23 | `lib/Render/PageRenderer.php:513-524` | **L-136 regression:** after a continuation the token loop still visits tags inside the consumed range; a later tag with a block tag or `srcdoc` in a value moves `$pos` back, so text is emitted twice (925 of 3,000 fuzz cases), content can leak (`<p title="<inst x=">">A <iframe srcdoc="<b>hi</b>"></iframe> SECRET-A</inst>` shows SECRET-A to anonymous in Chromium), and many such attributes make output and time explode (30 KB page: 10 s and 12 MB for instructors; 120 KB: out of memory). Reproduced by the reviewer. | Skip tokens before `$pos`; continue only when the open block is hidden from the viewer; process the range once. |
+| L-139 | 23 | `PageRenderer.php:499`, `:516-520`, `:553` | L-136 incomplete: only the innermost open block continues (two blocks left open: the outer one's content leaks), and the close is the first `</name>` without counting nesting, which leaks through `<inject>`/`<codeinject>` (hidden there before inner blocks are removed). Reproduced by the reviewer. | Carry the whole open stack; find each block's end with a nesting-aware scan; end at the furthest. |
+| L-140 | 23 | `PageRenderer.php:484` | End tags are skipped: `</p title="<inst x=">">SECRET-C</inst>` shows SECRET-C to anonymous (browsers read quoted attributes in end tags). Not new. | Check end tags' values too. |
+| L-141 | 23 | `tests/unit/RendererTest.php`; `DESIGN.md` "Tags" | L-136 is barely tested (no nested or several open blocks, srcdoc or block attributes inside the range, end tags, inject/codeinject, time and size); DESIGN does not state the rule; no tests for L-133's 429/503 shape or L-132's filtering of reserved names. | Tests and a DESIGN sentence. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-37 | 23 | `API.md` 7 | The third auth.php example pairs `"csrf": null` with a 401; since L-133 a 401 always carries the session's token. | Show a 401 with its token, and the null case as a 403 without a session. |
+| DOC-38 | 23 | `API.md` 3, 6 | Events come only from material folders, numbered onto the type's days: a class day after the last folder is `[]`, and `date: null` means more folders than days; "one meeting on a calendar day" suggests every meeting is an event. | Say so. |
+| DOC-39 | 23 | `API.md` 6, 10 | Nothing says the JSON strings (titles, labels, file names, rooms, problem messages) are plain text to insert with `textContent`. | Say so. |
+| DOC-40 | 23 | `API.md` 8 | A page used as `<img src>`, `<script src>` or `<link href>` loses its target (`data-cal6-hidden`); the link table does not say so. | Add the row. |
 
 ## Testing
 
@@ -347,6 +357,7 @@ None open.
 | 20 | 2026-11-10 | `af9b622` | an **independent** review again (cleanup cycle 6, the last), after fixing every review-19 item (`717f821`); 27,000 random fragments, 7,000 `srcdoc`/attribute cases and 10,500 well-formed pages checked against Chromium (no leaks), 1,600 `.ini` fuzz rounds, ~40 direct-access probes per server; M-49 confirmed by the reviewer over HTTP before recording. Nothing found that reads `config/`, `auth/`, code, raw page source or files outside the course | M-49, L-123..L-127, DOC-21, T-25 |
 | 21 | 2026-11-10 | `7590d11` | an **independent** full review after the calendar.php reshaping (E-8, `[notes]`, days by date, sections, no `next_change`): the full diff since `af9b622` read; ~60 calendar.php probes as anonymous, a user without grants, a granted TA and an instructor (no hints reached anonymous viewers or users without grants; hidden pages title-only; answers cached per viewer and section with no mixing; `section` by GET, form and JSON POST, odd values 404 or ignored); 5,000 entity-encoded `srcdoc` payloads against Chromium (no leaks); 800 `.ini` fuzz rounds (~3,200 requests, no PHP warnings); nginx and Apache deploys, both smoke tests passing, 44 direct-access probes all refused. H-7 reproduced over HTTP by the reviewer and again before recording. Nothing else reads `config/`, `auth/`, code or files outside the course | H-7, L-128..L-131, DOC-22, T-27 |
 | 22 | 2026-11-10 | `79c587e` | an **independent** full review after API.md was written: API.md checked line by line against the code and ~60 live probes (sections and previews by GET/POST/JSON, lists, auth error shapes, HEAD/PUT, the link and markup tables) on a course with cancel windows, duplicates and 21 extra events; 7 Chromium flows for the front-end advice (srcdoc, blob frames, innerHTML, scripts, the lock form through the 303, GET logout); 12,139 fuzz cases (8,625 HTML, 3,510 Markdown) against the doctype exception, every output holding the secret rendered in Chromium (no leak through the doctype). Logout by GET creates or fixes no session. | L-132..L-137, DOC-30..DOC-36, T-28, E-12 |
+| 23 | 2026-11-10 | `5f134d8` | an **independent** review of the review-22 fixes (`de1d3cc..5f134d8` read line by line): ~45 live probes (headers on all endpoints, auth errors logged in and out, the lock form and 303 with hostile query names and values, JSON lists and objects, `at` forms, problems, sections); 6,000 differential fuzz cases of block tags opened in attribute values rendered by Chromium for anonymous and instructor (3,000 at `5f134d8`: 474 leak, all of them also at `de1d3cc`, which leaked 1,636; 925 duplicate text); inject/codeinject variants; scaling runs; API.md read end to end against the code ("a capable AI could build a working front end from it"). L-132, L-133, L-134, L-135, L-137 and the Context change verified | L-138..L-141, DOC-37..DOC-40 |
 
 ## CI notes
 
