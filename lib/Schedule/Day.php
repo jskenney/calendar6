@@ -16,7 +16,7 @@ final class Day
     public ?string $kind = null;      // holiday
     public ?string $label = null;
     public bool $explicit = false;    // dates.ini chose the events
-    /** @var list<array{0: int, 1: int}> dates.ini holiday/none windows with times */
+    /** @var list<array{0: int, 1: int, 2: string}> dates.ini holiday/none windows with times: from, to, holiday|none */
     public array $cancel = [];
 
     public function __construct(

@@ -16,6 +16,9 @@ use Cal6\Http\Session;
  */
 final class ConfigEndpoint
 {
+    /** The version of the JSON the endpoints answer with: raised when its shape changes. */
+    public const FORMAT = 1;
+
     public static function handle(Context $c): void
     {
         if ($c->method() !== 'GET' && $c->method() !== 'HEAD') {
@@ -59,11 +62,26 @@ final class ConfigEndpoint
             if ($day->period !== $config->defaultPeriod) {
                 $item['period'] = $day->period;
             }
+            // windows with times (holiday/none): they cancel the meetings that start inside
+            // them; the part of the window on this day, 24:00 for its end
+            foreach ($day->cancel as [$from, $to, $what]) {
+                $dayStart = $day->date->getTimestamp();
+                $dayEnd = $day->date->modify('+1 day')->getTimestamp();
+                $clock = static fn (int $t): string => $t >= $dayEnd ? '24:00' : (new \DateTimeImmutable('@' . $t))->setTimezone($config->zone)->format('H:i');
+                $item['cancel'][] = ['from' => $clock(max($from, $dayStart)), 'until' => $clock(min($to, $dayEnd)), 'as' => $what];
+            }
             if ($day->label !== null) {
                 $item['label'] = $day->label;
             }
             if (count($item) > 1) {
                 $days[] = $item;
+            }
+        }
+        // duplicate.ini as the calendar applied it: each copy, its source and mode
+        $duplicates = [];
+        foreach ($c->course()->events as $event) {
+            if ($event->copyOf !== null) {
+                $duplicates[] = ['event' => $event->id, 'copy_of' => $event->copyOf, 'mode' => (string) $event->mode];
             }
         }
         return [
@@ -76,7 +94,10 @@ final class ConfigEndpoint
             'sections' => $config->sections->toArray(),
             'types' => array_map(static fn (string $label): array => ['label' => $label], $config->types),
             'boxes' => array_values(array_map(static fn (array $b): array => ['box' => $b['box'], 'label' => $b['label']], array_filter($config->boxes, static fn (array $b): bool => !($b['notes'] ?? false)))),
-            'replace' => (object) $config->replace,
+            'pages' => array_values(array_map(static fn ($name, array $page): array => ['page' => (string) $name, 'label' => $page['label']], array_keys($config->pages), $config->pages)),
+            'duplicates' => $duplicates,
+            'session_seconds' => $config->sessionSeconds,
+            'version' => ['format' => self::FORMAT, 'software' => substr(\Cal6\Http\Fingerprint::software(), 0, 12)],
         ];
     }
 }

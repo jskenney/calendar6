@@ -582,6 +582,20 @@ HTML;
         $this->assertSame(['10:45', '11:35', true], [$late['start'] ?? null, $late['end'] ?? null, $late['cancelled'] ?? null], '4345 starts inside the assembly: its times, cancelled');
     }
 
+    public function testConfigDuplicatesAndCancelWindows(): void
+    {
+        $client = $this->start([
+            'config/duplicate.ini' => "class_2 = class_1 same\n",
+            'config/dates.ini' => "2026-09-18 10:00 until 2026-09-18 12:00 = holiday | assembly\n2026-09-21 13:00 until 2026-09-22 09:00 = none\n",
+        ]);
+        $data = $client->get('calendar/php/config.php')->json();
+        $this->assertSame([['event' => 'class_1@2026-08-25', 'copy_of' => 'class_1', 'mode' => 'same']], $data['duplicates'] ?? null, 'duplicate.ini as the calendar applied it');
+        $days = array_column($data['days'], null, 'date');
+        $this->assertSame(['date' => '2026-09-18', 'cancel' => [['from' => '10:00', 'until' => '12:00', 'as' => 'holiday']], 'label' => 'assembly'], $days['2026-09-18'] ?? null, 'a window with times');
+        $this->assertSame([['from' => '13:00', 'until' => '24:00', 'as' => 'none']], $days['2026-09-21']['cancel'] ?? null, 'a window over two days, per day');
+        $this->assertSame([['from' => '00:00', 'until' => '09:00', 'as' => 'none']], $days['2026-09-22']['cancel'] ?? null);
+    }
+
     public function testParametersByGetOrPost(): void
     {
         $client = $this->start();
@@ -717,7 +731,12 @@ HTML;
         ], $data['sections'] ?? null);
         $this->assertSame(['class', 'lab', 'project', 'exam'], array_keys($data['types'] ?? []));
         $this->assertSame(['box' => 'title', 'label' => 'Lecture'], $data['boxes'][0] ?? null);
-        $this->assertSame(['classyear' => '27', 'office' => 'Michelson 342'], $data['replace'] ?? null);
+        $this->assertFalse(isset($data['replace']), '[replace] values are not sent');
+        $this->assertSame([['page' => 'home', 'label' => 'Home'], ['page' => 'resources', 'label' => 'Resources'], ['page' => 'policy', 'label' => 'Syllabus']], $data['pages'] ?? null, 'paths.ini pages, in order');
+        $this->assertSame(8 * 3600, $data['session_seconds'] ?? null);
+        $this->assertSame(1, $data['version']['format'] ?? null);
+        $this->assertSame(1, preg_match('/^[0-9a-f]{12}$/', $data['version']['software'] ?? ''));
+        $this->assertSame([], $data['duplicates'] ?? null);
 
         $keys = $this->keys($client->get('calendar/php/calendar.php')->json());
         $markdown = $client->get('calendar/php/html.php?file=' . $keys['class_1/reading.md'])->body;

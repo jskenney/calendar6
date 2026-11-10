@@ -525,7 +525,8 @@ changes, apart from `viewer` and `csrf`.
                {"date": "2026-10-14", "events": ["lab"], "label": "Lab day"},
                {"date": "2026-11-25", "events": [], "as": "holiday", "label": "Thanksgiving"},
                {"date": "2026-11-26", "events": [], "as": "holiday", "label": "Thanksgiving"},
-               {"date": "2026-12-03", "period": "2_hour_delay", "label": "2-hour delay (snow)"}],
+               {"date": "2026-12-03", "period": "2_hour_delay", "label": "2-hour delay (snow)"},
+               {"date": "2026-09-18", "cancel": [{"from": "10:00", "until": "12:00", "as": "holiday"}], "label": "assembly"}],
   "period":   "normal",
   "periods":  {"normal": {"label": "Normal", "times": {"1": "07:45-08:35", "4": "10:45-11:35"}},
                "2_hour_delay": {"label": "2 Hour Delay", "times": {"1": "09:45-10:35", "4": "13:45-14:35"}},
@@ -535,7 +536,11 @@ changes, apart from `viewer` and `csrf`.
   "types":    {"class": {"label": "Class"}, "lab": {"label": "Lab"}, "exam": {"label": "Exam"}},
   "boxes":    [{"box": "title", "label": "Lecture"}, {"box": "homework", "label": "Homework"},
                {"box": "lab-solution", "label": "Solution"}],
-  "replace":  {"classyear": "27"},
+  "pages":    [{"page": "home", "label": "Home"}, {"page": "policy", "label": "Syllabus"}],
+  "duplicates": [{"event": "class_6", "copy_of": "class_5", "mode": "numbered"},
+                 {"event": "lab_6@2026-10-07", "copy_of": "lab_6", "mode": "same"}],
+  "session_seconds": 28800,
+  "version":  {"format": 1, "software": "3f9c2a71b0de"},
   "viewer":   {"user": null, "instructor": false},
   "csrf":     "Lm2c..."
 }
@@ -545,10 +550,22 @@ changes, apart from `viewer` and `csrf`.
 - `days`: only the days `dates.ini` changes, one entry per date (a range such as
   `2026-11-25 until 2026-11-27` gives one entry per day). `events` (the event types that day)
   appears when the line chose them (a weekday, types, `holiday` or `none`); `as` is `holiday`,
-  `none` or the weekday the day follows; `period` a period schedule other than the default.
+  `none` or the weekday the day follows; `period` a period schedule other than the default;
+  `cancel` the windows with times on that day (`from`, `until` with `24:00` for a window that
+  goes on past midnight, and `as`: `holiday` or `none`); they cancel the meetings that start
+  inside them (with `?section=`, `calendar.php` marks those `"cancelled": true`).
 - `period`: the default period schedule; `periods`: every schedule in `periods.ini`
   (`cancelled` for a period that exists but does not meet).
 - `boxes`: config.ini `[boxes]` in order (not `[notes]`), with their labels.
+- `pages`: the `paths.ini` pages in order, by name and menu label (no file names; keys and
+  visibility come from `calendar.php`).
+- `duplicates`: `duplicate.ini` as the calendar applied it: each copy's event id (as in
+  `calendar.php`), the event it copies, and `numbered` or `same`. Lines that did nothing are
+  `problems` for instructors in `calendar.php`.
+- `session_seconds`: how long a login lasts at most (`[users] session`).
+- `version`: `format`, the version of the endpoints' JSON (raised when its shape changes), and
+  `software`, which changes with every update of the code (a front end can reload when it does).
+- Not sent: `[replace]` values (html.php fills them in), the box and notes file names.
 
 Never included: password hashes, the secret, server file paths, `default.ini`, `auth/`, lock
 codes, the lockdown date (its effect shows in `calendar.php`).

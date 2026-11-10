@@ -157,7 +157,7 @@ final class CalendarBuilder
             case 'holiday':
             case 'none':
                 if ($partial !== null) {
-                    $day->cancel[] = $partial;
+                    $day->cancel[] = [$partial[0], $partial[1], $change['events']];
                     break;
                 }
                 $day->types = [];
