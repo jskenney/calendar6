@@ -70,7 +70,8 @@ final class Course
         // target, as an unreadable time does (H-2): dropping it would publish what it hides (L-74)
         $lines = $default->lines;
         foreach ($default->unreadable as $bad) {
-            $target = preg_split('/\s+/', $bad->key, 2)[0] ?? '';
+            // Calendar 4 separated with tabs, so a path may hold spaces (L-80)
+            $target = trim(str_contains($bad->key, "\t") ? explode("\t", $bad->key, 2)[0] : (preg_split('/\s+/', $bad->key, 2)[0] ?? ''));
             if ($target !== '') {
                 $lines[] = new IniLine($bad->section, $target, 'never', $bad->line);
                 $course->problems[] = new Problem("$target is hidden until line $bad->line is written as \"target = when\"", 'default.ini', $bad->line);
@@ -85,6 +86,15 @@ final class Course
             }
         }
         array_push($course->problems, ...$course->rules->problems);
+        // a page named like a box that fills none (instructor.htm when the box lists
+        // instructor.html, instructor.md) follows the event's rule, not the box's: say so (M-41)
+        $boxNames = array_map(static fn (array $b): string => strtolower($b['box']), $course->config->boxes);
+        foreach ($course->places as $place) {
+            if ($place->event !== null && $place->box === null && $place->file->virtualOf === null && $place->file->kind() === 'page'
+                && in_array(strtolower((string) preg_replace('/\.[^.]*$/', '', basename($place->file->name))), $boxNames, true)) {
+                $course->problems[] = new Problem("{$place->id()} is named like a box but fills none (the box lists other names), so the box's rule does not apply to it", 'config.ini');
+            }
+        }
         // a rule for an event that does not exist (class_40 in a course of 30) does nothing:
         // say so, as it is most likely a typo (M-35)
         foreach ($course->rules->byTarget as $rule) {

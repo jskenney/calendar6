@@ -553,6 +553,44 @@ final class RendererTest extends TestCase
         $this->assertContains('&lt;a href=&quot;', $this->render($course, 'class_1/codeinject.html'), 'the code sample is shown');
     }
 
+    public function testMathAttributesSvgAndTextareaComments(): void
+    {
+        $course = $this->course([
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/m.md' => "Formula: \\( x = <inst>T1</inst> \\) and \$\$a<b\$\$\n",
+            'class/01.Introduction/a.html' => '<abbr title="Hint: <inst>T2</inst>">x</abbr>',
+            'class/01.Introduction/s.html' => '<svg><style>rect{fill:red}</svg><p>Visible</p><inst>T3</inst><style>p{}</style>',
+            'class/01.Introduction/t.html' => "<textarea><!DOCTYPE html>\n<html><!-- your code here --></html></textarea><!-- gone -->",
+            'class/01.Introduction/instructor.htm' => 'I',
+        ]);
+        foreach (['m.md' => 'T1', 'a.html' => 'T2', 's.html' => 'T3'] as $file => $secret) {
+            $this->assertNotContains($secret, $this->render($course, "class_1/$file"), "hidden (M-40, L-79, L-77): $file");
+        }
+        $this->assertContains('a&lt;b', $this->render($course, 'class_1/m.md'), 'math is still shown as written');
+        $this->assertContains('title="Hint: "', $this->render($course, 'class_1/a.html'));
+        $page = $this->render($course, 'class_1/t.html');
+        $this->assertContains('<!DOCTYPE html>', $page, 'a textarea keeps its comments and doctype (L-82)');
+        $this->assertContains('<!-- your code here -->', $page);
+        $this->assertNotContains('gone', $page);
+        $this->assertSame(1, count(array_filter($course->problems, static fn ($p): bool => str_contains($p->message, 'instructor.htm'))), 'a page named like a box that fills none is a problem (M-41)');
+    }
+
+    public function testAnEventDirectoryReachedThroughALinkIsStillAnEventDirectory(): void
+    {
+        $course = $this->course([
+            'config/default.ini' => "class_1 = always\n",
+            'pages/home.html' => '<inject src="../material/class/01.Introduction/a/b/c/d/e/deep.html">HOME',
+            'config/paths.ini' => "[pages]\nhome = pages/home.html\n",
+            'material/class/01.Introduction/index.html' => 'I',
+            'material/class/01.Introduction/a/b/c/d/e/deep.html' => 'DEEP-SECRET',
+        ]);
+        Fixture::remove("$this->dir/class");
+        symlink("$this->dir/material/class", "$this->dir/class");
+        $course = Course::load($this->dir);
+        $page = $this->render($course, 'page/home');
+        $this->assertNotContains('DEEP-SECRET', $page, 'a file without a key in a linked event directory is not injected (L-83)');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

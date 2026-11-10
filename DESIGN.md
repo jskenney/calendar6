@@ -184,10 +184,10 @@ exam    = Exam
 title             = index.html, index.md        | Lecture
 notes             = notes.html, notes.md        | Notes
 homework          = homework.html, homework.md  | Homework
-homework-solution = homework-solution.html      | Homework solution
-lab-solution      = lab-solution.html           | Solution
+homework-solution = homework-solution.html, homework-solution.md | Homework solution
+lab-solution      = lab-solution.html, lab-solution.md | Solution
 slides            = slides.pdf, slides.pptx     | Slides
-instructor        = instructor.html             | Instructor
+instructor        = instructor.html, instructor.md | Instructor
 
 [access]
 ; lockdown: from then on anonymous viewers only see what an "always" rule decides
@@ -600,7 +600,8 @@ behind a link). `get.php` answers `404` for a page key, for everyone, so the raw
 page type, processed like HTML. Editors' backups of pages (`index.html~`, `notes.md.bak`,
 `x.html.orig`, `index.html.~1~`, `x.html_bak`, `x.html,v`, `#index.html#`: any name with `.html`,
 `.htm` or `.md` followed by something other than a letter or digit, unless it ends in a type that
-is served as such, like `report.html.pdf`) are raw page source too: they are never listed or
+is served as such, like `report.html.pdf`; also `index.html2` and a page extension followed by
+`old`, `bak`, `orig`, `save`, `copy`, `prev`, `new`, `tmp`, `swp`, as in `notes.mdold`) are raw page source too: they are never listed or
 served by either endpoint, and are listed as problems for instructors. PHP files are refused the
 same way under every spelling and as backups (`.php5`, `.phtml`, `.phtm`, `.phar`, `.pht`, `.phps`,
 `.inc`, `x.php~`, `x.phar_old`); a page named like an include fragment (`menu.inc.html`,
@@ -690,7 +691,12 @@ tag counts only where both readings see a closing tag (with and without these el
 `<inst>` opened outside it. End tags are read as a browser reads them (quoted attributes, and
 `</` followed by a non-letter is a comment). `<replace>` and `<url>` tags end where a browser
 would end them. `<codeinject>` of a Markdown page sets its code aside before hiding, so a code
-sample such as `` `<a href="` `` can not swallow the blocks after it. Blocks of one tag
+sample such as `` `<a href="` `` can not swallow the blocks after it. Inside `<svg>` and `<math>`,
+where a browser reads `<script>` and `<style>` as markup, they are read both ways too (L-77). A
+hidden block written inside an attribute value (a tooltip: `title="Hint: <inst>42</inst>"`) is
+removed for viewers who may not see it, and its tags go in any case (L-79). Comments and the
+doctype inside a `<textarea>`, `<xmp>` or `<title>` are text the reader sees, so they stay,
+unless they hold a block tag (L-82). Blocks of one tag
 nested more than 256 deep are removed with their content.
 
 **`<url>` and other sites (DOC-18):** in `href` and `src`, `<url>` accepts any relative or
@@ -705,7 +711,8 @@ HTML however far it is indented, so an indented `<inst>` still hides. Code shows
 an `<inst>` inside a fenced code block (or a code span) is shown as code, so to hide a code
 block, put `<inst>` and `</inst>` on lines of their own around the fence. Image alt text, link
 titles and heading ids are plain text: a hidden block written there is removed, with its
-content, for everyone, and so is one in a link's destination. A link reference definition inside
+content, for everyone, and so is one in a link's destination. In math (`\( \)`, `\[ \]`,
+`$$ $$`) a block tag is still markup, so `\( x = <inst>42</inst> \)` hides the 42 (M-40). A link reference definition inside
 a hidden block is part of the block, not a definition.
 `<codeinject>` of a page shows its source without what the viewer may not see. If any other
 pattern fails on a page, the request fails rather than sending the page half processed.
@@ -717,7 +724,7 @@ pattern fails on a page, the request fails rather than sending the page half pro
 | `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times). In an injected or codeinjected page, that page's own event decides (a file without an event, such as `shared/`, follows the page that injects it). A page with no event at all (a `paths.ini` page) has no meeting to wait for: its `<postmeeting>` is always shown (DOC-19), so do not use it there to hide anything |
 | `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it) |
 | `<host server="name">` ... `</host>` | shown only when served by that server |
-| `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`) |
+| `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`; compared by real path, so a type directory that is a link still counts, L-83) |
 | `<codeinject src="file">` | another file, escaped so it shows as source code |
 | `<replace value="name">` | a value from `config.ini` (`[replace]`) or a built-in one (`type`, `ctype`, `event`, `zevent`, `title`, `course`, `coursename`) |
 | `<url value="name" default="x">` | a value from the page's URL, **HTML-escaped** (remembered in the session, as v4); only in text and in quoted values of a few attributes (see above) |
@@ -787,7 +794,7 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | R12 | **A semester-end lockdown** | the block at the top of the example |
 | R13 | **Virtual files** (v4 `$CLASS_FILE`, now `virtual.ini`: a file shown in an event but stored elsewhere) are checked under both names; the stricter answer wins (Calendar 5 behaviour; v4 mixed them up) | `notes.html  homework/homework01.html  lab  1` |
 | R14 | **Events that are on no calendar day** are never shown to anonymous viewers | a third exam folder with two exam days |
-| R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable or missing file** hides everything from anonymous viewers (fail closed, Calendar 6 also for a missing one). `default.ini` has no sections: a line under a header such as `[rules]` is still a rule, and the header is listed (M-33). An old-style line without `=` (`lab 99 99 9999`) hides its first word's target until it is rewritten (L-74) | |
+| R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable or missing file** hides everything from anonymous viewers (fail closed, Calendar 6 also for a missing one). `default.ini` has no sections: a line under a header such as `[rules]` is still a rule, and the header is listed (M-33). An old-style line without `=` (`lab 99 99 9999`) hides its target until it is rewritten (L-74): the first word, or with a tab everything before it (`class_1/Lecture Notes.pdf<TAB>99 99 9999`, L-80) | |
 | R16 | **Paths with spaces** | tab-separated lines |
 
 Event numbers are numbers: `class_01` is `class_1` (M-35); the name as written is matched too,
@@ -849,6 +856,10 @@ Decided:
 - **A line whose time can not be read hides its target** (fail closed): `exam = nver` hides the
   exams and is listed for instructors; it never releases anything. A line whose target can not
   be read (`class_9..2`) is only listed.
+- **Pages named like a box:** a page whose name (without its extension) is a box's name but
+  that fills no box (`instructor.htm` when the box lists `instructor.html, instructor.md`)
+  follows the event's rule, so it is listed as a problem (M-41). The template lists the `.md`
+  name in every box.
 - **Box assets:** a file named after a box's file, followed by `-`, `_`, `.` or `/`, follows that
   box's rule instead of the event's: with `lab-solution.html` in the `lab-solution` box,
   `lab-solution-figure.png` and `lab-solution/data.csv` stay hidden as long as the solution does.
@@ -1011,7 +1022,8 @@ The plan:
 - **Reverse proxies:** list them in `config.ini` `[server] trusted_proxies`; only then are
   `X-Forwarded-For` (the client's address, for rate limits) and `X-Forwarded-Proto` (HTTPS, for
   the `Secure` cookie flag) believed. Entries are addresses or CIDR ranges (`10.0.0.0/8`),
-  compared in binary (any IPv6 spelling); anything else is listed as a problem and ignored.
+  compared in binary (any IPv6 spelling, and `::ffff:10.0.0.5` is `10.0.0.5`); anything else is
+listed as a problem and ignored.
 - **Sessions:** a login lasts `[users] session`; Calendar 6 sets PHP's `session.gc_maxlifetime`
   to match and keeps the course's sessions in its private directory
   (`<temp>/cal6-<uid>-<hash>/sessions`) when it can, so another application's cleanup does not

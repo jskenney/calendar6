@@ -109,6 +109,10 @@ final class Boundary
         if (preg_match('/^#.+#$/', $base)) {
             return true;
         }
+        // hand-made copies: index.html2, notes.mdold, x.htmlbak (L-78); not x.md5 (a checksum)
+        if (preg_match('/\.(?:html?\d+|(?:html?|md)(?:old|bak|backup|orig|save|copy|prev|new|tmp|swp|swo))$/i', $base)) {
+            return true;
+        }
         if (!preg_match('/\.(html?|md)[^a-z0-9]/i', $base)) {
             return false;
         }

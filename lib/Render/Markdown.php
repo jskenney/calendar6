@@ -641,8 +641,17 @@ final class Markdown
         }, $text));
 
         # 2. Math for MathJax: keep exactly as written (only HTML-escape it)
+        #    (hidden block tags inside math stay markup, so the block is still hidden, M-40)
         $text = $this->orFail(preg_replace_callback('/\$\$.+?\$\$|\\\\\(.+?\\\\\)|\\\\\[.+?\\\\\]/s', function ($m) {
-            return $this->hold($this->escText($m[0]));
+            $parts = preg_split('/(<\/?(?:inst|lock|postmeeting|host|student)(?=[\s>\/])[^>]*>)/i', $m[0], -1, PREG_SPLIT_DELIM_CAPTURE);
+            if ($parts === false) {
+                throw new \RuntimeException('markdown: math could not be processed');
+            }
+            $out = '';
+            foreach ($parts as $i => $part) {
+                $out .= $i % 2 === 1 ? $part : ($part === '' ? '' : $this->hold($this->escText($part)));
+            }
+            return $out;
         }, $text));
 
         # 3. Autolinks <https://...> and <user@example.com>

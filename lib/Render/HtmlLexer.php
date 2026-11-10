@@ -147,6 +147,11 @@ final class HtmlLexer
      */
     private const BOUNDED = ['textarea', 'title', 'noscript', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext'];
 
+    /** Tags that end <svg>/<math> foreign content in a browser. */
+    private const BREAKOUT = ['b', 'big', 'blockquote', 'body', 'br', 'center', 'code', 'dd', 'div', 'dl', 'dt', 'em', 'embed',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'hr', 'i', 'img', 'li', 'listing', 'menu', 'meta', 'nobr', 'ol', 'p', 'pre',
+        'ruby', 's', 'small', 'span', 'strong', 'strike', 'sub', 'sup', 'table', 'tt', 'u', 'ul', 'var'];
+
     /**
      * Tokens: ['tag', start, end, name, closing], ['comment', start, end], ['raw', start, end]
      * (a script or style body) and ['bounded', start, end, name] (the body of an element in
@@ -170,6 +175,7 @@ final class HtmlLexer
     {
         $tokens = [];
         $noClose = [];
+        $foreign = 0;
         $length = strlen($html);
         $pos = 0;
         while (($lt = strpos($html, '<', $pos)) !== false) {
@@ -224,7 +230,15 @@ final class HtmlLexer
             $end = self::openingTagEnd($html, $nameEnd);
             $tokens[] = ['tag', $lt, $end, $name, $closing];
             $pos = $end;
-            if (!$closing && !$plain && in_array($name, self::BOUNDED, true)) {
+            // inside <svg> or <math> a browser reads <script> and <style> as markup (they end at
+            // </svg> or a tag such as <p>); read them as bounded, both ways (L-77)
+            if ($name === 'svg' || $name === 'math') {
+                $foreign = $closing ? max(0, $foreign - 1) : $foreign + (str_ends_with(substr($html, $lt, $end - $lt), '/>') ? 0 : 1);
+            } elseif (!$closing && $foreign > 0 && in_array($name, self::BREAKOUT, true)) {
+                $foreign = 0;
+            }
+            $asBounded = !$closing && !$plain && (in_array($name, self::BOUNDED, true) || ($foreign > 0 && ($name === 'script' || $name === 'style')));
+            if ($asBounded) {
                 $close = $name === 'plaintext' || ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);
                 if ($close === false) {
                     $noClose[$name] = min($noClose[$name] ?? PHP_INT_MAX, $end);

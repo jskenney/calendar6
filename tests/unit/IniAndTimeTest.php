@@ -42,6 +42,21 @@ final class IniAndTimeTest extends TestCase
         $this->assertSame(['3'], array_map('strval', array_keys($periods->schedules['normal']['periods'])));
     }
 
+    public function testTrustedProxiesTakeRangesAndAnySpelling(): void
+    {
+        $this->assertTrue(\Cal6\Http\Context::isTrusted('10.1.2.3', ['10.0.0.0/8']), 'a CIDR range (L-76)');
+        $this->assertTrue(\Cal6\Http\Context::isTrusted('2001:db8:0:0::1', ['2001:db8::1']), 'another IPv6 spelling');
+        $this->assertFalse(\Cal6\Http\Context::isTrusted('11.0.0.1', ['10.0.0.0/8']));
+        $this->assertTrue(\Cal6\Http\Context::isTrusted('::ffff:10.0.0.5', ['10.0.0.0/8']), 'an IPv4-mapped address (L-81)');
+        $this->assertTrue(\Cal6\Http\Context::isTrusted('10.0.0.5', ['::ffff:10.0.0.5']));
+        $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $dir = Fixture::course(['config/config.ini' => $template . "\n[server]\ntrusted_proxies = 10.0.0.0/8, proxy.example\n"]);
+        $config = CourseConfig::load($dir);
+        Fixture::remove($dir);
+        $this->assertSame(['10.0.0.0/8'], $config->trustedProxies);
+        $this->assertSame(1, count(array_filter($config->problems, static fn ($p): bool => str_contains($p->message, 'proxy.example'))), 'a host name is a problem');
+    }
+
     public function testOddLoginAttemptsKeepTheDefault(): void
     {
         $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');

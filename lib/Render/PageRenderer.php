@@ -89,6 +89,7 @@ final class PageRenderer
                 self::failed();
             }
         }
+        $html = $this->hideInAttributes($html, $place);
         // only scripts that are still in the page run; their output is passed through as-is
         $html = $this->calphp($html, $dir, $place);
         $html = self::block($html, 'student', static fn (string $inner): string =>
@@ -121,8 +122,19 @@ final class PageRenderer
     {
         $out = '';
         $pos = 0;
+        $range = [-1, -1];
         foreach (HtmlLexer::scan($html) as $token) {
+            if ($token[0] === 'bounded') {
+                $range = [$token[1], $token[2]];
+                continue;
+            }
             if ($token[0] === 'comment') {
+                // inside a textarea, xmp, title, ... a comment is text the reader sees (starter
+                // code): it stays, unless it holds a block tag (L-82)
+                if ($token[1] >= $range[0] && $token[2] <= $range[1]
+                    && !preg_match('/<\/?(?:inst|lock|postmeeting|host|student)(?=[\s>\/]|$)/i', substr($html, $token[1], $token[2] - $token[1]))) {
+                    continue;
+                }
                 $out .= substr($html, $pos, $token[1] - $pos);
                 $pos = $token[2];
             }
@@ -267,8 +279,19 @@ final class PageRenderer
         if ($keys !== []) {
             return false;
         }
+        // outside every event directory, compared by real path, so a type directory that is a
+        // link to elsewhere in the course still counts (L-83)
         $first = explode('/', $this->course->boundary->relative($real))[0];
-        return !isset($this->course->config->types[$first]);
+        if (isset($this->course->config->types[$first])) {
+            return false;
+        }
+        foreach (array_keys($this->course->config->types) as $type) {
+            $typeDir = Boundary::realpath($this->course->boundary->root() . '/' . $type);
+            if ($typeDir !== false && str_starts_with($real, $typeDir . '/')) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** The visible place an injected file belongs to (an event's file before a page), or null. */
@@ -382,6 +405,54 @@ final class PageRenderer
     }
 
     /** <postmeeting>: once the last section's meeting that day is over (instructors always). */
+    /**
+     * Hidden blocks written inside an attribute value (a tooltip: title="Hint: <inst>42</inst>")
+     * are removed for viewers who may not see them, as Markdown does for alt text (L-79); the
+     * tags themselves go in any case, so a value never carries a block tag.
+     */
+    private function hideInAttributes(string $html, Place $place): string
+    {
+        if (!preg_match('/<\/?(?:inst|lock|postmeeting|host)(?=[\s>\/])/i', $html)) {
+            return $html;
+        }
+        $out = '';
+        $pos = 0;
+        foreach (HtmlLexer::scan($html) as $token) {
+            if ($token[0] !== 'tag' || $token[4]) {
+                continue;
+            }
+            $tag = substr($html, $token[1], $token[2] - $token[1]);
+            if (!preg_match('/<\/?(?:inst|lock|postmeeting|host)(?=[\s>\/])/i', substr($tag, 1))) {
+                continue;
+            }
+            $new = '';
+            $at = 0;
+            foreach (HtmlLexer::attributes($tag) as [, $start, $end]) {
+                if ($start < 0) {
+                    continue;
+                }
+                $value = substr($tag, $start, $end - $start);
+                $hidden = $this->postmeeting($value, $place);
+                $hidden = self::block($hidden, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
+                $hidden = $this->host($hidden);
+                $hidden = self::block($hidden, 'lock', function (string $inner, string $opening): string {
+                    $codes = array_values(array_filter(array_map('trim', explode(',', (string) self::attribute($opening, 'code'))), static fn (string $c): bool => $c !== ''));
+                    foreach ($this->unlocked as $entered) {
+                        if (self::codeMatches($entered, $codes)) {
+                            return $inner;
+                        }
+                    }
+                    return $this->viewer->instructor ? $inner : '';
+                });
+                $new .= substr($tag, $at, $start - $at) . $hidden;
+                $at = $end;
+            }
+            $out .= substr($html, $pos, $token[1] - $pos) . $new . substr($tag, $at);
+            $pos = $token[2];
+        }
+        return $out . substr($html, $pos);
+    }
+
     private function postmeeting(string $html, Place $place): string
     {
         $time = $place->event?->time;

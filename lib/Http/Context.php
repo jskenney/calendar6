@@ -148,6 +148,15 @@ final class Context
         return self::isTrusted((string) ($this->server['REMOTE_ADDR'] ?? ''), $this->config->trustedProxies);
     }
 
+    /** An IPv4-mapped IPv6 address (::ffff:10.0.0.5) as its IPv4 address, in binary (L-81). */
+    private static function unmapped(string|false $packed): string|false
+    {
+        if ($packed !== false && strlen($packed) === 16 && str_starts_with($packed, str_repeat("\0", 10) . "\xff\xff")) {
+            return substr($packed, 12);
+        }
+        return $packed;
+    }
+
     /** An IP address, or a CIDR range (10.0.0.0/8, 2001:db8::/32). */
     public static function validProxy(string $proxy): bool
     {
@@ -167,17 +176,18 @@ final class Context
      */
     public static function isTrusted(string $address, array $proxies): bool
     {
-        $packed = @inet_pton($address);
+        $packed = self::unmapped(@inet_pton($address));
         if ($packed === false) {
             return false;
         }
         foreach ($proxies as $proxy) {
             [$network, $bits] = array_pad(explode('/', $proxy, 2), 2, null);
-            $net = @inet_pton((string) $network);
+            $raw = @inet_pton((string) $network);
+            $net = self::unmapped($raw);
             if ($net === false || strlen($net) !== strlen($packed)) {
                 continue;
             }
-            $bits = $bits === null ? strlen($net) * 8 : (int) $bits;
+            $bits = $bits === null ? strlen($net) * 8 : max(0, (int) $bits - ($raw !== $net ? 96 : 0));
             $bytes = intdiv($bits, 8);
             if (substr($net, 0, $bytes) !== substr($packed, 0, $bytes)) {
                 continue;

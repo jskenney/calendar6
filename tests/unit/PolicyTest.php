@@ -217,10 +217,17 @@ INI;
 
     public function testOldStyleLinesHideTheirTarget(): void
     {
-        $course = $this->load(['config/default.ini' => "class = always\nlab\t99 99 9999\nexam never\n"]);
+        $course = $this->load(['config/default.ini' => "class = always\nlab\t99 99 9999\nexam never\nclass_1/Lecture Notes.pdf\t99 99 9999\n", 'class/01.Introduction/Lecture Notes.pdf' => 'L']);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/Lecture Notes.pdf', self::now($course)), 'a tab-separated path with a space (L-80)');
         $now = self::now($course);
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/index.html', $now), 'a line without "=" hides its target (L-74)');
         $this->assertTrue(self::sees($course, Viewer::anonymous(), 'class_1/index.html', $now));
+    }
+
+    public function testABoxPageInMarkdownFollowsTheBox(): void
+    {
+        $course = $this->load(['class/01.Introduction/instructor.md' => 'I']);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/instructor.md', self::now($course)), 'instructor.md fills the instructor box (M-41)');
     }
 
     public function testOpensAndNextChange(): void
