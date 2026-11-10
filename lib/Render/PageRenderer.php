@@ -647,7 +647,9 @@ final class PageRenderer
         if ($target !== null) {
             return $this->urlFor($target, $element) . $fragment;
         }
-        return Boundary::realpath($dir . '/' . rawurldecode($path)) !== false ? null : $value . $fragment;
+        // a file this viewer may not see and a file that does not exist get the same answer, so
+        // links (also ones filled in by <url>) can not tell whether a path exists (L-51)
+        return null;
     }
 
     private static function isAbsolute(string $url): bool

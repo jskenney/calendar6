@@ -626,7 +626,7 @@ never sent.
 |---|---|---|
 | `file` | yes | the key of a page (`.html`, `.htm`, `.md`), from `calendar.php` or a rewritten link |
 | `full=1` | no | a whole HTML document (the site's CSS, MathJax, highlight.js) for a new tab or printing, instead of the fragment the front end inserts |
-| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The form's `csrf` is a token signed from the page and the hour (valid for up to two hours), so showing a page with `<lock>` creates no session. The answer is `303` back to the page (`GET`), so a reload does not resend it. A session is created only for a matching code. Wrong codes are limited per address and page (four times `login_attempts`) and per address (twenty times); a right code does not count, so a classroom behind one address is not blocked by a few typos |
+| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The form's `csrf` is a token signed from the page and the hour (valid for up to two hours), so showing a page with `<lock>` creates no session. The answer is `303` back to the page (`GET`), so a reload does not resend it. A session is created only for a matching code. A POST from another site (`Sec-Fetch-Site: cross-site`, or without that header an `Origin` naming another host) is refused (`403`), because the token itself is not secret. Wrong codes are limited per address and page (four times `login_attempts`) and per address (twenty times); a right code does not count, so a classroom behind one address is not blocked by a few typos |
 | any other parameter | no | values for `<url value="...">` tags (HTML-escaped; a value with a URL scheme other than `http(s):`, such as `javascript:`, is ignored; remembered only in a session that already exists, so a link can not create or replace one) |
 
 **Output:** `text/html; charset=utf-8`, by default an HTML **fragment** (the page's body). The
@@ -1040,8 +1040,8 @@ Choices the code made where the design left room (change them here if they are w
   `html.php` (a POST).
 - **html.php:** links to pages become `#/view/KEY`, other files the absolute path
   `/<course>/calendar/php/get.php?file=KEY`; links to files the viewer may not see keep their
-  text but lose their target (`data-cal6-hidden`); links to files that do not exist are left as
-  written. `<student>` becomes `<details>`; `<ace>` shows its text in `<pre>`; `<lock>` becomes
+  text but lose their target (`data-cal6-hidden`), and so do links to files that do not exist
+  (the same answer, so a link can not tell whether a path exists, L-51). `<student>` becomes `<details>`; `<ace>` shows its text in `<pre>`; `<lock>` becomes
   a small form that posts the code (with the CSRF token) back to `html.php`; `<host>` matches the
   server's host name or address, never the request's `Host` header; `<calphp>` runs after
   hidden sections are removed and its output is not processed. A Markdown page is converted

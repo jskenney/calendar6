@@ -313,8 +313,23 @@ final class RendererTest extends TestCase
             'class/01.Introduction/index.html' => '<img src="z%00.png">',
             'config/default.ini' => "class_1 = always\n",
         ]);
-        $this->assertContains('x%00.png', $this->render($course, 'page/home'), 'the course loads and the link is left alone (L-35)');
-        $this->assertContains('z%00.png', $this->render($course, 'class_1/index.html'));
+        $this->assertContains('<img data-cal6-hidden="1">', $this->render($course, 'page/home'), 'the course loads and the link is a missing file (L-35, L-51)');
+        $this->assertContains('<img data-cal6-hidden="1">', $this->render($course, 'class_1/index.html'));
+    }
+
+    public function testLinksDoNotTellWhetherAPathExists(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<a href="<url value=a>">a</a>',
+            'lab/01.Setup/answers.pdf' => 'A',
+            'config/default.ini' => "class_1 = always\nlab = never\n",
+        ]);
+        $answers = [];
+        foreach (['../../../../../../../../etc/passwd', '../../../../../../../../etc/nonexistent', '../../lab/01.Setup/answers.pdf', 'nope.pdf'] as $value) {
+            $answers[] = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['a' => $value]))
+                ->render($course->places[$course->keysByEvent['class_1']['index.html']]);
+        }
+        $this->assertSame(1, count(array_unique($answers)), 'hidden, missing and outside give the same answer (L-51): ' . implode(' | ', $answers));
     }
 
     public function testUrlValuesAndNumericNames(): void

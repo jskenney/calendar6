@@ -255,7 +255,7 @@ HTML;
         $this->assertNotContains('instructor.html', $body);
         $this->assertContains('href="https://example.com/x"', $body);
         $this->assertContains('href="#top"', $body);
-        $this->assertContains('href="missing.html"', $body, 'links to nothing are left alone');
+        $this->assertContains('<a data-cal6-hidden="1">missing</a>', $body, 'a link to nothing looks like a hidden one (L-51)');
         $this->assertNotContains('INST-ONLY', $body);
         $this->assertNotContains('secret.pdf', $body, 'links inside removed content');
         $this->assertContains('<details class="cal6-student"><summary>Show answer</summary>ANSWER</details>', $body);
@@ -402,7 +402,11 @@ HTML;
         $this->assertNotContains('img/pic.png', json_encode($data['events']['class_1']['files']), 'nested files are not listed');
 
         preg_match('/name="csrf" value="([^"]+)"/', $client->get("calendar/php/html.php?file=$first")->body, $t);
-        $wrong = $client->post("calendar/php/html.php?file=$first", ['lock' => 'wrong', 'csrf' => $t[1] ?? '']);
+        $cross = $client->post("calendar/php/html.php?file=$first", ['lock' => 'sesame', 'csrf' => $t[1] ?? ''], ['Sec-Fetch-Site' => 'cross-site']);
+        $this->assertSame(403, $cross->status, 'a lock code from another site is refused (L-50)');
+        $this->assertSame('', $cross->header('set-cookie'), 'and creates no session');
+        $this->assertSame(403, $client->post("calendar/php/html.php?file=$first", ['lock' => 'sesame', 'csrf' => $t[1] ?? ''], ['Origin' => 'https://evil.example'])->status, 'also by Origin');
+        $wrong = $client->post("calendar/php/html.php?file=$first", ['lock' => 'wrong', 'csrf' => $t[1] ?? ''], ['Origin' => rtrim($this->server->url(''), '/')]);
         $this->assertSame(303, $wrong->status);
         $this->assertNotContains('cal6_', $wrong->header("set-cookie"), 'a wrong code creates no session (L-43)');
         for ($i = 0; $i < 18; $i++) {

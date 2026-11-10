@@ -35,6 +35,23 @@ final class HtmlEndpoint
         return $token !== '' && (hash_equals(self::lockToken($c, $key, $hour), $token) || hash_equals(self::lockToken($c, $key, $hour - 1), $token));
     }
 
+    /** A request another site sent: Sec-Fetch-Site says so, or Origin names another host. */
+    private static function crossSite(Context $c): bool
+    {
+        // current browsers send Sec-Fetch-Site; only without it is Origin compared with Host
+        // (a reverse proxy may change Host, so Origin is the fallback, not the rule)
+        $site = strtolower((string) ($c->server['HTTP_SEC_FETCH_SITE'] ?? ''));
+        if ($site !== '') {
+            return $site === 'cross-site';
+        }
+        $origin = (string) ($c->server['HTTP_ORIGIN'] ?? '');
+        if ($origin === '') {
+            return false;
+        }
+        $host = strtolower((string) parse_url($origin, PHP_URL_HOST)) . (($port = parse_url($origin, PHP_URL_PORT)) !== null ? ":$port" : '');
+        return $origin === 'null' || $host !== strtolower((string) ($c->server['HTTP_HOST'] ?? ''));
+    }
+
     public static function handle(Context $c): void
     {
         $method = $c->method();
@@ -60,7 +77,9 @@ final class HtmlEndpoint
         $full = $c->query('full') === '1';
 
         if ($method === 'POST') {
-            if (!self::validLockToken($c, $place->key, (string) $c->post('csrf'))) {
+            // the form's token is public (page and hour), so a POST from another site is refused
+            // by what the browser says about it, and creates no session (L-50)
+            if (self::crossSite($c) || !self::validLockToken($c, $place->key, (string) $c->post('csrf'))) {
                 Session::close();
                 Response::error(403, 'the form has expired: reload the page');
                 return;
