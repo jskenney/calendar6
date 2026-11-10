@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 19 (cleanup cycle 5) is in progress; its findings will be added here.
+1. **M-46, M-47, M-48**, then **L-117..L-122**, **T-24** (cleanup cycle 5).
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -27,11 +27,22 @@ None open.
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-46 | 19 | `PageRenderer::block()` | **A missing `>` on a closing tag leaks the next block of the same kind**: `<inst>A</inst` then `<inst>SECRET</inst>` reads as one end tag `</inst <inst>`, so the second block never opens (also `<lock>`, and a start tag `<inst\n<inst>`); only the first block tag inside a tag counts. Calendar 4 hid it. Gap after L-110/L-111. Confirmed by the reviewer. | Look for block tags past the own name in same-name tags too (open after an end tag; an extra block in a start tag); count every block tag in a tag. |
+| M-47 | 19 | `PageRenderer::hideInAttributes()` | **Numeric entities in `srcdoc` bypass the hiding**: the page-level check looks only for `&lt;inst`, so `&#60;inst&#62;`, `&#x3c;inst>` and `&#60inst` (no `;`, which browsers decode and `html_entity_decode` does not) are sent. Gap after L-113. Confirmed by the reviewer. | Process every `srcdoc`; decode as a browser does (numeric references without `;`). |
+| M-48 | 19 | `PageRenderer::hideValue()` | **Hiding inside attribute values reads the value as HTML**, so `<!--`, an inner quoted attribute or a `<script>` in the value shields a block (`<b title="<!--<inst>S</inst>">` sends S and keeps the tags, against L-79); conversely a decoded `srcdoc` document is not hidden in its own attributes (`srcdoc="&lt;p title=&quot;Hint: &lt;inst&gt;S…"`). Residual of L-79/L-113. Confirmed by the reviewer. | Plain-text scan for block tags in ordinary values (fail closed); the full hiding (comments, attributes) on a decoded `srcdoc`. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-117 | 19 | `PageRenderer::block()` (plain reading, M-39) | A `<script>` written inside a `<textarea>`/`<title>` (well-formed: `<textarea><script src="app.js"></textarea>`) makes the plain reading run raw to the page's next `</script>`, so a closing block tag between is not counted and the block hides the rest of the page. Confirmed by the reviewer. | The plain reading still bounds HTML-namespace textarea/title/xmp; only elements inside svg/math are read without bounds. |
+| L-118 | 19 | `lib/Render/HtmlLexer.php:301` | L-116's O(1) is not achieved: `end()` on a copied position array copies it per end tag (quadratic: ~1 MB of nested `<svg><desc>` takes 36 s). Confirmed by the reviewer. | Read the last element with `array_key_last` on the stored array. |
+| L-119 | 19 | `lib/Course/Course.php:139-147` | Grants for events that do not exist (`lab_40 = always`) are never listed: the no-such-event check runs only over `default.ini`. Confirmed by the reviewer. | Run that check for grants too (and change the template's sample grant `exam_1`, as the template has no exam). |
+| L-120 | 19 | `PageRenderer::visibleSource()` | A lock code inside a still-locked `<lock>` is accepted (nested locks: the inner code can be guessed without the outer). Residual of L-91. Confirmed by the reviewer. | Drop the content of locks the viewer has not opened, from the outermost in. |
+| L-121 | 19 | `PageRenderer::block()` (depth cap) | While content deeper than 256 is dropped, a block tag in attribute position is not counted but its close still is, so later closes pair one level early and content leaks. Contrived. Confirmed by the reviewer. | Count attribute-position openings in the skip counter. |
+| L-122 | 19 | `PageRenderer.php` (`LINK_ELEMENTS`) | `<area href>`, `<input type=image src>`, svg `<image href>`/`xlink:href` and `background=` are not rewritten (they break in the front end; not a leak). Confirmed by the reviewer. | Rewrite them too. |
 
 ## Documentation
 
@@ -39,7 +50,9 @@ None open.
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-24 | 19 | `tests/` | No tests for same-name tags with a missing `>`, numeric `srcdoc` entities, comments/quotes in attribute values, script in a textarea before a block, deep svg end tags, grants for missing events, nested lock codes, attribute openings in skipped content, the added link elements. | Tests with each fix. |
 
 ## Enhancements
 
@@ -51,6 +64,7 @@ None open.
 | E-5 | 1 | `bin/` | `DESIGN.md` mentions `bin/cal6 check`; there is no command-line tool (problems, overridden lines, a check that material can not be fetched directly, `user add`). | Add `bin/cal6` with `check` and `user add`. |
 | E-7 | 1 | `calendar.php` | Instructors get `problems` in JSON but nothing shows them yet. | A status view in the front end. |
 | E-8 | 14 | `lib/Course/Course.php:89-95` | The M-41 warning covers only pages: when a box's file is missing, `lab-solution.pdf` follows the event's rule with no problem listed (as DESIGN says, but the realistic case). | **Needs a decision:** list non-page files named like a box that fills none, or make them box assets. |
+| E-9 | 19 | `PageRenderer` links | Relative URLs in CSS (`style="background:url(x.png)"`, `url()` in `<style>`) are not rewritten. | Rewrite them, or say so in DESIGN. |
 
 ## Fixed items
 
@@ -292,6 +306,7 @@ None open.
 | 16 | 2026-11-10 | `5c74628` | an **independent** review again (cleanup cycle 2), after fixing every review-15 item (`af873f5`); Chromium namespace checks, about 25 extra direct-access probes per server, speed inputs up to 0.8 MB; L-103 and L-104 confirmed by reading and the reviewer's runs before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | L-101..L-106, T-21 |
 | 17 | 2026-11-10 | `f1084cd` | an **independent** review again (cleanup cycle 3), after fixing every review-16 item (`3ceded2`); Chromium tree checks, 1500-round `.ini` fuzz, 30 Markdown speed patterns, direct-access probes on both servers; M-43 confirmed by the reviewer against the previous Policy before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | M-43, L-107..L-110, T-22 |
 | 18 | 2026-11-10 | `b7b9b4c` | an **independent** review again (cleanup cycle 4), after fixing every review-17 item (`2d76311`); Chromium checks, policy probes, direct-access probes on both servers, odd-input and speed probes; M-44 and M-45 confirmed by the reviewer (M-44 against the code before L-110) before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | M-44, M-45, L-111..L-116, T-23 |
+| 19 | 2026-11-10 | `d0766a2` | an **independent** review again (cleanup cycle 5), after fixing every review-18 item (`6d36770`); ~9,000 lexer fragments against Chromium, 3,000 well-formed pages, 2,000 `.ini` fuzz rounds, ~45 direct-access probes; M-46 reproduced by the reviewer's harness before recording. Nothing found that reads `config/`, `auth/`, code or files outside the course | M-46..M-48, L-117..L-122, E-9, T-24 |
 
 ## CI notes
 
