@@ -13,7 +13,9 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **M-49** first (a regression), then **L-123..L-127**, **DOC-21**, **T-25** (cleanup cycle 6, the last).
+1. No critical, high, medium, low, documentation or testing items are open (after six cleanup
+   cycles, reviews 15 to 20). A further independent review would show whether the last fixes
+   (`48b57b1`) hold.
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -27,31 +29,19 @@ None open.
 
 ## Medium
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| M-49 | 20 | `lib/Endpoint/HtmlEndpoint.php:76`, `PageRenderer::visibleSource()` | **Regression from L-120: an inner `<lock>` can never be opened**: the renderer that checks posted codes gets no unlocked codes, so every lock counts as unopened and a nested code is refused even after the outer one is in the session. Confirmed by the reviewer over HTTP. | Pass the session's unlocked codes to that renderer; an HTTP test that opens outer, then inner. |
+None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-123 | 20 | `PageRenderer::browserDecode()` | `srcdoc` numeric references with long zero padding (`&#00000060;inst>`) are still sent: the pattern reads at most 7 decimal or 6 hex digits; browsers take any number of leading zeros. Gap after M-47. Confirmed by the reviewer in Chromium. | Skip leading zeros; out-of-range values become U+FFFD. |
-| L-124 | 20 | `PageRenderer::browserDecode()` | A surrogate reference in `srcdoc` (`&#xD800;`) makes html.php answer 500 (`mb_chr()` returns false into a `string` callback). Confirmed by the reviewer. | U+FFFD for surrogates and anything `mb_chr()` refuses. |
-| L-125 | 20 | `lib/Http/RateLimiter.php:146` | The limiter keeps only the last 200 attempts per key, so limits above 200 never trigger: with `login_attempts` of 11 or more the per-address lock-code limit (x20) is off, from 21 the per-username gate, from 51 the per-address login limit. Confirmed by the reviewer. | Keep `max(limit, 200)` entries. |
-| L-126 | 20 | `lib/Endpoint/AuthEndpoint.php:28-55` | The device cookie survives a password reset: someone who logged in with a leaked password keeps, for 180 days, a cookie that skips the per-username gate and the per-address limit (against the spirit of L-100). Confirmed by the reviewer. | Include a mark of the password hash in the cookie's MAC: a password change invalidates it. |
-| L-127 | 20 | `lib/Render/Markdown.php:262-266` (`slug`) | Markdown heading ids are quadratic for repeated headings (`## h` 20,000 times: 10 s). Confirmed by the reviewer. | Remember the next number per base slug. |
+None open.
 
 ## Documentation
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| DOC-21 | 20 | `DESIGN.md`, template | An event page linking `../../shared/style.css` loses the link (files outside the event get keys only through `virtual.ini` or a `paths.ini` page); a course-wide stylesheet is a common need. | Say so, with the `virtual.ini` way. |
+None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-25 | 20 | `tests/` | No tests for opening nested locks in turn, zero-padded and surrogate references in `srcdoc`, limits above 200, the device cookie after a password change, repeated headings. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -124,6 +114,7 @@ None open.
 | M-46 | 19 | `717f821` | **A missing `>` on a closing tag leaks the next block of the same kind**: `<inst>A</inst` then `<inst>SECRET</inst>` reads as one end tag `</inst <inst>`, so the second block never opens (also `<lock>`, and a start tag `<inst\n<inst>`); only the first block tag inside a tag counts. Calendar 4 hid it. Gap after L-110/L-111. Confirmed by the reviewer. | Every block tag inside a tag counts, also in a same-name end or start tag (opened after it). |
 | M-47 | 19 | `717f821` | **Numeric entities in `srcdoc` bypass the hiding**: the page-level check looks only for `&lt;inst`, so `&#60;inst&#62;`, `&#x3c;inst>` and `&#60inst` (no `;`, which browsers decode and `html_entity_decode` does not) are sent. Gap after L-113. Confirmed by the reviewer. | Every `srcdoc` is processed and decoded as a browser does (numeric references without `;`). |
 | M-48 | 19 | `717f821` | **Hiding inside attribute values reads the value as HTML**, so `<!--`, an inner quoted attribute or a `<script>` in the value shields a block (`<b title="<!--<inst>S</inst>">` sends S and keeps the tags, against L-79); conversely a decoded `srcdoc` document is not hidden in its own attributes (`srcdoc="&lt;p title=&quot;Hint: &lt;inst&gt;S…"`). Residual of L-79/L-113. Confirmed by the reviewer. | Ordinary attribute values are scanned as plain text (`textBlock()`); a decoded `srcdoc` gets the full hiding (comments, attributes). |
+| M-49 | 20 | `48b57b1` | **Regression from L-120: an inner `<lock>` can never be opened**: the renderer that checks posted codes gets no unlocked codes, so every lock counts as unopened and a nested code is refused even after the outer one is in the session. Confirmed by the reviewer over HTTP. | html.php checks posted codes with the session’s unlocked codes, so an inner lock opens once the outer one has. |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -246,6 +237,11 @@ None open.
 | L-120 | 19 | `717f821` | A lock code inside a still-locked `<lock>` is accepted (nested locks: the inner code can be guessed without the outer). Residual of L-91. Confirmed by the reviewer. | `visibleSource()` drops what unopened locks hold (their opening tags stay). |
 | L-121 | 19 | `717f821` | While content deeper than 256 is dropped, a block tag in attribute position is not counted but its close still is, so later closes pair one level early and content leaks. Contrived. Confirmed by the reviewer. | Attribute-position openings are counted in skipped content. |
 | L-122 | 19 | `717f821` | `<area href>`, `<input type=image src>`, svg `<image href>`/`xlink:href` and `background=` are not rewritten (they break in the front end; not a leak). Confirmed by the reviewer. | `area`, `input type=image`, svg `image`, `xlink:href` and `background` are rewritten. |
+| L-123 | 20 | `48b57b1` | `srcdoc` numeric references with long zero padding (`&#00000060;inst>`) are still sent: the pattern reads at most 7 decimal or 6 hex digits; browsers take any number of leading zeros. Gap after M-47. Confirmed by the reviewer in Chromium. | Numeric references take any number of leading zeros. |
+| L-124 | 20 | `48b57b1` | A surrogate reference in `srcdoc` (`&#xD800;`) makes html.php answer 500 (`mb_chr()` returns false into a `string` callback). Confirmed by the reviewer. | Surrogates and out-of-range values become U+FFFD. |
+| L-125 | 20 | `48b57b1` | The limiter keeps only the last 200 attempts per key, so limits above 200 never trigger: with `login_attempts` of 11 or more the per-address lock-code limit (x20) is off, from 21 the per-username gate, from 51 the per-address login limit. Confirmed by the reviewer. | The limiter keeps as many attempts as the limit needs; `login_attempts` is at most 1000. |
+| L-126 | 20 | `48b57b1` | The device cookie survives a password reset: someone who logged in with a leaked password keeps, for 180 days, a cookie that skips the per-username gate and the per-address limit (against the spirit of L-100). Confirmed by the reviewer. | The device cookie’s MAC includes a mark of the password hash: a password change ends it. |
+| L-127 | 20 | `48b57b1` | Markdown heading ids are quadratic for repeated headings (`## h` 20,000 times: 10 s). Confirmed by the reviewer. | The next heading number is remembered per slug. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -266,6 +262,7 @@ None open.
 | DOC-18 | 11 | `4d84b3b` | Say that `<url>` in `src`/`href` accepts any `http(s)://` value, so `<script src="<url ...>">` or `<iframe src>` would load another site's content and `href` is an open redirect. | DESIGN warns that `<url>` in `src`/`href` accepts any `http(s)://` value. |
 | DOC-19 | 12 | `5e1b1e1` | `<postmeeting>` in a page without an event (a `paths.ini` page, its assets) is always shown; DESIGN covers only injected files. | DESIGN: `<postmeeting>` in a page without an event is always shown. |
 | DOC-20 | 14 | `57ea865` | Files at the course root (the template's `README.md`) are served directly by the web server; DESIGN does not warn that any page or file kept there is served raw. | DESIGN warns about files at the course root; Apache and nginx refuse `*.md` everywhere in the course; smoke check for `README.md`. |
+| DOC-21 | 20 | `48b57b1` | An event page linking `../../shared/style.css` loses the link (files outside the event get keys only through `virtual.ini` or a `paths.ini` page); a course-wide stylesheet is a common need. | DESIGN explains course-wide files (a shared style sheet) through `virtual.ini`. |
 | T-1 | 1 | `628734a`, `467a23d` | No tests for the course boundary: a material link that leads outside the course or into `config/`, `virtual.ini` with `..` or an absolute path, `paths.ini` outside the course, `<inject src="../../config/config.ini">`, `<calphp>` outside. These are the core security promises. | `BoundaryTest`, renderer boundary cases, `TemplateTest`. |
 | T-2 | 1 | `467a23d` | Nothing checks that `template/` itself loads without problems, although every new course starts from it. | `BoundaryTest`, renderer boundary cases, `TemplateTest`. |
 | T-3 | 1 | `9870c0b` | Time-dependent behaviour is only tested in unit tests: the HTTP tests can not move the clock, so the cache expiring at `next_change`, `<postmeeting>` before the meeting ends, session expiry and an account window ending during a session are untested end to end. | `CAL6_TEST_CLOCK` (built-in server only) and `tests/http/TimeTest.php`. |
@@ -290,6 +287,7 @@ None open.
 | T-22 | 17 | `2d76311` | No tests for box assets against file-name rules, deep svg speed, many scripts in textareas with `<url>`, `<svg / >`, `</svg>` inside foreignObject HTML, block tags in attribute position. | Tests with the fixes. |
 | T-23 | 18 | `6d36770` | No tests for the textarea starter-code page, unmatched rule targets and `type/file`, block tags in tag names and end tags, the namespace sync cases, encoded `srcdoc`, `<url default>` in attributes, depth in attribute position, many end tags in foreign content. | Tests with the fixes. |
 | T-24 | 19 | `717f821` | No tests for same-name tags with a missing `>`, numeric `srcdoc` entities, comments/quotes in attribute values, script in a textarea before a block, deep svg end tags, grants for missing events, nested lock codes, attribute openings in skipped content, the added link elements. | Tests with the fixes. |
+| T-25 | 20 | `48b57b1` | No tests for opening nested locks in turn, zero-padded and surrogate references in `srcdoc`, limits above 200, the device cookie after a password change, repeated headings. | Tests with the fixes. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
