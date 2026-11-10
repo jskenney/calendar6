@@ -434,10 +434,14 @@ page links to get keys too, decided by the page's rule (see `html.php`).
 
 ## The PHP endpoints
 
-All endpoints answer with explicit headers: `X-Content-Type-Options: nosniff`, no caching of
-personalised answers (`Cache-Control: private, no-store`), and JSON as
-`application/json; charset=utf-8`. Errors are JSON too (`{"error": "..."}`) with the right
-status code (400, 401, 403, 404, 405, 429).
+All endpoints answer with explicit headers: `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: same-origin`, `X-Frame-Options: SAMEORIGIN`, no caching of personalised
+answers (`Cache-Control: private, no-store`; `calendar.php` and `get.php` send
+`private, no-cache` with an `ETag` instead, so the browser asks again and gets `304` when
+nothing changed), and JSON as `application/json; charset=utf-8`. Errors are JSON too
+(`{"error": "..."}`) with the right status code (400, 401, 403, 404, 405, 416, 429; 500 when the
+course can not be found or its `config.ini` is unusable; 503 when the rate limiter can not keep
+count).
 
 Every request is answered for **the current viewer**: anonymous, or the user stored in the PHP
 session by `auth.php`. Requests that change something (`auth.php`, a lock code sent to
@@ -453,7 +457,7 @@ session by `auth.php`. Requests that change something (`auth.php`, a lock code s
 | `password` | to log in | checked with `password_verify` against `password_hash` |
 | `csrf` | always | the token from `config.php?csrf=1` |
 
-No `username`/`password`: log out. Any method other than POST: `405`.
+Both `username` and `password` empty (or missing): log out. Any method other than POST: `405`.
 
 **Output:**
 
@@ -469,8 +473,9 @@ No `username`/`password`: log out. Any method other than POST: `405`.
 {"error": "Wrong username or password."}
 ```
 
-- Logged in: `200`, the first form. The session id is replaced, so a **new CSRF token** comes
-  back. Grants are not listed (they could name hidden files); `calendar.php` shows their effect.
+- Logged in: `200`, the first form. `valid_until` is when this login ends by itself: the end of
+  the account's `valid` window or of the session lifetime (`config.ini`), whichever comes
+  first. The session id is replaced, so a **new CSRF token** comes back. Grants are not listed (they could name hidden files); `calendar.php` shows their effect.
 - Logged out: `200`, the second form (also a new token).
 - Wrong password, unknown user, or outside the account's `valid` window: `401`, the same message
   for all three (an unknown user costs a check against the course's costliest password hash,
@@ -496,7 +501,7 @@ No `username`/`password`: log out. Any method other than POST: `405`.
 
 ### `config.php` (Decided: the site config without secrets)
 
-**Inputs:** `GET`. `csrf=1` (optional): start a session and include its CSRF token, for a login
+**Inputs:** `GET` (or `HEAD`; anything else is `405`). `csrf=1` (optional): start a session and include its CSRF token, for a login
 form. Without it, no session is created (anonymous visitors leave no session files), and `csrf`
 is `null` unless the browser already has a session. A cross-site request (`Sec-Fetch-Site:
 cross-site`) never creates one, so a link from another site can not plant a session.
@@ -507,15 +512,19 @@ changes, apart from `viewer` and `csrf`.
 ```json
 {
   "course":   {"number": "AB123", "name": "Web and Internet Programming", "timezone": "America/New_York"},
-  "semester": {"start": "2026-08-24", "end": "2026-12-18"},
-  "schedule": {"mon": "class", "tue": "class", "wed": "lab", "fri": "class"},
-  "days":     [{"date": "2026-10-13", "as": "mon", "label": "Monday schedule"},
-               {"date": "2026-11-25", "until": "2026-11-27", "as": "holiday", "label": "Thanksgiving"},
+  "semester": {"start": "2026-08-24", "end": "2026-12-18", "weekends": false},
+  "schedule": {"mon": "class", "tue": "class", "wed": "lab", "fri": "class 08:00-08:50"},
+  "days":     [{"date": "2026-10-13", "events": ["class"], "as": "mon", "label": "Monday schedule"},
+               {"date": "2026-10-14", "events": ["lab"], "label": "Lab day"},
+               {"date": "2026-11-25", "events": [], "as": "holiday", "label": "Thanksgiving"},
+               {"date": "2026-11-26", "events": [], "as": "holiday", "label": "Thanksgiving"},
                {"date": "2026-12-03", "period": "2_hour_delay", "label": "2-hour delay (snow)"}],
+  "period":   "normal",
   "periods":  {"normal": {"label": "Normal", "times": {"1": "07:45-08:35", "4": "10:45-11:35"}},
-               "2_hour_delay": {"label": "2 Hour Delay", "times": {"1": "09:45-10:35", "4": "13:45-14:35"}}},
-  "sections": [{"section": "1121", "meetings": [{"meets": "MF1", "room": "HP111"}, {"meets": "T12", "room": "HP111"}], "instructor": "SMITH"},
-               {"section": "4345", "meetings": [{"meets": "MF4", "room": "HP132"}, {"meets": "R34", "room": "HP301"}], "instructor": "JONES"}],
+               "2_hour_delay": {"label": "2 Hour Delay", "times": {"1": "09:45-10:35", "4": "13:45-14:35"}},
+               "4_hour_delay": {"label": "4 Hour Delay", "times": {"1": "cancelled", "5": "13:40-14:30"}}},
+  "sections": [{"section": "1121", "meetings": [{"meets": "MF1", "type": "class", "room": "HP111"}, {"meets": "T12", "type": "class", "room": "HP111"}], "instructor": "SMITH"},
+               {"section": "4345", "meetings": [{"meets": "MF4", "type": "class", "room": "HP132"}, {"meets": "R34", "type": "class", "room": "HP301"}], "instructor": "JONES"}],
   "types":    {"class": {"label": "Class"}, "lab": {"label": "Lab"}, "exam": {"label": "Exam"}},
   "boxes":    [{"box": "title", "label": "Lecture"}, {"box": "homework", "label": "Homework"},
                {"box": "lab-solution", "label": "Solution"}],
@@ -524,6 +533,15 @@ changes, apart from `viewer` and `csrf`.
   "csrf":     "Lm2c..."
 }
 ```
+
+- `schedule`: config.ini `[schedule]`, a type per weekday, with the times when it gives them.
+- `days`: only the days `dates.ini` changes, one entry per date (a range such as
+  `2026-11-25 until 2026-11-27` gives one entry per day). `events` (the event types that day)
+  appears when the line chose them (a weekday, types, `holiday` or `none`); `as` is `holiday`,
+  `none` or the weekday the day follows; `period` a period schedule other than the default.
+- `period`: the default period schedule; `periods`: every schedule in `periods.ini`
+  (`cancelled` for a period that exists but does not meet).
+- `boxes`: config.ini `[boxes]` in order (not `[notes]`), with their labels.
 
 Never included: password hashes, the secret, server file paths, `default.ini`, `auth/`, lock
 codes, the lockdown date (its effect shows in `calendar.php`).
@@ -544,6 +562,9 @@ For instructors only (ignored otherwise):
 |---|---|
 | `as=anonymous` or `as=<username>` | the answer that viewer would get |
 | `at=YYYY-MM-DD HH:MM` | the answer at that moment instead of now |
+
+An unknown `as` user, or an `at` that is not `YYYY-MM-DD HH:MM` (or `YYYY-MM-DD`), is a `400`.
+Previews are never cached. Methods other than `GET`, `HEAD` and `POST`: `405`.
 
 **Output:** every day of the semester, the events on them, and for each event the box files and
 notes the viewer may see, with their keys. Files the viewer may not see are left out entirely.
@@ -621,7 +642,7 @@ There is no `next_change` (E-10): an instructor's edit can change the answer at 
   number, so its id adds the date (`class_5@2026-11-11`); its files have their own keys, since
   relative rules can give each showing a different window. Events on no calendar day are left out.
 - **Instructors** get every file, events on no calendar day (with `"date": null`), each event's
-  `directory`, and `problems` (bad lines in the `.ini` files, overridden lines, names that are
+  `directory`, and `problems` (each `{"message", "file", "line"}`: bad lines in the `.ini` files, overridden lines, names that are
   not UTF-8 or differ only in case, copies that can not be made, files named like a box's file
   but not the one `config.ini` lists, such as `lab-solution.pdf`, which follow the event's rule). Whether material can be
   fetched directly is checked from outside, by `tests/deploy/smoke.php` (and later
@@ -677,10 +698,10 @@ served and is listed as a problem.
 
 `GET` and `HEAD` only. The key is looked up and **the access rule is checked again for the
 current viewer** (a key alone never grants access); then the file is streamed with its MIME
-type, `Content-Length`, `Accept-Ranges`, `ETag`, `Last-Modified`, `Cache-Control: private`, and
-inline or attachment by type (HTML and SVG always as attachments, so they can not run as pages
-of the site). Unknown key or not allowed: `404`, the same answer for both. `.php` files are
-never sent.
+type, `Content-Length`, `Accept-Ranges`, `ETag`, `Last-Modified`, `Cache-Control: private,
+no-cache`, and `Content-Disposition` inline or attachment by type (HTML and SVG always as attachments, so they can not run as pages
+of the site). Unknown key or not allowed: `404`, the same answer for both. A `Range` beyond the
+end of the file: `416`. Methods other than `GET` and `HEAD`: `405`. `.php` files are never sent.
 
 ### `html.php` (Decided: one HTML page by key, processed inline)
 
@@ -689,11 +710,16 @@ never sent.
 | Field | Required | Meaning |
 |---|---|---|
 | `file` | yes | the key of a page (`.html`, `.htm`, `.md`), from `calendar.php` or a rewritten link |
-| `full=1` | no | a whole HTML document (the site's CSS, MathJax, highlight.js) for a new tab or printing, instead of the fragment the front end inserts |
+| `full=1` | no | a whole HTML document for a new tab or printing, instead of the fragment the front end inserts: `<!doctype html>`, a `<title>` (`Class 1: Introduction`, or the page's label) and the page in `<main class="cal6-page">`. Links to pages in it go to `html.php?file=KEY&full=1` rather than the front end's `#/view/KEY`. (No site CSS, MathJax or highlight.js yet: those come with the front end, E-1.) |
 | `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The form's `csrf` is a token signed from the page and the hour (valid for up to two hours), so showing a page with `<lock>` creates no session. The answer is `303` back to the page (`GET`), so a reload does not resend it. A session is created only for a matching code. A POST from another site (`Sec-Fetch-Site: cross-site`, or without that header an `Origin` naming another host) is refused (`403`), because the token itself is not secret. Wrong codes are limited per address and page (four times `login_attempts`) and per address (twenty times); a right code does not count, so a classroom behind one address is not blocked by a few typos |
-| any other parameter | no | values for `<url value="...">` tags (HTML-escaped; a value with a URL scheme other than `http(s):`, such as `javascript:`, is ignored; remembered only in a session that already exists, so a link can not create or replace one) |
+| any other query parameter | no | values for `<url value="...">` tags: names of letters, digits, `_` and `-` (at most 64; not `file`, `full`, `lock` or `csrf`), values cut to 200 characters (HTML-escaped; a value with a URL scheme other than `http(s):`, such as `javascript:`, is ignored; remembered only in a session that already exists, so a link can not create or replace one) |
 
-**Output:** `text/html; charset=utf-8`, by default an HTML **fragment** (the page's body). The
+`GET`, `HEAD` and `POST` (only for `lock`); anything else is `405`. A wrong or expired lock-form
+token: `403`; too many wrong codes: `429` with `Retry-After` (`503` when the limiter can not keep
+count).
+
+**Output:** `text/html; charset=utf-8` with `Cache-Control: private, no-store`, by default an
+HTML **fragment** (the page's body). The
 same key lookup and access check as `get.php`; unknown or not allowed: `404`. Then the page is
 processed:
 
