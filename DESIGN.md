@@ -464,18 +464,19 @@ created) and clears all of it, unlocked `<lock>` codes and `<url>` values too.
 
 Methods other than `GET` and `POST`: `405`.
 
-**Output:**
+**Output:** every answer carries every field (Decided): `user`, `instructor`, `valid_until`,
+`csrf` and `error`, with `null` (or `false` for `instructor`) when a field does not apply.
 
 ```json
-{"user": "jdoe", "instructor": false, "valid_until": "2026-12-18T17:00:00-05:00", "csrf": "q9Xb..."}
+{"user": "jdoe", "instructor": false, "valid_until": "2026-12-18T17:00:00-05:00", "csrf": "q9Xb...", "error": null}
 ```
 
 ```json
-{"user": null, "instructor": false, "csrf": "Lm2c..."}
+{"user": null, "instructor": false, "valid_until": null, "csrf": "Lm2c...", "error": null}
 ```
 
 ```json
-{"error": "Wrong username or password."}
+{"user": null, "instructor": false, "valid_until": null, "csrf": null, "error": "Wrong username or password."}
 ```
 
 - Logged in: `200`, the first form. `valid_until` is when this login ends by itself: the end of

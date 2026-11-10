@@ -81,11 +81,26 @@ final class AuthEndpoint
         return $best;
     }
 
+    /**
+     * Every answer carries every field (Decided): user, instructor, valid_until, csrf and error,
+     * null or false when they do not apply.
+     *
+     * @param array{user?: ?string, instructor?: bool, valid_until?: ?string, csrf?: ?string, error?: ?string} $fields
+     * @param list<string> $headers
+     */
+    private static function answer(array $fields, int $status = 200, array $headers = []): void
+    {
+        foreach ($headers as $header) {
+            header($header);
+        }
+        Response::json(array_replace(['user' => null, 'instructor' => false, 'valid_until' => null, 'csrf' => null, 'error' => null], $fields), $status);
+    }
+
     public static function handle(Context $c): void
     {
         $method = $c->method();
         if ($method !== 'GET' && $method !== 'POST') {
-            Response::error(405, 'GET (log out) or POST (log in or out) only', ['Allow: GET, POST']);
+            self::answer(['error' => 'GET (log out) or POST (log in or out) only'], 405, ['Allow: GET, POST']);
             return;
         }
         $username = $method === 'POST' ? trim((string) $c->post('username')) : '';
@@ -102,7 +117,7 @@ final class AuthEndpoint
                 $csrf = Session::csrf();
             }
             Session::close();
-            Response::json(['user' => null, 'instructor' => false, 'csrf' => $csrf]);
+            self::answer(['csrf' => $csrf]);
             return;
         }
 
@@ -111,7 +126,7 @@ final class AuthEndpoint
         Session::start($c, false);
         if (!Session::isOpen() || !Session::checkCsrf($c->post('csrf'))) {
             Session::close();
-            Response::error(403, 'the form has expired: reload the page');
+            self::answer(['error' => 'the form has expired: reload the page'], 403);
             return;
         }
 
@@ -127,7 +142,7 @@ final class AuthEndpoint
         if (!$limiter->available()) {
             error_log('calendar6: logins are refused: the private temporary directory can not be used (' . sys_get_temp_dir() . ')');
             Session::close();
-            Response::error(503, 'Logging in is not possible right now: the server can not keep track of failed attempts.');
+            self::answer(['error' => 'Logging in is not possible right now: the server can not keep track of failed attempts.'], 503);
             return;
         }
         $user = strtolower($username);
@@ -142,7 +157,7 @@ final class AuthEndpoint
                     $limiter->forgive($done);
                 }
                 Session::close();
-                Response::error(429, 'too many failed logins: try again later', ['Retry-After: ' . $wait]);
+                self::answer(['error' => 'too many failed logins: try again later'], 429, ['Retry-After: ' . $wait]);
                 return;
             }
             $recorded[] = $key;
@@ -158,7 +173,7 @@ final class AuthEndpoint
                     $limiter->forgive($done);
                 }
                 Session::close();
-                Response::error(429, 'too many failed logins for this user: try again in a moment', ['Retry-After: ' . $wait]);
+                self::answer(['error' => 'too many failed logins for this user: try again in a moment'], 429, ['Retry-After: ' . $wait]);
                 return;
             }
         }
@@ -177,7 +192,7 @@ final class AuthEndpoint
         }
         if (!$ok) {
             Session::close();
-            Response::error(401, 'Wrong username or password.');
+            self::answer(['error' => 'Wrong username or password.'], 401);
             return;
         }
         foreach ($recorded as $done) {
@@ -193,7 +208,7 @@ final class AuthEndpoint
         Session::close();
         $until = $account->validUntil($c->now, $c->config->zone);
         $sessionEnd = $c->now + $c->config->sessionSeconds;
-        Response::json([
+        self::answer([
             'user' => $account->user,
             'instructor' => $account->instructor,
             'valid_until' => $c->iso($until === null ? $sessionEnd : min($until, $sessionEnd)),
