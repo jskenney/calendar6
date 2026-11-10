@@ -447,6 +447,48 @@ final class RendererTest extends TestCase
         $this->assertSame(0, preg_match('/ALT-SECRET|TITLE-SECRET/', $page), 'hidden blocks in Markdown alt text and titles are removed (L-56): ' . $page);
     }
 
+    public function testUrlValuesCanNotAddAttributes(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<a title="<url value=t>" href="index.html">a</a><img alt="<url value=t>" class="<url value=t>" src="pic.png">'
+                . '<a href="<url value=a><url value=b>">b</a><p title="<url value=z>">z</p><calphp src="../../shared/x.php">',
+            'class/01.Introduction/pic.png' => 'P',
+            'shared/x.php' => '<?php echo "CALPHP";',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], [
+            't' => ' src=nope.png data-injected=1 x', 'a' => 'javascript', 'b' => ':void(0)', 'z' => "\x00cal6-calphp-0\x00",
+        ]))->render($course->places[$course->keysByEvent['class_1']['index.html']]);
+        $this->assertSame(0, preg_match('/<[^>]*\sdata-injected=/', preg_replace('/"[^"]*"/', '""', $page) ?? ''), 'a value stays inside its attribute (H-6): ' . $page);
+        $this->assertContains('title=" src=nope.png data-injected=1 x"', $page);
+        $this->assertNotContains('javascript:', $page, 'two values side by side can not make a javascript: link (M-34)');
+        $this->assertSame(1, substr_count($page, 'CALPHP'), 'a value can not pull in <calphp> output (L-60)');
+    }
+
+    public function testTheLexerEndsTagsAndScriptsAsTheBrowserDoes(): void
+    {
+        $cases = [
+            'abrupt-in-script' => '<script><!--> x="<script>";</script><inst>S1</inst></script>',
+            'quote-in-name' => '<p"x="y> <inst>S2</inst> ">',
+            'odd-name' => "<scriptx\u{e9}><inst>S4</inst></scriptx\u{e9}>",
+        ];
+        $files = ['config/default.ini' => "class_1 = always\n", 'class/01.Introduction/h.md' => "## Quiz 3 <inst>answer is 42</inst>\n"];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html;
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $page = $this->render($course, "class_1/$name.html");
+            $this->assertSame(0, preg_match('/S[1-4]\b/', $page), "hidden as a browser parses it (L-59): $name: $page");
+        }
+        $this->assertNotContains('42', $this->render($course, 'class_1/h.md'), 'a heading id keeps no hidden text (L-58)');
+        $this->dir !== '' && file_put_contents("$this->dir/class/01.Introduction/vt.html", "<script>var a = 1;</script\x0B>\n// <url value=n>\n</script>");
+        $course = Course::load($this->dir);
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['n' => 'EVIL']))
+            ->render($course->places[$course->keysByEvent['class_1']['vt.html']]);
+        $this->assertNotContains('EVIL', $page, '</script> followed by a vertical tab does not end the script (L-59)');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

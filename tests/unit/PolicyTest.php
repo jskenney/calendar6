@@ -195,6 +195,16 @@ INI;
         $this->assertTrue($late !== null && $late->instructor && $late->grants->get('valid') === null, 'not a grant');
     }
 
+    public function testLeadingZerosAndRulesForMissingEvents(): void
+    {
+        $course = $this->load([
+            'config/default.ini' => "class_1 = always\nclass_01/secret.pdf = never\nclass_99 = never\n",
+            'class/01.Introduction/secret.pdf' => 'S',
+        ]);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/secret.pdf', self::now($course)), 'class_01 is class_1 (M-35)');
+        $this->assertSame(1, count(array_filter($course->problems, static fn ($p): bool => str_contains($p->message, 'class_99'))), 'a rule for an event that does not exist is a problem');
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);

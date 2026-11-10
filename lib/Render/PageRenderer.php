@@ -28,6 +28,7 @@ final class PageRenderer
     public array $usedUrlValues = [];
     /** @var array<string, string> placeholder => <calphp> output */
     private array $outputs = [];
+    private ?string $outputKey = null;
 
     /**
      * @param list<string> $unlocked lock codes this viewer has entered
@@ -263,18 +264,15 @@ final class PageRenderer
             return self::relativePath($toDir, $fromDir . '/' . $url) . $suffix;
         };
         $html = self::replaceTags($html, self::LINK_ELEMENTS, static function (string $element, string $tag) use ($fix): string {
-            return preg_replace_callback(self::LINK_ATTRIBUTES, static function (array $m) use ($fix): string {
-                $value = self::attributeValue($m);
-                if (strtolower($m[2]) === 'srcset') {
-                    $value = implode(', ', array_map(static function (string $candidate) use ($fix): string {
+            return self::editLinks($tag, static function (string $attribute, string $value) use ($fix): string {
+                if ($attribute === 'srcset') {
+                    return implode(', ', array_map(static function (string $candidate) use ($fix): string {
                         $parts = preg_split('/\s+/', trim($candidate), 2) ?: [''];
                         return trim($fix($parts[0]) . ' ' . ($parts[1] ?? ''));
                     }, explode(',', $value)));
-                } else {
-                    $value = $fix($value);
                 }
-                return $m[1] . $m[2] . '="' . htmlspecialchars($value) . '"';
-            }, $tag) ?? self::failed();
+                return $fix($value);
+            });
         });
         return self::replaceTags($html, ['calphp', 'showlink'], static function (string $name, string $tag) use ($fix): string {
             $src = self::attribute($tag, 'src');
@@ -340,7 +338,9 @@ final class PageRenderer
             } finally {
                 chdir($cwd);
             }
-            $placeholder = "\x00cal6-calphp-" . count($this->outputs) . "\x00";
+            // a placeholder no page text or <url> value can contain: random for each render (L-60)
+            $this->outputKey ??= bin2hex(random_bytes(12));
+            $placeholder = "\x00cal6-calphp-" . $this->outputKey . '-' . count($this->outputs) . "\x00";
             $this->outputs[$placeholder] = $output;
             return $placeholder;
         });
@@ -448,7 +448,7 @@ final class PageRenderer
             } else {
                 $value = (string) self::attribute($tag, 'default');
             }
-            return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            return htmlspecialchars(str_replace("\0", '', $value), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         });
     }
 
@@ -506,14 +506,18 @@ final class PageRenderer
                             continue;
                         }
                         $value = substr($tag, $start, $end - $start);
-                        if (preg_match_all('/' . $marker . '(\d+)x/', $value, $found, PREG_OFFSET_CAPTURE) === false) {
+                        if (preg_match_all('/' . $marker . '(\d+)x/', $value, $found) === false) {
                             self::failed();
                         }
-                        foreach ($found[1] as $k => [$number, $offset]) {
-                            $before = substr($value, 0, $found[0][$k][1]);
-                            if (in_array($attribute, ['href', 'src'], true) && self::hasUnsafeScheme(preg_replace('/' . $marker . '\d+x/', '', $before) . 'x')) {
+                        if (in_array($attribute, ['href', 'src'], true)) {
+                            // the whole value as it will be sent decides the scheme, so two
+                            // values side by side can not spell javascript: (M-34)
+                            $final = preg_replace_callback('/' . $marker . '(\d+)x/', static fn (array $m): string => $fn($tags[(int) $m[1]]), $value) ?? self::failed();
+                            if (self::hasUnsafeScheme($final)) {
                                 continue;
                             }
+                        }
+                        foreach ($found[1] as $number) {
                             $allowed[(int) $number] = true;
                         }
                     }
@@ -577,7 +581,53 @@ final class PageRenderer
     }
 
     private const LINK_ELEMENTS = ['a', 'img', 'source', 'video', 'audio', 'track', 'iframe', 'embed', 'object', 'script', 'link'];
-    private const LINK_ATTRIBUTES = '/(\s)(href|src|poster|data|srcset)\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i';
+    private const LINK_ATTRIBUTES = ['href', 'src', 'poster', 'data', 'srcset'];
+
+    /**
+     * The link attributes of a tag, read by HtmlLexer::attributes() as the browser reads them
+     * (H-6: never a pattern over the tag text, which would find " src=" inside a title).
+     * $fn gets the lower-case name and the decoded value and returns the new value, or null to
+     * remove the attribute (data-cal6-hidden="1" is added once in its place).
+     *
+     * @param callable(string, string): ?string $fn
+     */
+    private static function editLinks(string $tag, callable $fn): string
+    {
+        $out = '';
+        $pos = 0;
+        $hidden = false;
+        foreach (HtmlLexer::attributes($tag) as [$name, $start, $end, , $nameStart, $attributeEnd]) {
+            if ($start < 0 || !in_array($name, self::LINK_ATTRIBUTES, true)) {
+                continue;
+            }
+            $value = html_entity_decode(substr($tag, $start, $end - $start), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $new = $fn($name, $value);
+            if ($new === $value) {
+                continue;
+            }
+            $out .= substr($tag, $pos, $nameStart - $pos);
+            if ($new === null) {
+                $out .= $hidden ? '' : 'data-cal6-hidden="1"';
+                $hidden = true;
+            } else {
+                $out .= $name . '="' . htmlspecialchars($new, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"';
+            }
+            $pos = $attributeEnd;
+        }
+        return $out . substr($tag, $pos);
+    }
+
+    /** The link attributes of a tag, decoded. @return list<array{0: string, 1: string}> */
+    private static function linkValues(string $tag): array
+    {
+        $values = [];
+        foreach (HtmlLexer::attributes($tag) as [$name, $start, $end]) {
+            if ($start >= 0 && in_array($name, self::LINK_ATTRIBUTES, true)) {
+                $values[] = [$name, html_entity_decode(substr($tag, $start, $end - $start), ENT_QUOTES | ENT_HTML5, 'UTF-8')];
+            }
+        }
+        return $values;
+    }
 
     /** The relative URLs a page links to (without #fragment or ?query). @return list<string> */
     public static function linkTargets(string $html): array
@@ -588,10 +638,8 @@ final class PageRenderer
             array_push($tags, ...self::tagsNamed($html, $element));
         }
         foreach ($tags as $tag) {
-            preg_match_all(self::LINK_ATTRIBUTES, $tag, $attributes, PREG_SET_ORDER);
-            foreach ($attributes as $m) {
-                $value = self::attributeValue($m);
-                $values = strtolower($m[2]) === 'srcset' ? array_map(static fn (string $c): string => preg_split('/\s+/', trim($c))[0] ?? '', explode(',', $value)) : [$value];
+            foreach (self::linkValues($tag) as [$attribute, $value]) {
+                $values = $attribute === 'srcset' ? array_map(static fn (string $c): string => preg_split('/\s+/', trim($c))[0] ?? '', explode(',', $value)) : [$value];
                 foreach ($values as $url) {
                     if ($url !== '' && !self::isAbsolute($url)) {
                         $links[] = explode('?', explode('#', $url, 2)[0], 2)[0];
@@ -610,9 +658,8 @@ final class PageRenderer
     private function links(string $html, string $dir, Place $place): string
     {
         return self::replaceTags($html, self::LINK_ELEMENTS, function (string $element, string $tag) use ($dir, $place): string {
-            return preg_replace_callback(self::LINK_ATTRIBUTES, function (array $m) use ($dir, $place, $element): string {
-                $value = self::attributeValue($m);
-                if (strtolower($m[2]) === 'srcset') {
+            return self::editLinks($tag, function (string $attribute, string $value) use ($dir, $place, $element): ?string {
+                if ($attribute === 'srcset') {
                     $kept = [];
                     foreach (explode(',', $value) as $candidate) {
                         $parts = preg_split('/\s+/', trim($candidate), 2) ?: [''];
@@ -621,11 +668,10 @@ final class PageRenderer
                             $kept[] = trim($url . ' ' . ($parts[1] ?? ''));
                         }
                     }
-                    return $m[1] . 'srcset="' . htmlspecialchars(implode(', ', $kept)) . '"';
+                    return implode(', ', $kept);
                 }
-                $url = $this->rewrite($value, $dir, $place, $element);
-                return $url === null ? $m[1] . 'data-cal6-hidden="1"' : ($url === $value ? $m[0] : $m[1] . $m[2] . '="' . htmlspecialchars($url) . '"');
-            }, $tag) ?? self::failed();
+                return $this->rewrite($value, $dir, $place, $element);
+            });
         });
     }
 
@@ -656,12 +702,6 @@ final class PageRenderer
     private static function isAbsolute(string $url): bool
     {
         return (bool) preg_match('#^([a-z][a-z0-9+.-]*:|/|\#|\?)#i', $url);
-    }
-
-    /** @param array<int, string> $m a LINK_ATTRIBUTES match */
-    private static function attributeValue(array $m): string
-    {
-        return html_entity_decode($m[4] !== '' ? $m[4] : (($m[5] ?? '') !== '' ? $m[5] : ($m[6] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     private function visiblePlace(Place $from, string $dir, string $link): ?Place
@@ -758,8 +798,12 @@ final class PageRenderer
 
     public static function attribute(string $tag, string $name): ?string
     {
-        if (preg_match('/\s' . preg_quote($name, '/') . '\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', $tag, $m)) {
-            return html_entity_decode($m[2] !== '' ? $m[2] : (($m[3] ?? '') !== '' ? $m[3] : ($m[4] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // read as a browser reads the tag: " src=" inside another attribute's value is not src (H-6)
+        $name = strtolower($name);
+        foreach (HtmlLexer::attributes($tag) as [$attribute, $start, $end]) {
+            if ($attribute === $name) {
+                return $start < 0 ? '' : html_entity_decode(substr($tag, $start, $end - $start), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
         }
         return null;
     }

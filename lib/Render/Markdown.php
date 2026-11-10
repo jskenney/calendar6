@@ -194,7 +194,8 @@ final class Markdown
     }
 
     private function slug($text, $level) {
-        $plain = html_entity_decode(strip_tags($this->restore($text)), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        # hidden blocks leave no trace in the id (L-58)
+        $plain = html_entity_decode(strip_tags($this->withoutHiddenBlocks($this->restore($text))), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9]+/', '-', $plain), '-'));
         if ($slug === '') {
             $slug = 'section';
@@ -615,12 +616,18 @@ final class Markdown
     # Alt text and titles are plain text: hidden blocks (<inst>, <lock>, ...) are removed with
     # their content for everyone (an attribute can not be hidden later, L-56), other tags dropped.
     private function plainAttribute($text) {
-        $text = $this->restore($text);
+        $text = $this->withoutHiddenBlocks($this->restore($text));
+        return $this->esc(html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    # Hidden blocks (<inst>, <lock>, ...) removed with their content, for text that ends up in an
+    # attribute (alt, title, a heading's id), where they could not be hidden later.
+    private function withoutHiddenBlocks($text) {
         $text = preg_replace('/<(inst|lock|postmeeting|host|student)\b[^>]*>.*?(?:<\/\1\s*>|$)/is', '', $text);
         if ($text === null) {
             throw new \RuntimeException('markdown: an attribute could not be processed');
         }
-        return $this->esc(html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        return $text;
     }
 
     private function links($text) {

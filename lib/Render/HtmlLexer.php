@@ -65,7 +65,8 @@ final class HtmlLexer
      */
     private static function rawEnd(string $html, int $start, string $name): int|false
     {
-        $pattern = $name === 'script' ? '/<\/script(?=[\s\/>]|$)|<!--|<script(?=[\s\/>])|-->/i' : '/<\/style(?=[\s\/>]|$)/i';
+        // HTML whitespace only (not a vertical tab), L-59
+        $pattern = $name === 'script' ? '/<\/script(?=[\t\n\f\r \/>]|$)|<!--|<script(?=[\t\n\f\r \/>])|-->/i' : '/<\/style(?=[\t\n\f\r \/>]|$)/i';
         $state = 'data';
         $pos = $start;
         while (preg_match($pattern, $html, $m, PREG_OFFSET_CAPTURE, $pos) === 1) {
@@ -78,7 +79,13 @@ final class HtmlLexer
                 }
                 $state = 'escaped';
             } elseif ($token === '<!--') {
-                if ($state === 'data') {
+                // "<!-->" and "<!--->" end in "-->": back to plain script data, as in a
+                // browser (L-59); otherwise "<!--" starts the escaped state
+                $abrupt = ($html[$pos] ?? '') === '>' || substr($html, $pos, 2) === '->';
+                if ($abrupt) {
+                    $state = 'data';
+                    $pos += ($html[$pos] === '>') ? 1 : 2;
+                } elseif ($state === 'data') {
                     $state = 'escaped';
                 }
             } elseif ($token === '-->') {
@@ -92,27 +99,29 @@ final class HtmlLexer
 
     /**
      * The attributes of an opening tag's text, read as openingTagEnd() reads them:
-     * list of [lower-case name, value start, value end, quoted], positions in $tag (a value
-     * start of -1: no value).
+     * list of [lower-case name, value start, value end, quoted, name start, end], positions in
+     * $tag (a value start of -1: no value; end is after the closing quote).
      *
-     * @return list<array{0: string, 1: int, 2: int, 3: bool}>
+     * @return list<array{0: string, 1: int, 2: int, 3: bool, 4: int, 5: int}>
      */
     public static function attributes(string $tag): array
     {
         $length = strlen($tag);
-        $i = 1 + strspn($tag, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:.', 1);
+        $i = 1 + strcspn($tag, " \t\n\r\f/>", 1);
         $attributes = [];
         while ($i < $length) {
             $i += strspn($tag, " \t\n\r\f/", $i);
             if ($i >= $length || $tag[$i] === '>') {
                 break;
             }
+            $nameStart = $i;
             $nameLength = max(1, strcspn($tag, " \t\n\r\f/>=", $i));
             $name = strtolower(substr($tag, $i, $nameLength));
             $i += $nameLength;
+            $afterName = $i;
             $i += strspn($tag, " \t\n\r\f", $i);
             if (($tag[$i] ?? '') !== '=') {
-                $attributes[] = [$name, -1, -1, false];
+                $attributes[] = [$name, -1, -1, false, $nameStart, $afterName];
                 continue;
             }
             $i++;
@@ -121,11 +130,11 @@ final class HtmlLexer
             if ($quote === '"' || $quote === "'") {
                 $close = strpos($tag, $quote, $i + 1);
                 $end = $close === false ? $length : $close;
-                $attributes[] = [$name, $i + 1, $end, true];
+                $attributes[] = [$name, $i + 1, $end, true, $nameStart, min($length, $end + 1)];
                 $i = $end + 1;
             } else {
                 $end = $i + strcspn($tag, " \t\n\r\f>", $i);
-                $attributes[] = [$name, $i, $end, false];
+                $attributes[] = [$name, $i, $end, false, $nameStart, $end];
                 $i = $end;
             }
         }
@@ -176,7 +185,8 @@ final class HtmlLexer
                 $pos = $lt + 1;                          // text
                 continue;
             }
-            $nameEnd = $nameStart + strspn($html, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:.', $nameStart);
+            // a tag name runs to whitespace, "/" or ">", as in a browser (L-59)
+            $nameEnd = $nameStart + strcspn($html, " \t\n\r\f/>", $nameStart);
             $name = strtolower(substr($html, $nameStart, $nameEnd - $nameStart));
             $end = $closing ? self::closingTagEnd($html, $nameEnd) : self::openingTagEnd($html, $nameEnd);
             $tokens[] = ['tag', $lt, $end, $name, $closing];

@@ -22,10 +22,10 @@ final class Target
         if ($target === '') {
             throw new InvalidArgumentException('empty target');
         }
-        if (!preg_match('/^([A-Za-z][A-Za-z0-9-]*)_([0-9][0-9.,]*)(\/.*)?$/', $target, $m)
-            || !preg_match('/[.,]/', $m[2])) {
+        if (!preg_match('/^([A-Za-z][A-Za-z0-9-]*)_([0-9][0-9.,]*)(\/.*)?$/', $target, $m)) {
             return [$target];
         }
+        // one number is read as a number too, so class_01 is class_1 (M-35)
         $numbers = self::numbers($m[2]);
         return array_map(static fn (int $n): string => $m[1] . '_' . $n . ($m[3] ?? ''), $numbers);
     }

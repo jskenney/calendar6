@@ -73,6 +73,14 @@ final class Course
             }
         }
         array_push($course->problems, ...$course->rules->problems);
+        // a rule for an event that does not exist (class_40 in a course of 30) does nothing:
+        // say so, as it is most likely a typo (M-35)
+        foreach ($course->rules->byTarget as $rule) {
+            if (preg_match('/^([a-z][a-z0-9-]*)_(\d+)(?:\/|$)/i', $rule->target, $m) && $course->config->typeName($m[1]) !== null
+                && !isset($course->events[$course->config->typeName($m[1]) . '_' . (int) $m[2]])) {
+                $course->problems[] = new Problem("$rule->target: there is no {$m[1]} {$m[2]}, so this rule does nothing", 'default.ini', $rule->line);
+            }
+        }
         foreach ($course->rules->overridden as $note) {
             $course->problems[] = new Problem($note, 'default.ini');
         }

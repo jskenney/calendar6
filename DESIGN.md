@@ -668,8 +668,10 @@ inside a quoted attribute value or a script or style body they are text. The val
 and `<url>` are also found inside other tags' attribute values, as in v4 (`<a href="<url
 value=next>">`); `<replace>` works anywhere (its values are the course's own), but **`<url>` is
 replaced only in text and in quoted values of `href`, `src`, `title`, `alt`, `value`, `class`,
-`id`, `name`, `placeholder`, `label` and `data-*`** (in `href` and `src` only when the URL before
-it has no scheme or `http(s):`). Anywhere else (a script or style body, also one never closed or
+`id`, `name`, `placeholder`, `label` and `data-*`** (in `href` and `src` only when the whole
+value, once filled in, has no scheme or `http(s):`). Links are rewritten from the attributes as
+the browser reads them, so text inside a `title` (also one filled in by `<url>`) is never taken
+for a `src` or `href`. Anywhere else (a script or style body, also one never closed or
 an old-style `<script><!-- ... <script>...</script> ... --></script>`, an event handler, `style`,
 `srcdoc`, an unquoted value, a `javascript:` link) it is left as written, because HTML escaping
 does not make a value from a link safe in JavaScript or CSS. **Block tags inside a `<script>` or `<style>` body are sent as written too**: an `<inst>`
@@ -767,6 +769,9 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | R14 | **Events that are on no calendar day** are never shown to anonymous viewers | a third exam folder with two exam days |
 | R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable or missing file** hides everything from anonymous viewers (fail closed, Calendar 6 also for a missing one). `default.ini` has no sections: a line under a header such as `[rules]` is still a rule, and the header is listed (M-33) | |
 | R16 | **Paths with spaces** | tab-separated lines |
+
+Event numbers are numbers: `class_01` is `class_1` (M-35). A rule for an event that does not
+exist (`class_40` in a course of 30 classes) does nothing and is listed as a problem.
 
 Targets are **not** case-sensitive (Decided, M-14): `Class_1/Notes.html`, `class_1/notes.html` and
 `page/Solutions` / `page/solutions` mean the same thing, in `default.ini`, grants, `virtual.ini`,
