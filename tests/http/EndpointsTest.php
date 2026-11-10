@@ -395,6 +395,20 @@ HTML;
         $this->assertSame(null, $client->get('calendar/php/calendar.php')->json()['viewer']['user'] ?? null, 'a new password ends the session (L-100)');
     }
 
+    public function testNestedLocksOpenInTurn(): void
+    {
+        $client = $this->start(['class/01.Introduction/index.html' => '<lock code="outer">OUTER-OPEN <lock code="inner">INNER-OPEN</lock></lock>']);
+        $key = $client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['files'][0]['key'] ?? '';
+        $token = static fn (string $body): string => preg_match('/name="csrf" value="([^"]+)"/', $body, $m) ? $m[1] : '';
+        $t = $token($client->get("calendar/php/html.php?file=$key")->body);
+        $client->post("calendar/php/html.php?file=$key", ['lock' => 'outer', 'csrf' => $t]);
+        $page = $client->get("calendar/php/html.php?file=$key")->body;
+        $this->assertContains('OUTER-OPEN', $page);
+        $this->assertNotContains('INNER-OPEN', $page);
+        $client->post("calendar/php/html.php?file=$key", ['lock' => 'inner', 'csrf' => $token($page)]);
+        $this->assertContains('INNER-OPEN', $client->get("calendar/php/html.php?file=$key")->body, 'the inner lock opens once the outer one has (M-49)');
+    }
+
     public function testRateLimitsAndProxies(): void
     {
         $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');

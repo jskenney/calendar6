@@ -205,7 +205,8 @@ office    = Michelson 342
 ```
 
 A `session` or `login_attempts` value that can not be read (or `login_attempts` with fewer than
-one attempt or a window under one minute) keeps the default and is listed as a problem.
+one or more than 1000 attempts, or a window under one minute) keeps the default and is listed as
+a problem; the limiter keeps as many attempts as a limit needs, so every limit triggers (L-125).
 
 ### `dates.ini` (Decided: days that differ from the weekly schedule; proposed syntax)
 
@@ -477,7 +478,8 @@ No `username`/`password`: log out. Any method other than POST: `405`.
   /64 network. Once a username has ten times that many failures from anywhere, its attempts pass
   **one per second** (others get `429` with `Retry-After` at once; nobody waits on the server),
   except from a browser that has logged in as that user before: a successful login sets a
-  signed device cookie (`cal6_device_<hash>`, 180 days, `HttpOnly`, `SameSite=Strict`) that skips
+  signed device cookie (`cal6_device_<hash>`, 180 days, `HttpOnly`, `SameSite=Strict`; bound to
+  the account's password, so a password change ends it, L-126) that skips
   this gate and the per-address limit (only its own address-and-username limit stays). So
   guesses from many addresses, or from an address the instructor shares (campus NAT), neither
   get far nor lock the instructor out. A POST without an existing session is refused (`403`)
@@ -666,7 +668,10 @@ processed:
   | filled in by `<url>` (the visitor chose it) | rewritten only to a visible file with a rule of its own (an event's own file or a `paths.ini` page, as `calendar.php` lists them); anything else (a missing file, a path outside the course, a file in a subfolder or one that borrows a page's rule) loses its target, all alike |
 
 - files that a `paths.ini` page links to (its images, style sheets, the pages next to it) get
-  keys of their own, decided by that page's rule;
+  keys of their own, decided by that page's rule; an event page's link to a file outside its event
+  (`../../shared/style.css`) gets no key and loses its target, so give such a course-wide file a
+  place with a `virtual.ini` line (`class_1/style.css = shared/style.css`, or a range for every
+  event) and link it by that name (DOC-21);
 - every Calendar 4 tag except `<ace>` is processed on the server (see "Tags");
 - `<a name>` anchors (and `##` headings in Markdown) get ids; the front end builds the page's menu
   from them, as v4 did on the server;

@@ -38,7 +38,7 @@ final class RateLimiter
         if (random_int(1, 100) === 1) {
             $this->sweep($now);
         }
-        return $this->locked($key, function (array $times) use ($now, $limit): array {
+        return $this->locked($key, max(200, $limit), function (array $times) use ($now, $limit): array {
             $times = array_values(array_filter($times, fn (int $t): bool => $t > $now - $this->seconds));
             if (count($times) >= $limit) {
                 return [$times, max(1, $times[count($times) - $limit] + $this->seconds - $now)];
@@ -86,7 +86,7 @@ final class RateLimiter
         if ($this->dir === null) {
             return $this->seconds;
         }
-        return $this->locked('gate:' . $key, static function (array $times) use ($now, $interval): array {
+        return $this->locked('gate:' . $key, 200, static function (array $times) use ($now, $interval): array {
             $next = $times === [] ? 0 : max($times);
             if ($now < $next) {
                 return [$times, $next - $now];
@@ -117,7 +117,7 @@ final class RateLimiter
     public function forgive(string $key): void
     {
         if ($this->dir !== null) {
-            $this->locked($key, static function (array $times): array {
+            $this->locked($key, PHP_INT_MAX, static function (array $times): array {
                 array_pop($times);
                 return [$times, 0];
             });
@@ -125,7 +125,8 @@ final class RateLimiter
     }
 
     /** @param callable(list<int>): array{0: list<int>, 1: int} $change */
-    private function locked(string $key, callable $change): int
+    /** $keep: how many attempts to keep, at least the limit, so any limit can trigger (L-125). */
+    private function locked(string $key, int $keep, callable $change): int
     {
         $handle = @fopen($this->dir . '/' . sha1($key) . '.json', 'c+');
         if ($handle === false) {
@@ -142,7 +143,7 @@ final class RateLimiter
             [$times, $result] = $change($times);
             ftruncate($handle, 0);
             rewind($handle);
-            fwrite($handle, (string) json_encode(array_slice($times, -200)));
+            fwrite($handle, (string) json_encode($keep >= count($times) ? $times : array_slice($times, -$keep)));
             fflush($handle);
             flock($handle, LOCK_UN);
             return $result;

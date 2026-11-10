@@ -74,7 +74,9 @@ final class HtmlEndpoint
         }
         // lock codes are looked for after <inject>, so a <lock> in an injected file works (L-4)
         // lock codes come only from <lock>s this viewer can reach (L-91)
-        $source = (new PageRenderer($course, $policy, $viewer, $c->now, '', hostNames: PageRenderer::serverNames($c->server)))->visibleSource($place);
+        // (with the codes this session has entered, so an inner lock opens once the outer one has, M-49)
+        $source = (new PageRenderer($course, $policy, $viewer, $c->now, '', unlocked: array_map('strval', (array) Session::get('unlocked', [])),
+            hostNames: PageRenderer::serverNames($c->server)))->visibleSource($place);
         $full = $c->query('full') === '1';
 
         if ($method === 'POST') {

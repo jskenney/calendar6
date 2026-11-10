@@ -32,6 +32,7 @@ final class Markdown
 
     private $refs = array();
     private $slugs = array();
+    private $slugNext = array();
     private $holds = array();
     private $quoteDepth = 0;
     private $listDepth = 0;
@@ -44,6 +45,7 @@ final class Markdown
     public function text($text) {
         $this->refs = array();
         $this->slugs = array();
+        $this->slugNext = array();
         $this->holds = array();
         $text = str_replace(array("\r\n", "\r"), "\n", (string)$text);
         $text = str_replace("\t", '    ', $text);
@@ -259,11 +261,13 @@ final class Markdown
             $slug = 'section';
         }
         $base = $slug;
-        $n = 1;
+        # the next number is remembered per base, so many equal headings stay linear (L-127)
+        $n = isset($this->slugNext[$base]) ? $this->slugNext[$base] : 1;
         while (isset($this->slugs[$slug])) {
             $n++;
             $slug = "$base-$n";
         }
+        $this->slugNext[$base] = $n;
         $this->slugs[$slug] = True;
         return $slug;
     }

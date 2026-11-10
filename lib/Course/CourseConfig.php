@@ -164,10 +164,10 @@ final class CourseConfig
         // "5 per 0m" would count nothing (L-46); otherwise the default stays and it is a problem
         $attempts = $ini->get('users', 'login_attempts');
         if ($attempts !== null) {
-            if (preg_match('/^(\d+)\s+per\s+(\d+)\s*([mh])$/i', $attempts, $m) && (int) $m[1] >= 1 && (int) $m[2] >= 1) {
+            if (preg_match('/^(\d+)\s+per\s+(\d+)\s*([mh])$/i', $attempts, $m) && (int) $m[1] >= 1 && (int) $m[1] <= 1000 && (int) $m[2] >= 1) {
                 $config->loginAttempts = [(int) $m[1], (int) $m[2] * (strtolower($m[3]) === 'h' ? 3600 : 60)];
             } else {
-                $config->problems[] = new Problem("[users] login_attempts: \"$attempts\" is not like \"5 per 15m\" with at least 1 attempt and 1 minute (the default is kept)", 'config.ini');
+                $config->problems[] = new Problem("[users] login_attempts: \"$attempts\" is not like \"5 per 15m\" with 1 to 1000 attempts and at least 1 minute (the default is kept)", 'config.ini');
             }
         }
         // addresses or CIDR ranges; anything else never matches, so it is a problem (L-76)

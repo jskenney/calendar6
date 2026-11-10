@@ -843,6 +843,21 @@ final class RendererTest extends TestCase
         $this->assertSame(['outer'], $codes, 'a code inside a lock not opened is not accepted (L-120)');
     }
 
+    public function testReview20Leftovers(): void
+    {
+        $course = $this->course([
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/pad.html' => '<iframe srcdoc="&#00000060;inst>Q1&#00000060;/inst> &#x000000003c;inst>Q2&#x000000003c;/inst>"></iframe>',
+            'class/01.Introduction/sur.html' => '<iframe srcdoc="x&#xD800;y&#55296;z"></iframe>END',
+            'class/01.Introduction/heads.md' => str_repeat("## h\n\n", 20000),
+        ]);
+        $this->assertSame(0, preg_match('/Q[12]\b/', $this->render($course, 'class_1/pad.html')), 'zero-padded references are decoded (L-123)');
+        $this->assertContains('END', $this->render($course, 'class_1/sur.html'), 'a surrogate reference does not fail the page (L-124)');
+        $start = microtime(true);
+        $this->assertContains('id="h-20000"', $this->render($course, 'class_1/heads.md'));
+        $this->assertTrue(microtime(true) - $start < 3.0, 'many equal headings stay fast (L-127)');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

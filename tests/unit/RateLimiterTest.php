@@ -36,6 +36,15 @@ final class RateLimiterTest extends TestCase
         $this->assertSame(0, $limiter->hit('other', 1004, 3), 'keys are separate');
     }
 
+    public function testLimitsAbove200Trigger(): void
+    {
+        $limiter = new RateLimiter($this->dir, 900);
+        for ($i = 0; $i < 220; $i++) {
+            $this->assertSame(0, $limiter->hit('big', 1000, 220));
+        }
+        $this->assertTrue($limiter->hit('big', 1000, 220) > 0, 'a limit above 200 triggers (L-125)');
+    }
+
     public function testSweepRemovesOldCounters(): void
     {
         $limiter = new RateLimiter($this->dir, 900);

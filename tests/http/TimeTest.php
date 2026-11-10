@@ -135,6 +135,25 @@ final class TimeTest extends TestCase
         $this->assertSame(401, $post($attacker, 'prof', 'bad-d', '203.0.113.52'), 'a second later, one more attempt');
     }
 
+    public function testAPasswordChangeEndsTheDeviceCookie(): void
+    {
+        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = str_replace('login_attempts = 5 per 15m', 'login_attempts = 1 per 15m', $config) . "\n[server]\ntrusted_proxies = 127.0.0.1\n";
+        $prof = $this->start(['config/config.ini' => $config], '2026-10-01 10:00');
+        $post = function (HttpClient $c, string $user, string $password, string $from): int {
+            $csrf = (string) $c->get('calendar/php/config.php?csrf=1')->json()['csrf'];
+            return $c->post('calendar/php/auth.php', ['username' => $user, 'password' => $password, 'csrf' => $csrf], ['X-Forwarded-For' => $from])->status;
+        };
+        $this->assertSame(200, $post($prof, 'prof', Fixture::PASSWORD, '198.51.100.7'), 'a device cookie is set');
+        $file = "$this->dir/config/auth/prof.ini";
+        file_put_contents($file, preg_replace('/^password_hash = .*$/m', 'password_hash = ' . password_hash('new-password', PASSWORD_DEFAULT), (string) file_get_contents($file)));
+        $attacker = new HttpClient($this->server);
+        for ($i = 0; $i < 11; $i++) {
+            $post($attacker, 'prof', "bad$i", "203.0.113.$i");
+        }
+        $this->assertSame(429, $post($prof, 'prof', 'old-guess', '198.51.100.9'), 'the old device cookie no longer skips the gate after a password change (L-126)');
+    }
+
     public function testIpv6AddressesCountPerNetwork(): void
     {
         $this->assertSame(\Cal6\Http\RateLimiter::addressKey('2001:db8:1:2::1'), \Cal6\Http\RateLimiter::addressKey('2001:db8:1:2:ffff::9'), 'one /64 (M-18)');

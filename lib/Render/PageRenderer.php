@@ -510,9 +510,15 @@ final class PageRenderer
     /** An attribute value decoded as a browser decodes it, numeric references without ";" too. */
     private static function browserDecode(string $value): string
     {
-        $value = preg_replace_callback('/&#(?:[xX]([0-9a-fA-F]{1,6})|(\d{1,7}));?/', static function (array $m): string {
+        // any number of leading zeros, as browsers read them (L-123); a surrogate or an
+        // out-of-range value is U+FFFD, never an error (L-124)
+        $value = preg_replace_callback('/&#(?:[xX]0*([0-9a-fA-F]{1,8})|0*(\d{1,10}));?/', static function (array $m): string {
             $code = ($m[1] ?? '') !== '' ? hexdec($m[1]) : (int) $m[2];
-            return $code > 0 && $code <= 0x10FFFF ? mb_chr((int) $code, 'UTF-8') : "\u{FFFD}";
+            if ($code <= 0 || $code > 0x10FFFF || ($code >= 0xD800 && $code <= 0xDFFF)) {
+                return "\u{FFFD}";
+            }
+            $char = mb_chr((int) $code, 'UTF-8');
+            return $char === false ? "\u{FFFD}" : $char;
         }, $value) ?? $value;
         $value = preg_replace_callback('/&(lt|gt|amp|quot)(?![A-Za-z0-9=;])/i', static fn (array $m): string => ['lt' => '<', 'gt' => '>', 'amp' => '&', 'quot' => '"'][strtolower($m[1])], $value) ?? $value;
         return html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');

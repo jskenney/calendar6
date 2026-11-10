@@ -32,8 +32,18 @@ final class AuthEndpoint
             return false;
         }
         [$who, $nonce, $mac] = explode('.', $value);
-        return hash_equals(hash_hmac('sha256', "device|$who|$nonce", $c->config->secret), $mac)
+        return hash_equals(hash_hmac('sha256', "device|$who|$nonce|" . self::passwordMark($c, $user), $c->config->secret), $mac)
             && hash_equals(bin2hex($user), $who);
+    }
+
+    /**
+     * The device cookie is bound to the account's password: a reset after a leak ends the
+     * cookies made with the old one too (L-126).
+     */
+    private static function passwordMark(Context $c, string $user): string
+    {
+        $account = Viewer::account($c->config, $user);
+        return Context::secretMark($account?->passwordHash ?? '');
     }
 
     /** After a successful login: a signed cookie that lets this browser past the per-user gate. */
@@ -41,7 +51,7 @@ final class AuthEndpoint
     {
         $who = bin2hex($user);
         $nonce = bin2hex(random_bytes(12));
-        $value = "$who.$nonce." . hash_hmac('sha256', "device|$who|$nonce", $c->config->secret);
+        $value = "$who.$nonce." . hash_hmac('sha256', "device|$who|$nonce|" . self::passwordMark($c, $user), $c->config->secret);
         if (!headers_sent()) {
             setcookie(self::deviceCookie($c), $value, [
                 'expires' => $c->now + self::DEVICE_DAYS * 86400,
