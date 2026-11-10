@@ -253,6 +253,19 @@ INI;
         }
     }
 
+    public function testTypeFileTargetsAndRulesThatMatchNothing(): void
+    {
+        $course = $this->load([
+            'config/default.ini' => "class = always\nclass/quiz.html = never\nlabs = never\nlab_1/lab-soluton = never\n",
+            'class/01.Introduction/quiz.html' => 'Q',
+        ]);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/quiz.html', self::now($course)), 'type/file targets work (M-45)');
+        $messages = implode("\n", array_map(static fn ($p): string => $p->message, $course->problems));
+        $this->assertContains('labs matches no file', $messages, 'a rule that matches nothing is a problem');
+        $this->assertContains('lab_1/lab-soluton matches no file', $messages);
+        $this->assertNotContains('class/quiz.html matches no file', $messages);
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);

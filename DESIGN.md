@@ -716,7 +716,11 @@ like is HTML again (L-88); this follows the namespace an element is in (`<desc>`
 `<svg>` inside `<foreignObject>` is foreign again, L-95), and while any `<svg>` or `<math>` is
 open, `<script>` and `<style>` are read both ways whatever the lexer makes of integration points
 (L-101). A block tag typed where a tag's attributes are (a missing `>`:
-`<div class="x"<inst>S</inst>`) opens a block all the same, as Calendar 4's patterns did (L-110). In an injected file, hidden blocks in attribute values follow that
+`<div class="x"<inst>S</inst>`), in a tag's name (`<p<inst>`) or in an end tag (`</p <inst>`)
+opens a block all the same, as Calendar 4's patterns did (L-110, L-111). **Once any `<svg>` or
+`<math>` has opened, `<script>` and `<style>` are read both ways for the rest of that page**, so a
+block tag inside a later script is hidden too (L-112). `srcdoc` is hidden in as the browser reads
+it (decoded, L-113), and a `<url>`'s `default` is the author's text, hidden in like any other (L-114). In an injected file, hidden blocks in attribute values follow that
 file's own place, and its `<replace>` values are filled in before its links are made relative
 to the page (L-87, L-90); its `<url>` values are filled in with the whole page, so the page's
 context counts (L-97), and a `<url>` in the path of its link is relative to the page; `<codeinject>` hides blocks in attribute values too (L-86), and in a Markdown page's code as well
@@ -841,8 +845,12 @@ Targets are **not** case-sensitive (Decided, M-14): `Class_1/Notes.html`, `class
 differ only in case (`Notes.html` and `notes.html` in one event) would share every rule; such
 pairs are listed as problems for instructors.
 
-The order, from strongest to weakest (v4's `get_file_security()`, kept exactly): `T_N/F`, `F`,
-`T_N/C`, `T/C`, `T_N`, `T/*`, `T_N/all`, `T_N/*`, `*/C`, `T`, `*`.
+The order, from strongest to weakest (v4's `get_file_security()`, kept, with two additions):
+`T_N/F`, `F`, `T/F`, `T_N/C`, `T/C`, `T_N`, `T/*`, `T_N/all`, `T_N/*`, `*/C`, `T`, `*`. `T/F`
+(`class/quiz.html`: that file in every class) is Calendar 6's (M-45); a file in a subfolder is
+also matched by its bare name, after the box targets for a box's own files (L-105, M-43). A rule
+or grant whose target matches no file, event, box or page the course has does nothing, and is
+listed as a problem (a typo such as `labs = never` must not pass silently, M-45).
 
 **Format (Decided):** one rule per line, `target = when`, read by our own parser (not
 `parse_ini_file`), so every line keeps its number for messages, `#` and `;` comments both work,

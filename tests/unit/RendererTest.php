@@ -768,6 +768,41 @@ final class RendererTest extends TestCase
         }
     }
 
+    public function testReview18Leftovers(): void
+    {
+        $cases = [
+            'name' => '<p<inst>Y1</inst></p>',
+            'end' => '<p>a</p<inst>Y2</inst>',
+            'end2' => '<p>a</p <inst>Y3</inst>',
+            'desc' => '<svg><desc><span></desc></svg></span></desc><style><inst><p>Y4</p></inst></style>',
+            'enc' => '<math><annotation-xml encoding="text&#x2F;html"><p>x</p></annotation-xml><style><inst><p>Y5</p></inst></style></math>',
+            'srcdoc' => '<iframe srcdoc="&lt;p&gt;Q: &lt;inst&gt;Y6&lt;/inst&gt;&lt;/p&gt;"></iframe>',
+            'default' => '<a href="x" title=\'<url value=q default="<inst>Y7</inst>">\'>a</a>',
+        ];
+        $files = [
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/starter.html' => "<textarea>\nfor (int i = 0; i<n; i++) {\n  <inst>sum += a[i];</inst>\n}\n</textarea>\n<p>VISIBLE-NEXT-QUESTION</p>",
+            'class/01.Introduction/deep.html' => str_repeat('<b a<student>', 20000) . str_repeat('x', 200000),
+            'class/01.Introduction/ends.html' => str_repeat('<math>', 300) . str_repeat('<svg>', 300) . str_repeat('</math>', 80000),
+        ];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html;
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $this->assertSame(0, preg_match('/Y[1-7]\b/', $this->render($course, "class_1/$name.html")), "hidden (L-111..L-114): $name");
+        }
+        $page = $this->render($course, 'class_1/starter.html');
+        $this->assertContains('VISIBLE-NEXT-QUESTION', $page, 'a hidden block in a textarea does not hide the rest of the page (M-44)');
+        $this->assertNotContains('sum +=', $page);
+        $this->assertContains('</textarea>', $page);
+        foreach (['deep.html', 'ends.html'] as $file) {
+            $start = microtime(true);
+            $this->render($course, "class_1/$file");
+            $this->assertTrue(microtime(true) - $start < 3.0, "$file renders quickly (L-115, L-116)");
+        }
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

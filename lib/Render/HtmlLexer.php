@@ -54,6 +54,18 @@ final class HtmlLexer
         return $m[0][1] + strlen($m[0][0]);
     }
 
+    /** An annotation-xml start tag whose encoding (decoded, exact) is HTML: an integration point. */
+    private static function htmlEncoding(string $tag): bool
+    {
+        foreach (self::attributes($tag) as [$name, $start, $end]) {
+            if ($name === 'encoding' && $start >= 0) {
+                $value = strtolower(trim(html_entity_decode(substr($tag, $start, $end - $start), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+                return $value === 'text/html' || $value === 'application/xhtml+xml';
+            }
+        }
+        return false;
+    }
+
     /** Whether a start tag's text ends in a "/" of its own (not the end of an unquoted value). */
     private static function selfClosing(string $tag): bool
     {
@@ -214,8 +226,10 @@ final class HtmlLexer
         $tokens = [];
         $noClose = [];
         $stack = []; // namespaces: [svg|math|html, element name] (L-95)
-        $names = []; // element name => how many entries of that name are open
+        $positions = []; // element name => stack indices of its open entries
+        $htmlAt = []; // stack indices of the open HTML (integration point) entries
         $foreignCount = 0; // how many svg/math entries are open
+        $everForeign = false;
         $length = strlen($html);
         $pos = 0;
         while (($lt = strpos($html, '<', $pos)) !== false) {
@@ -283,41 +297,50 @@ final class HtmlLexer
             if ($closing) {
                 // to the nearest open element of that name, as a browser walks up (L-101), but
                 // never through HTML content of an integration point: a browser ignores </svg>
-                // inside a <foreignObject>'s HTML (L-109); a bounded walk keeps this linear (L-107)
-                if (($names[$name] ?? 0) > 0) {
-                    for ($k = count($stack) - 1, $steps = 0; $k >= 0 && $steps < 256; $k--, $steps++) {
-                        if ($stack[$k][1] === $name) {
-                            while (count($stack) > $k) {
-                                [$kind, $popped] = array_pop($stack);
-                                $names[$popped]--;
-                                $foreignCount -= $kind !== 'html' ? 1 : 0;
-                            }
-                            break;
-                        }
-                        if ($stack[$k][0] === 'html') {
-                            break;
+                // inside a <foreignObject>'s HTML (L-109); per-name positions keep this O(1) (L-116)
+                $k = $positions[$name] ?? [];
+                $k = $k === [] ? -1 : end($k);
+                if ($k >= 0 && ($htmlAt === [] || end($htmlAt) <= $k)) {
+                    while (count($stack) > $k) {
+                        [$kind, $popped] = array_pop($stack);
+                        array_pop($positions[$popped]);
+                        if ($kind === 'html') {
+                            array_pop($htmlAt);
+                        } else {
+                            $foreignCount--;
                         }
                     }
                 }
-            } elseif (!$selfClosing && ($name === 'svg' || $name === 'math')) {
-                $stack[] = [$name, $name];
-                $names[$name] = ($names[$name] ?? 0) + 1;
-                $foreignCount++;
-            } elseif (!$selfClosing && (($current === 'svg' && in_array($name, ['foreignobject', 'desc', 'title'], true))
-                || ($current === 'math' && (in_array($name, ['mi', 'mo', 'mn', 'ms', 'mtext'], true)
-                    || ($name === 'annotation-xml' && preg_match('/\bencoding\s*=\s*["\']?\s*(text\/html|application\/xhtml\+xml)/i', substr($html, $lt, $end - $lt))))))) {
-                $stack[] = ['html', $name];
-                $names[$name] = ($names[$name] ?? 0) + 1;
-            } elseif ($inForeign && in_array($name, self::BREAKOUT, true)) {
-                while ($stack !== [] && end($stack)[0] !== 'html') {
-                    [, $popped] = array_pop($stack);
-                    $names[$popped]--;
-                    $foreignCount--;
+            } else {
+                $push = null;
+                if (!$selfClosing && ($name === 'svg' || $name === 'math')) {
+                    $push = $name;
+                } elseif (!$selfClosing && (($current === 'svg' && in_array($name, ['foreignobject', 'desc', 'title'], true))
+                    || ($current === 'math' && (in_array($name, ['mi', 'mo', 'mn', 'ms', 'mtext'], true)
+                        || ($name === 'annotation-xml' && self::htmlEncoding(substr($html, $lt, $end - $lt))))))) {
+                    $push = 'html';
+                } elseif ($inForeign && in_array($name, self::BREAKOUT, true)) {
+                    while ($stack !== [] && end($stack)[0] !== 'html') {
+                        [, $popped] = array_pop($stack);
+                        array_pop($positions[$popped]);
+                        $foreignCount--;
+                    }
+                }
+                if ($push !== null) {
+                    $positions[$name][] = count($stack);
+                    if ($push === 'html') {
+                        $htmlAt[] = count($stack);
+                    } else {
+                        $foreignCount++;
+                    }
+                    $stack[] = [$push, $name];
                 }
             }
-            // while any svg or math is open, script and style are read both ways, whatever the
-            // lexer thinks of integration points (the browser's namespace rules are subtle, L-101)
-            $anyForeign = $foreignCount > 0;
+            // once any svg or math has opened, script and style are read both ways for the rest of
+            // the page: the browser's namespace rules are subtle, and a lost sync must not leak
+            // (L-101, L-112)
+            $everForeign = $everForeign || $foreignCount > 0;
+            $anyForeign = $everForeign;
             $asBounded = !$closing && !$plain && (in_array($name, self::BOUNDED, true) || (($inForeign || $anyForeign) && ($name === 'script' || $name === 'style')));
             if ($asBounded) {
                 $close = $name === 'plaintext' || ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);

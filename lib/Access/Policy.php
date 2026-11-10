@@ -154,7 +154,8 @@ final class Policy
     public static function eventTargets(string $type, int $number, string $file, ?string $box): array
     {
         $event = "{$type}_$number";
-        $targets = ["$event/$file", $file];
+        // type/file (class/quiz.html) after the event's and the bare file name (M-45)
+        $targets = ["$event/$file", $file, "$type/$file"];
         // "a file name alone matches that file in every event" (R2), also in a subfolder:
         // solution.pdf = never hides img/solution.pdf too (L-105); for a box's own files the box
         // comes first, so index.html = always can not release lab-solution/index.html (M-43)

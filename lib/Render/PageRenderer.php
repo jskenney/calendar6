@@ -463,7 +463,9 @@ final class PageRenderer
      */
     private function hideInAttributes(string $html, Place $place): string
     {
-        if (!preg_match('/<\/?(?:inst|lock|postmeeting|host)(?=[\s>\/])/i', $html)) {
+        $blockTag = '/<\/?(?:inst|lock|postmeeting|host)(?=[\s>\/])/i';
+        $encoded = '/&lt;\/?(?:inst|lock|postmeeting|host)/i';
+        if (!preg_match($blockTag, $html) && !(stripos($html, 'srcdoc') !== false && preg_match($encoded, $html))) {
             return $html;
         }
         $out = '';
@@ -473,28 +475,24 @@ final class PageRenderer
                 continue;
             }
             $tag = substr($html, $token[1], $token[2] - $token[1]);
-            if (!preg_match('/<\/?(?:inst|lock|postmeeting|host)(?=[\s>\/])/i', substr($tag, 1))) {
+            if (!preg_match($blockTag, substr($tag, 1)) && !(stripos($tag, 'srcdoc') !== false && preg_match('/&(?:lt|#0*60|#x0*3c);/i', $tag))) {
                 continue;
             }
             $new = '';
             $at = 0;
-            foreach (HtmlLexer::attributes($tag) as [, $start, $end]) {
+            foreach (HtmlLexer::attributes($tag) as [$name, $start, $end]) {
                 if ($start < 0) {
                     continue;
                 }
                 $value = substr($tag, $start, $end - $start);
-                $hidden = $this->postmeeting($value, $place);
-                $hidden = self::block($hidden, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
-                $hidden = $this->host($hidden);
-                $hidden = self::block($hidden, 'lock', function (string $inner, string $opening): string {
-                    $codes = array_values(array_filter(array_map('trim', explode(',', (string) self::attribute($opening, 'code'))), static fn (string $c): bool => $c !== ''));
-                    foreach ($this->unlocked as $entered) {
-                        if (self::codeMatches($entered, $codes)) {
-                            return $inner;
-                        }
-                    }
-                    return $this->viewer->instructor ? $inner : '';
-                });
+                if ($name === 'srcdoc') {
+                    // a browser decodes srcdoc and reads it as a page: hide in what it reads (L-113)
+                    $decoded = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $hidden = $this->hideValue($decoded, $place);
+                    $hidden = $hidden === $decoded ? $value : htmlspecialchars($hidden, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                } else {
+                    $hidden = $this->hideValue($value, $place);
+                }
                 $new .= substr($tag, $at, $start - $at) . $hidden;
                 $at = $end;
             }
@@ -502,6 +500,28 @@ final class PageRenderer
             $pos = $token[2];
         }
         return $out . substr($html, $pos);
+    }
+
+    /**
+     * A value with the blocks this viewer may not see removed (their tags go in any case), for
+     * text that ends up in an attribute. $place decides <postmeeting>; without one it is hidden
+     * from all but instructors (fail closed).
+     */
+    private function hideValue(string $value, ?Place $place): string
+    {
+        $hidden = $place !== null ? $this->postmeeting($value, $place)
+            : self::block($value, 'postmeeting', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
+        $hidden = self::block($hidden, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
+        $hidden = $this->host($hidden);
+        return self::block($hidden, 'lock', function (string $inner, string $opening): string {
+            $codes = array_values(array_filter(array_map('trim', explode(',', (string) self::attribute($opening, 'code'))), static fn (string $c): bool => $c !== ''));
+            foreach ($this->unlocked as $entered) {
+                if (self::codeMatches($entered, $codes)) {
+                    return $inner;
+                }
+            }
+            return $this->viewer->instructor ? $inner : '';
+        });
     }
 
     private function postmeeting(string $html, Place $place): string
@@ -603,7 +623,8 @@ final class PageRenderer
                 $this->usedUrlValues[] = $name;
                 $value = $this->urlValues[$name];
             } else {
-                $value = (string) self::attribute($tag, 'default');
+                // a default is the author's text: blocks written in it are hidden too (L-114)
+                $value = $this->hideValue((string) self::attribute($tag, 'default'), null);
             }
             // marked, so link rewriting knows the visitor chose this value (M-36); the marks
             // are removed once links are rewritten
@@ -1032,7 +1053,17 @@ final class PageRenderer
         if (stripos($tagText, '<' . $tag, 1) === false) {
             return null;
         }
-        foreach (HtmlLexer::attributes($tagText) as [, $start, $end, $quoted, $nameStart, $attributeEnd]) {
+        // the tag's own name (<p<inst>), also of an end tag (</p<inst>)
+        $nameFrom = ($tagText[1] ?? '') === '/' ? 2 : 1;
+        $nameTo = $nameFrom + strcspn($tagText, " \t\n\r\f/>", $nameFrom);
+        if (preg_match('/<' . preg_quote($tag, '/') . '(?=[\t\n\f\r \/>]|$)/i', substr($tagText, $nameFrom, $nameTo - $nameFrom) . ' ', $m, PREG_OFFSET_CAPTURE)) {
+            return $nameFrom + $m[0][1];
+        }
+        $attributeText = $nameFrom === 2 ? '<' . substr($tagText, 2) : $tagText; // an end tag's attributes
+        foreach (HtmlLexer::attributes($attributeText) as [, $start, $end, $quoted, $nameStart, $attributeEnd]) {
+            if ($nameFrom === 2) {
+                [$start, $end, $nameStart, $attributeEnd] = [$start < 0 ? $start : $start + 1, $end + 1, $nameStart + 1, $attributeEnd + 1];
+            }
             $spans = [[$nameStart, $start < 0 ? $attributeEnd : $start]];
             if ($start >= 0 && !$quoted) {
                 $spans[] = [$start, $end];
@@ -1069,16 +1100,22 @@ final class PageRenderer
                 $range = [$rangeCount++, $token[1], $token[2]];
                 continue;
             }
-            if ($token[0] === 'tag' && !$token[4] && $token[3] !== $tag && $skip === 0
+            if ($token[0] === 'tag' && $token[3] !== $tag && $skip === 0
                 && ($at = self::blockInAttributes(substr($html, $token[1], $token[2] - $token[1]), $tag)) !== null) {
-                // a block tag typed where attributes are (a missing ">": <div class="x"<inst>S</inst>)
-                // opens a block all the same, as Calendar 4's patterns did (fail closed, L-110)
+                // a block tag typed where attributes are, in a tag's name or in an end tag (a
+                // missing ">": <div class="x"<inst>S</inst>, <p<inst>, </p <inst>) opens a block
+                // all the same, as Calendar 4's patterns did (fail closed, L-110, L-111); it
+                // belongs to the bounded element it sits in, so a </inst> there closes it (M-44)
                 $start = $token[1] + $at;
                 $buffers[count($buffers) - 1] .= substr($html, $pos, $start - $pos);
-                $openings[] = '<' . $tag . '>';
-                $ranges[] = -1;
-                $buffers[] = '';
                 $pos = $start + strlen($tag) + 1;
+                if (count($openings) >= self::MAX_BLOCK_DEPTH) {
+                    $skip = 1; // as deep nesting of real tags (L-115)
+                    continue;
+                }
+                $openings[] = '<' . $tag . '>';
+                $ranges[] = $start >= $range[1] && $start < $range[2] ? $range[0] : -1;
+                $buffers[] = '';
                 continue;
             }
             if ($token[0] !== 'tag' || $token[3] !== $tag) {

@@ -103,6 +103,61 @@ final class Course
                 $course->problems[] = new Problem("$rule->target: there is no {$m[1]} {$m[2]}, so this rule does nothing", 'default.ini', $rule->line);
             }
         }
+        // a rule (or grant) whose target matches no file, event, box or page does nothing:
+        // a typo such as labs = never must not pass silently (M-45)
+        // (every type, box and event the course has counts, also with no file yet; only a rule
+        // naming a file needs that file)
+        $known = ['*' => true];
+        foreach (array_keys($course->config->types) as $type) {
+            foreach ([$type, "$type/*"] as $target) {
+                $known[Rules::key($target)] = true;
+            }
+            foreach ($course->config->boxes as $box) {
+                $known[Rules::key("$type/{$box['box']}")] = true;
+                $known[Rules::key("*/{$box['box']}")] = true;
+            }
+        }
+        foreach ($course->events as $event) {
+            foreach (["{$event->type}_{$event->number}", "{$event->type}_{$event->number}/all", "{$event->type}_{$event->number}/*"] as $target) {
+                $known[Rules::key($target)] = true;
+            }
+            foreach ($course->config->boxes as $box) {
+                $known[Rules::key("{$event->type}_{$event->number}/{$box['box']}")] = true;
+            }
+        }
+        foreach (array_keys($course->config->pages) as $page) {
+            $known[Rules::key("page/$page")] = true;
+        }
+        $policy = new \Cal6\Access\Policy($course);
+        foreach ($course->places as $place) {
+            foreach ($policy->candidateLists($place) as [$targets]) {
+                foreach ($targets as $target) {
+                    $known[Rules::key($target)] = true;
+                }
+            }
+        }
+        $unmatched = static function (Rules $rules, string $label) use ($known, $course): void {
+            foreach ($rules->byTarget as $key => $rule) {
+                if (isset($known[(string) $key])) {
+                    continue;
+                }
+                if (preg_match('/^([a-z][a-z0-9-]*)_(\d+)(?:\/|$)/i', $rule->target, $m) && ($type = $course->config->typeName($m[1])) !== null
+                    && !isset($course->events[$type . '_' . (int) $m[2]])) {
+                    continue; // listed above: there is no such event
+                }
+                if (preg_match('/^([a-z][a-z0-9-]*)_0\d*(?:\/|$)/i', $rule->target, $m) && $course->config->typeName($m[1]) !== null) {
+                    continue; // class_01: the name as written, kept beside class_1 (L-65), which is checked
+                }
+                $course->problems[] = new Problem("$rule->target matches no file, event, box or page, so this line does nothing (a typo?)", $label, $rule->line);
+            }
+        };
+        $unmatched($course->rules, 'default.ini');
+        foreach (glob($course->config->configDir() . '/auth/*.ini') ?: [] as $file) {
+            $account = \Cal6\Access\Viewer::account($course->config, basename($file, '.ini'));
+            if ($account !== null) {
+                $unmatched($account->grants, 'auth/' . basename($file));
+            }
+        }
         foreach ($course->rules->overridden as $note) {
             $course->problems[] = new Problem($note, 'default.ini');
         }
