@@ -352,7 +352,8 @@ final class RendererTest extends TestCase
         $link = fn (string $next): string => (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['next' => $next]))->render($place);
         $this->assertContains('<a data-cal6-hidden="1">next</a>', $link('../../pages/answers/exam-key.pdf'), 'a <url> target that borrows a page\'s rule is not handed out (M-36)');
         $this->assertContains('<a data-cal6-hidden="1">next</a>', $link('img/pic.png'), 'nor a file in a subfolder');
-        $this->assertContains('#/view/', $link('notes.html'), 'an event\'s own file still works through <url>');
+        $this->assertContains('#/view/', $link('index.html'), 'a box file still works through <url>');
+        $this->assertContains('<a data-cal6-hidden="1">next</a>', $link('notes.html'), 'a file calendar.php does not list does not');
         $this->assertContains('#/view/', $link('../../pages/home.html'), 'and so does a paths.ini page');
         $this->assertContains('href="https://cnn.com/"', $link('https://cnn.com/'), 'and an external address');
     }
@@ -597,7 +598,6 @@ final class RendererTest extends TestCase
         $this->assertContains('<!DOCTYPE html>', $page, 'a textarea keeps its comments and doctype (L-82)');
         $this->assertContains('<!-- your code here -->', $page);
         $this->assertNotContains('gone', $page);
-        $this->assertSame(1, count(array_filter($course->problems, static fn ($p): bool => str_contains($p->message, 'instructor.htm'))), 'a page named like a box that fills none is a problem (M-41)');
     }
 
     public function testAnEventDirectoryReachedThroughALinkIsStillAnEventDirectory(): void

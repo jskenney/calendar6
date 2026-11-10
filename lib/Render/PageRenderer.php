@@ -1056,11 +1056,14 @@ final class PageRenderer
         return $inside !== null ? null : $value . $fragment;
     }
 
-    /** An event's own file or a paths.ini page: the places calendar.php lists. */
+    /** A box file or a paths.ini page: exactly the places calendar.php lists. */
     private function hasOwnRule(Place $target): bool
     {
         if ($target->event !== null) {
-            return $target->file->topLevel && $target->assetOf === null && !Boundary::isUnlisted($target->file->name);
+            // a box's own file, as calendar.php lists it (not notes, not any other file)
+            $notes = array_column(array_filter($this->course->config->boxes, static fn (array $b): bool => $b['notes'] ?? false), 'box');
+            return $target->box !== null && !$target->asset && $target->assetOf === null
+                && !in_array($target->box, $notes, true);
         }
         return $target->page !== null && !$target->asset && $target->assetOf === null
             && ($this->course->pageKeys[$target->page] ?? null) === $target->key;

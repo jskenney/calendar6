@@ -558,19 +558,20 @@ viewer may see, with their keys. Things the viewer may not see are left out enti
         {"box": "title",    "files": [{"name": "index.html", "key": "a1Xc9", "kind": "page"}]},
         {"box": "homework", "files": [{"name": "homework.html", "key": "b4Rt0", "kind": "page"}]}
       ],
-      "files": [{"name": "slides.pdf", "key": "c8Ld3", "kind": "file", "size": 482113}],
       "notes": [{"name": "notes", "text": "The class meets in the auditorium today."}]
     },
     "lab_10": {"type": "lab", "number": 10, "title": "Cookies", "date": "2026-11-09",
-               "boxes": [], "files": [], "opens": "2026-11-10T08:00:00-05:00"},
+               "boxes": [], "opens": "2026-11-10T08:00:00-05:00"},
     "class_5@2026-11-11": {"type": "class", "number": 5, "title": "Forms", "date": "2026-11-11",
-                "copy_of": "class_5", "mode": "same", "boxes": [], "files": []}
+                "copy_of": "class_5", "mode": "same", "boxes": []}
   }
 }
 ```
 
-- `boxes` follow the order of `config.php`'s `boxes`; `files` are the event's other files (v4's
-  Files menu). `kind` says which script serves it: `page` → `html.php`, `file` → `get.php`.
+- `boxes` follow the order of `config.php`'s `boxes`; `kind` says which script serves a file:
+  `page` → `html.php`, `file` → `get.php`. **There is no list of an event's other files**
+  (Decided, E-8): `calendar.php` lists only the files `config.ini` names for boxes, plus notes;
+  any other file is reached through a link in a page.
 - `notes`: the text of the event's notes file (`config.ini` `[notes]`: `notes.txt`, `notes.html`
   or `notes.md`, the first one found), as written, at most 2000 bytes: short remarks such as "the
   assignment is due Tuesday". It is released like a box (`lab/notes = always`) and comes back as
@@ -675,7 +676,7 @@ processed:
   | written by the author, to a course file this viewer may see | rewritten to `#/view/KEY` (pages; a query string goes along: `#/view/KEY?week=3`, or `html.php?file=KEY&full=1&week=3` for frames) or `get.php?file=KEY` |
   | written by the author, to a course file this viewer may not see (or one never served) | text kept, target removed (`data-cal6-hidden`) |
   | written by the author, to a missing file, or a path outside the course (or into `config/`, `calendar/`) | left exactly as written, as in Calendar 4; nothing is said about the disk outside the course |
-  | filled in by `<url>` (the visitor chose it) | rewritten only to a visible file with a rule of its own (an event's own file or a `paths.ini` page, as `calendar.php` lists them); anything else (a missing file, a path outside the course, a file in a subfolder or one that borrows a page's rule) loses its target, all alike |
+  | filled in by `<url>` (the visitor chose it) | rewritten only to a visible file `calendar.php` lists (a box file or a `paths.ini` page); anything else (a missing file, a path outside the course, any other file of an event, one that borrows a page's rule) loses its target, all alike |
 
 - files that a `paths.ini` page links to (its images, style sheets, the pages next to it) get
   keys of their own, decided by that page's rule; an event page's link to a file outside its event
@@ -920,15 +921,12 @@ Decided:
 - **A line whose time can not be read hides its target** (fail closed): `exam = nver` hides the
   exams and is listed for instructors; it never releases anything. A line whose target can not
   be read (`class_9..2`) is only listed.
-- **Pages named like a box:** a page whose name (without its extension) is a box's name but
-  that fills no box (`instructor.htm` when the box lists `instructor.html, instructor.md`)
-  follows the event's rule, so it is listed as a problem (M-41). The template lists the `.md`
-  name in every box.
-- **Box assets:** a file named after a box's file, followed by `-`, `_`, `.` or `/`, follows that
-  box's rule instead of the event's: with `lab-solution.html` in the `lab-solution` box,
-  `lab-solution-figure.png` and `lab-solution/data.csv` stay hidden as long as the solution does.
-  The longest matching name wins (`homework-solution-1.png` goes with `homework-solution.html`,
-  not `homework.html`). Other files follow the event's rule, as in v4.
+- **Names are never guessed (Decided, E-8):** a box holds exactly the files `config.ini` names
+  for it (`lab-solution = lab-solution.html, lab-solution.md`: the first one there). A file with
+  a similar name (`lab-solution.pdf`, `lab-solution-figure.png`, `lab-solution/data.csv`) is not
+  part of the box and does not follow its rule: it is an ordinary file of the event, follows the
+  event's rules (and any rule naming it), is never listed by `calendar.php`, and is reached only
+  through a link in a page, where it is served as the regular file the page treats it as.
 
 Notes:
 
@@ -1152,8 +1150,9 @@ Choices the code made where the design left room (change them here if they are w
   only). A `dates.ini` line with one date means that day only; a window with times only cancels
   meetings whose first section starts inside it.
 - **calendar.php:** an event whose files are all hidden is listed without its title (so hidden
-  titles do not leak). Only files directly in the event directory are listed; files in
-  subdirectories (`img/pic.png`) get keys so pages can link to them.
+  titles do not leak). Only the files `config.ini` names for boxes are listed (and notes, as
+  text); every other file, in the event directory or below it (`img/pic.png`), gets a key so
+  pages can link to it, and is never listed.
 - **Keys:** 22 characters of base64url HMAC-SHA256.
 - **Sessions:** one cookie per course (`cal6_<hash>`, path = the course's URL), opened by
   read-only endpoints only when the browser already has it; created only by

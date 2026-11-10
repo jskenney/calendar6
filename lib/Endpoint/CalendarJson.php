@@ -54,7 +54,6 @@ final class CalendarJson
                 continue;
             }
             $boxes = [];
-            $files = [];
             $notes = [];
             $anyVisible = false;
             $opens = null;
@@ -64,6 +63,11 @@ final class CalendarJson
                     continue; // notes.md2 is reached only through a page's link (L-92)
                 }
                 $place = $this->course->places[$this->course->keysByEvent[$event->id][$name]];
+                if ($place->box === null) {
+                    // only what config.ini names for a box (or for notes) is listed: there is no
+                    // list of other files; those are reached through a page's links (Decided)
+                    continue;
+                }
                 $decision = $policy->decide($viewer, $place, $now);
                 $this->note($decision->nextChange);
                 $anonymousView = $instructor ? $policy->decide(Viewer::anonymous(), $place, $now) : $decision;
@@ -74,7 +78,7 @@ final class CalendarJson
                     continue;
                 }
                 $anyVisible = true;
-                if ($place->box !== null && !$place->asset && in_array($place->box, $notesBoxes, true)) {
+                if (in_array($place->box, $notesBoxes, true)) {
                     // a notes file: its text, not a key (short remarks; nothing to serve)
                     $note = ['name' => $place->box, 'text' => self::noteText($file->realPath)];
                     if ($instructor && !$anonymousView->visible) {
@@ -95,14 +99,7 @@ final class CalendarJson
                         $item['opens'] = $this->c->iso($anonymousView->opens);
                     }
                 }
-                if ($place->box !== null && !$place->asset) {
-                    $boxes[$place->box][] = $item;
-                } else {
-                    if ($place->asset) {
-                        $item['box'] = $place->box; // a box asset: it follows that box's rule
-                    }
-                    $files[] = $item;
-                }
+                $boxes[$place->box][] = $item;
             }
             $ordered = [];
             foreach ($this->course->config->boxes as $box) {
@@ -121,7 +118,6 @@ final class CalendarJson
                 $entry['end'] = $event->time->end?->format('H:i');
             }
             $entry['boxes'] = $ordered;
-            $entry['files'] = $files;
             if ($notes !== []) {
                 $entry['notes'] = $notes;
             }

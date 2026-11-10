@@ -102,19 +102,20 @@ INI;
         $this->assertSame('class_3 = never', $decision->rule?->describe());
     }
 
-    public function testBoxAssetsFollowTheirBox(): void
+    public function testOnlyTheFilesConfigNamesFillABox(): void
     {
         $course = $this->load([
             'lab/01.Setup/lab-solution-figure.png' => 'P',
+            'lab/01.Setup/lab-solution.pdf' => 'P',
             'lab/01.Setup/lab-solution/data.csv' => 'x',
-            'lab/01.Setup/lab.png' => 'P',
         ]);
         $now = self::now($course);
         $anon = Viewer::anonymous();
-        $this->assertFalse(self::sees($course, $anon, 'lab_1/lab-solution-figure.png', $now), 'lab/lab-solution = never covers its assets (M-3)');
-        $this->assertFalse(self::sees($course, $anon, 'lab_1/lab-solution/data.csv', $now), 'and a directory named after it');
-        $this->assertTrue(self::sees($course, $anon, 'lab_1/lab.png', $now), 'other files follow the event');
-        $this->assertTrue(self::sees($course, $anon, 'lab_1/index.html', $now));
+        $this->assertFalse(self::sees($course, $anon, 'lab_1/lab-solution.html', $now), 'the box file follows lab/lab-solution = never');
+        foreach (['lab_1/lab-solution-figure.png', 'lab_1/lab-solution.pdf', 'lab_1/lab-solution/data.csv'] as $id) {
+            $this->assertTrue(self::sees($course, $anon, $id, $now), "a similar name is not a lab-solution: names are never guessed ($id)");
+            $this->assertSame(null, $course->places[$course->keysByEvent['lab_1'][substr($id, 6)]]->box);
+        }
     }
 
     public function testAVirtualFileBorrowedFromAnotherEventObeysThatEvent(): void
@@ -151,7 +152,7 @@ INI;
         $now = self::now($course);
         $this->assertSame('lab-solution', $course->places[$course->keysByEvent['lab_1']['Lab-Solution.HTML']]->box, 'Lab-Solution.HTML fills the box (M-25)');
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/Lab-Solution.HTML', $now), 'lab/lab-solution = never');
-        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/LAB-SOLUTION-fig.png', $now), 'and its asset');
+        $this->assertTrue(self::sees($course, Viewer::anonymous(), 'lab_1/LAB-SOLUTION-fig.png', $now), 'a similar name is not part of the box');
     }
 
     public function testAFileSharedByTwoPagesFollowsEachPage(): void
@@ -227,8 +228,8 @@ INI;
 
     public function testABoxPageInMarkdownFollowsTheBox(): void
     {
-        $course = $this->load(['class/01.Introduction/instructor.md' => 'I']);
-        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/instructor.md', self::now($course)), 'instructor.md fills the instructor box (M-41)');
+        $course = $this->load(['class/01.Introduction/instructor.html' => null, 'class/01.Introduction/instructor.md' => 'I']);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/instructor.md', self::now($course)), 'instructor.md fills the instructor box when instructor.html is not there');
     }
 
     public function testAFileNameRuleMatchesInSubfolders(): void
@@ -241,17 +242,16 @@ INI;
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/img/solution.pdf', self::now($course)), 'R2 also in a subfolder (L-105)');
     }
 
-    public function testAFileNameRuleDoesNotReleaseAHiddenBoxsFiles(): void
+    public function testAFolderNamedLikeABoxIsNotTheBox(): void
     {
         $course = $this->load([
-            'config/default.ini' => "lab = always\nlab/lab-solution = never\ndata.csv = always\nindex.html = always\n",
-            'lab/01.Setup/lab-solution/index.html' => 'S',
+            'config/default.ini' => "lab = always\nlab/lab-solution = never\ndata.csv = never\n",
             'lab/01.Setup/lab-solution/data.csv' => 'D',
+            'lab/01.Setup/lab-solution/index.html' => 'S',
         ]);
         $now = self::now($course);
-        foreach (['lab_1/lab-solution/index.html', 'lab_1/lab-solution/data.csv'] as $id) {
-            $this->assertFalse(self::sees($course, Viewer::anonymous(), $id, $now), "the box wins over a file-name rule (M-43): $id");
-        }
+        $this->assertTrue(self::sees($course, Viewer::anonymous(), 'lab_1/lab-solution/index.html', $now), 'not part of the lab-solution box: names are never guessed');
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/lab-solution/data.csv', $now), 'its own rules apply');
     }
 
     public function testTypeFileTargetsAndRulesThatMatchNothing(): void

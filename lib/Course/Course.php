@@ -86,15 +86,6 @@ final class Course
             }
         }
         array_push($course->problems, ...$course->rules->problems);
-        // a page named like a box that fills none (instructor.htm when the box lists
-        // instructor.html, instructor.md) follows the event's rule, not the box's: say so (M-41)
-        $boxNames = array_map(static fn (array $b): string => strtolower($b['box']), $course->config->boxes);
-        foreach ($course->places as $place) {
-            if ($place->event !== null && $place->box === null && $place->file->virtualOf === null && $place->file->kind() === 'page'
-                && in_array(strtolower((string) preg_replace('/\.[^.]*$/', '', basename($place->file->name))), $boxNames, true)) {
-                $course->problems[] = new Problem("{$place->id()} is named like a box but fills none (the box lists other names), so the box's rule does not apply to it", 'config.ini');
-            }
-        }
         // a rule for an event that does not exist (class_40 in a course of 30) does nothing:
         // say so, as it is most likely a typo (M-35)
         foreach ($course->rules->byTarget as $rule) {
@@ -367,11 +358,9 @@ final class Course
     }
 
     /**
-     * Which files fill which box (the first candidate found fills each box), and the
-     * box assets (M-3): a file whose name starts with a box file's name without its
-     * extension, followed by "-", "_", "." or "/" (lab-solution-figure.png,
-     * lab-solution/fig.png), follows that box's rule; the longest such name wins.
-     *
+     * Which files fill which box: the first of the names config.ini lists for a box that is
+     * there. A box holds exactly those files (Decided: names are never guessed; a file with a
+     * similar name, lab-solution.pdf, is not part of the box). The second array stays empty.
      * @return array{0: array<string, string>, 1: array<string, string>} file => box, asset => box
      */
     public function boxesOf(ScheduledEvent $event): array
@@ -391,28 +380,9 @@ final class Course
                 }
             }
         }
-        $notes = array_column(array_filter($this->config->boxes, static fn (array $b): bool => $b['notes'] ?? false), 'box');
-        $stems = [];
-        foreach ($boxes as $file => $box) {
-            if (in_array($box, $notes, true)) {
-                continue; // a notes file has no assets: its text is all there is
-            }
-            $stems[] = [mb_strtolower((string) preg_replace('/\.[^.\/]+$/', '', (string) $file), 'UTF-8'), $box];
-        }
-        usort($stems, static fn (array $a, array $b): int => strlen($b[0]) <=> strlen($a[0]));
+        // a box holds exactly the files config.ini names for it, never a file with a similar name
+        // (lab-solution.pdf is not a lab-solution): names are never guessed (Decided, E-8)
         $assets = [];
-        foreach (array_map('strval', array_keys($event->files)) as $name) {
-            if (isset($boxes[$name])) {
-                continue;
-            }
-            $lower = mb_strtolower($name, 'UTF-8');
-            foreach ($stems as [$stem, $box]) {
-                if (strlen($lower) > strlen($stem) && str_starts_with($lower, $stem) && in_array($lower[strlen($stem)], ['-', '_', '.', '/'], true)) {
-                    $assets[$name] = $box;
-                    break;
-                }
-            }
-        }
         return [$boxes, $assets];
     }
 

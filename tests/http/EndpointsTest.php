@@ -43,18 +43,27 @@ final class EndpointsTest extends TestCase
         $this->assertSame(200, $result->status, "login as $user: " . $result->body);
     }
 
-    /** @return array<string, string> "event/name" => key */
-    private static function keys(array $calendar): array
+    /**
+     * "event/name" => key: box files as calendar.php lists them, and (since calendar.php lists no
+     * other files) the keys of an event's other files as the course itself makes them, for
+     * events calendar.php shows.
+     *
+     * @return array<string, string>
+     */
+    private function keys(array $calendar): array
     {
         $keys = [];
+        $course = \Cal6\Course\Course::load($this->dir);
         foreach ($calendar['events'] ?? [] as $id => $event) {
             foreach ($event['boxes'] as $box) {
                 foreach ($box['files'] as $file) {
                     $keys["$id/$file[name]"] = $file['key'];
                 }
             }
-            foreach ($event['files'] as $file) {
-                $keys["$id/$file[name]"] = $file['key'];
+            foreach ($course->keysByEvent[$id] ?? [] as $name => $key) {
+                if ($course->places[$key]->box === null) {
+                    $keys["$id/$name"] ??= $key;
+                }
             }
         }
         foreach ($calendar['pages'] ?? [] as $page) {
@@ -96,7 +105,7 @@ final class EndpointsTest extends TestCase
         $anon = $client->get('calendar/php/calendar.php');
         $this->assertSame(200, $anon->status);
         $data = $anon->json();
-        $keys = self::keys($data);
+        $keys = $this->keys($data);
         $this->assertTrue(isset($keys['class_1/index.html']));
         $this->assertFalse(isset($keys['class_1/instructor.html']), 'hidden files are left out');
         $this->assertFalse(isset($keys['lab_1/lab-solution.html']));
@@ -115,7 +124,7 @@ final class EndpointsTest extends TestCase
 
         $this->login($client);
         $prof = $client->get('calendar/php/calendar.php')->json();
-        $profKeys = self::keys($prof);
+        $profKeys = $this->keys($prof);
         $this->assertTrue(isset($profKeys['class_1/instructor.html']), 'instructors see everything');
         $this->assertSame(true, $prof['viewer']['instructor'] ?? null);
         $hidden = $prof['events']['class_1']['boxes'];
@@ -126,17 +135,17 @@ final class EndpointsTest extends TestCase
         $this->assertTrue(isset($prof['problems']));
 
         $preview = $client->get('calendar/php/calendar.php?as=anonymous')->json();
-        $this->assertSame(self::keys($data), self::keys($preview), 'view as anonymous');
+        $this->assertSame($this->keys($data), $this->keys($preview), 'view as anonymous');
         $past = $client->get('calendar/php/calendar.php?as=anonymous&at=' . rawurlencode('1999-06-01 10:00'))->json();
-        $this->assertFalse(isset(self::keys($past)['lab_1/index.html']), 'at a moment before lab = 2000-01-01');
+        $this->assertFalse(isset($this->keys($past)['lab_1/index.html']), 'at a moment before lab = 2000-01-01');
         $this->assertSame(400, $client->get('calendar/php/calendar.php?as=nobody')->status);
         $student = new HttpClient($this->server);
-        $this->assertSame(self::keys($data), self::keys($student->get('calendar/php/calendar.php?as=prof')->json()), 'as/at are ignored for others');
+        $this->assertSame($this->keys($data), $this->keys($student->get('calendar/php/calendar.php?as=prof')->json()), 'as/at are ignored for others');
     }
 
     public function testNamesThatAreNotUtf8(): void
     {
-        $client = $this->start(["class/01.Introduction/caf\xe9.txt" => 'x']);
+        $client = $this->start(["class/01.Introduction/caf\xe9.txt" => 'x', 'config/config.ini' => str_replace('slides            = slides.pdf, slides.pptx', "slides            = slides.pdf, slides.pptx, caf\xe9.txt", (string) file_get_contents(__DIR__ . '/../../template/config/config.ini'))]);
         $response = $client->get('calendar/php/calendar.php');
         $this->assertSame(200, $response->status, 'one bad name does not take the calendar down (M-1)');
         $this->assertContains("caf\u{FFFD}.txt", $response->body);
@@ -159,7 +168,7 @@ final class EndpointsTest extends TestCase
         foreach (['config.php', 'calendar.php'] as $endpoint) {
             $this->assertSame(200, $client->get("calendar/php/$endpoint")->status, "$endpoint with numeric names (M-17)");
         }
-        $keys = self::keys($client->get('calendar/php/calendar.php')->json());
+        $keys = $this->keys($client->get('calendar/php/calendar.php')->json());
         $this->assertSame('one', $client->get('calendar/php/get.php?file=' . ($keys['class_1/1'] ?? ''))->body);
         $this->assertSame(200, $client->get('calendar/php/html.php?file=' . ($keys['page/2027'] ?? ''))->status);
     }
@@ -170,16 +179,16 @@ final class EndpointsTest extends TestCase
         $first = $client->get('calendar/php/calendar.php');
         $this->assertSame($first->header('etag'), $client->get('calendar/php/calendar.php')->header('etag'), 'cached');
         sleep(1); // modification times have a resolution of one second
-        file_put_contents("$this->dir/class/01.Introduction/extra.pdf", '%PDF-1.4');
+        file_put_contents("$this->dir/class/01.Introduction/slides.pdf", '%PDF-1.4');
         $second = $client->get('calendar/php/calendar.php');
         $this->assertTrue($second->header('etag') !== $first->header('etag'), 'a new file changes the answer');
-        $this->assertContains('extra.pdf', $second->body);
+        $this->assertContains('slides.pdf', $second->body);
     }
 
     public function testGet(): void
     {
         $client = $this->start(['class/01.Introduction/data.txt' => "0123456789", 'class/01.Introduction/run.php' => '<?php echo 1;', 'class/01.Introduction/page2.html' => '<p>x</p>', 'class/01.Introduction/app.js' => 'var a = 1;']);
-        $keys = self::keys($client->get('calendar/php/calendar.php')->json());
+        $keys = $this->keys($client->get('calendar/php/calendar.php')->json());
         $this->assertFalse(isset($keys['class_1/run.php']), '.php files are never listed');
         $data = $client->get('calendar/php/get.php?file=' . $keys['class_1/data.txt']);
         $this->assertSame(200, $data->status);
@@ -203,7 +212,7 @@ final class EndpointsTest extends TestCase
         $this->assertContains('attachment', $client->get('calendar/php/get.php?download=1&file=' . $keys['class_1/data.txt'])->header('content-disposition'));
 
         $this->login($client);
-        $profKeys = self::keys($client->get('calendar/php/calendar.php')->json());
+        $profKeys = $this->keys($client->get('calendar/php/calendar.php')->json());
         $hidden = $profKeys['class_1/instructor.html'];
         $student = new HttpClient($this->server);
         $notFound = $student->get('calendar/php/get.php?file=' . $hidden);
@@ -242,7 +251,7 @@ HTML;
             'class/01.Introduction/Example.java' => 'class A { int a = 1 < 2; }',
             'class/01.Introduction/script.php' => '<?php echo "<p>PHP-OUTPUT " . $COURSE . " <inst>kept</inst></p>";',
         ]);
-        $keys = self::keys($client->get('calendar/php/calendar.php')->json());
+        $keys = $this->keys($client->get('calendar/php/calendar.php')->json());
         $index = $keys['class_1/index.html'];
         $response = $client->get("calendar/php/html.php?file=$index&who=%3Cb%3EEve");
         $this->assertSame(200, $response->status);
@@ -305,7 +314,7 @@ HTML;
         $prof = $client->get("calendar/php/html.php?file=$index")->body;
         $this->assertContains('INST-ONLY', $prof, 'instructors');
         $this->assertContains('LOCKED-PART', $prof);
-        $profKeys = self::keys($client->get('calendar/php/calendar.php')->json());
+        $profKeys = $this->keys($client->get('calendar/php/calendar.php')->json());
         $this->assertSame(404, (new HttpClient($this->server))->get('calendar/php/html.php?file=' . $profKeys['class_1/instructor.html'])->status);
         $markdown = $client->get('calendar/php/html.php?file=' . $profKeys['class_1/reading.md'])->body;
         $this->assertContains('<h1', $markdown, 'Markdown');
@@ -418,7 +427,7 @@ HTML;
         ]);
         $events = $client->get('calendar/php/calendar.php')->json()['events'];
         $this->assertSame([['name' => 'notes', 'text' => 'The class meets in the auditorium today.']], $events['class_1']['notes'] ?? null, 'notes are text, not keys');
-        $this->assertNotContains('notes.txt', json_encode($events['class_1']['files']), 'and not listed as files');
+        $this->assertNotContains('notes.txt', json_encode($events['class_1']), 'and never as a file');
         $this->assertSame(false, isset($events['class_2']['notes']), 'released by rules like a box: class_2/notes = never hides them');
         $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
         $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf]);
@@ -477,7 +486,7 @@ HTML;
         $page = $client->get("calendar/php/html.php?file=$second")->body;
         $this->assertSame(1, preg_match('/get\.php\?file=([A-Za-z0-9_-]{22})/', $page, $m), 'a nested file gets a key');
         $this->assertSame('PNG', $client->get('calendar/php/get.php?file=' . ($m[1] ?? ''))->body);
-        $this->assertNotContains('img/pic.png', json_encode($data['events']['class_1']['files']), 'nested files are not listed');
+        $this->assertNotContains('pic.png', json_encode($data['events']['class_1']), 'only box files are listed (no files list)');
 
         preg_match('/name="csrf" value="([^"]+)"/', $client->get("calendar/php/html.php?file=$first")->body, $t);
         $cross = $client->post("calendar/php/html.php?file=$first", ['lock' => 'sesame', 'csrf' => $t[1] ?? ''], ['Sec-Fetch-Site' => 'cross-site']);
@@ -529,7 +538,7 @@ HTML;
         $this->assertSame(['box' => 'title', 'label' => 'Lecture'], $data['boxes'][0] ?? null);
         $this->assertSame(['classyear' => '27', 'office' => 'Michelson 342'], $data['replace'] ?? null);
 
-        $keys = self::keys($client->get('calendar/php/calendar.php')->json());
+        $keys = $this->keys($client->get('calendar/php/calendar.php')->json());
         $markdown = $client->get('calendar/php/html.php?file=' . $keys['class_1/reading.md'])->body;
         $this->assertContains('<h1>Notes</h1>', $markdown, 'Markdown');
         $this->assertContains('<h2 id="first-part">First part</h2>', $markdown, 'level-2 headings get ids for the menu');
