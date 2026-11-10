@@ -327,7 +327,7 @@ None open.
 | DOC-39 | 23 | `44998f4` | Nothing says the JSON strings (titles, labels, file names, rooms, problem messages) are plain text to insert with `textContent`. | API.md 3: every JSON string is plain text, insert with `textContent`. |
 | DOC-40 | 23 | `44998f4` | A page used as `<img src>`, `<script src>` or `<link href>` loses its target (`data-cal6-hidden`); the link table does not say so. | Row added to the link table. |
 | E-11 | owner | decided | The owner wants calendar6 to be reachable as `<course>/calendar` by convention ("should, not must"); the code requires that exact name (any other name is a 500), which API.md documents as current behaviour. | Decided (owner): keep the fixed name `calendar` for simplicity; API.md says so. |
-| E-12 | 22 | (this commit) | `valid_until` is only in the login answer: after a reload the front end can not know when the login ends (GET auth.php logs out, so it can not be asked). | Decided (owner): `viewer` in config.php and calendar.php carries `valid_until` (null for anonymous viewers and previews); calendar.php fills it in after the cache, since it belongs to the session. API.md and tests updated. |
+| E-12 | 22 | `6ac31d1` | `valid_until` is only in the login answer: after a reload the front end can not know when the login ends (GET auth.php logs out, so it can not be asked). | Decided (owner): `viewer` in config.php and calendar.php carries `valid_until` (null for anonymous viewers and previews); calendar.php fills it in after the cache, since it belongs to the session. API.md and tests updated. |
 
 ## Reviews
 
