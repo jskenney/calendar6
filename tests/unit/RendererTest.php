@@ -708,6 +708,39 @@ final class RendererTest extends TestCase
         $this->assertTrue(microtime(true) - $start < 3.0, 'many comments stay fast (L-98)');
     }
 
+    public function testReview16Leftovers(): void
+    {
+        $cases = [
+            'annot' => '<math><annotation-xml data-encoding="text/html"><style>p{}</math><inst>W1</inst><style>q{}</style>',
+            'svgw' => '<svg width=10/><style>p{}</svg><inst>W2</inst><style>q{}</style>',
+            'mglyph' => '<math><mtext><mglyph><style>p{}</math><inst>W3</inst><style>q{}</style>',
+            'code' => '<codeinject src="n.md">',
+        ];
+        $files = [
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/n.md' => "- item\n\n    More text <inst>W4</inst> here\n\n```x`y\n<inst>\nW5\n</inst>\n```\n\nPress <kbd title=\"`\">K</kbd> then <inst>W6</inst> or `x`\n",
+            'class/01.Introduction/url.html' => '<p>Week <url value=week default=1></p><svg><style>.a{}</style></svg><noscript><script>x()</script></noscript><textarea><script>y()</script></textarea><p>Again <url value=week default=1></p>',
+            'class/01.Introduction/frame.html' => '<iframe src="notes.html?file%00x=K2&amp;file[]=K3&amp;week=3"></iframe>',
+            'class/01.Introduction/notes.html' => 'N',
+            'class/01.Introduction/prose.md' => str_repeat('if x <y ', 8000) . "\n",
+        ];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html;
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $this->assertSame(0, preg_match('/W[1-6]\b/', $this->render($course, "class_1/$name.html")), "hidden (L-101, L-102): $name");
+        }
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['week' => '7']))
+            ->render($course->places[$course->keysByEvent['class_1']['url.html']]);
+        $this->assertSame(2, substr_count($page, 'Week 7') + substr_count($page, 'Again 7'), '<url> still works after an svg style, a noscript script and a textarea (L-103): ' . $page);
+        $page = $this->render($course, 'class_1/frame.html');
+        $this->assertNotContains('K2', $page, 'mangled names of html.php\'s own parameters are dropped (L-104): ' . $page);
+        $this->assertNotContains('K3', $page);
+        $this->assertContains('week=3', $page);
+        $this->assertContains('if x', $this->render($course, 'class_1/prose.md'), 'long prose with "<" converts (L-106)');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

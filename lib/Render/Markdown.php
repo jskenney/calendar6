@@ -139,7 +139,7 @@ final class Markdown
                     # <!--> and <!---> end at once, as in a browser
                     if (substr($line, $pos, 1) === '>') { $pos++; $inComment = False; }
                     elseif (substr($line, $pos, 2) === '->') { $pos += 2; $inComment = False; }
-                } elseif (preg_match('/\G<\/?[A-Za-z][^\s\/>]*(?:\s+[^\s"\'>\/=]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*\s*\/?>/', $line, $tag, 0, $next)) {
+                } elseif (preg_match('/\G<\/?[A-Za-z][^\s\/>]*(?:\s+[^\s"\'>\/=<]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*+\s*\/?>/', $line, $tag, 0, $next)) {
                     # a tag is copied whole: <!-- inside its attribute values is not a comment
                     $kept .= $tag[0];
                     $pos = $next + strlen($tag[0]);
@@ -163,35 +163,50 @@ final class Markdown
         $out = array();
         $fence = '';
         $codeAllowed = True;
+        $block = array();   # the lines of the fenced or indented block being read: one piece (L-102)
         $hold = function ($code) use ($marker, &$codes) {
             $key = $marker . count($codes) . 'x';
             $codes[$key] = $code;
             return $key;
         };
+        $flush = function () use (&$block, &$out, $hold) {
+            if ($block !== array()) {
+                $out[] = $hold(implode("\n", $block));
+                $block = array();
+            }
+        };
         foreach (explode("\n", str_replace(array("\r\n", "\r"), "\n", $text)) as $line) {
             if ($fence !== '') {
+                $block[] = $line;
                 if (preg_match('/^ {0,3}' . preg_quote($fence[0], '/') . '{' . strlen($fence) . ',}\s*$/', $line)) {
                     $fence = '';
+                    $flush();
                 }
-                $out[] = $hold($line);
                 continue;
             }
             if (preg_match('/^ {0,3}(`{3,}|~{3,})/', $line, $m)) {
+                $flush();
                 $fence = $m[1];
-                $out[] = $hold($line);
+                $block[] = $line;
                 continue;
             }
             $indented = strlen($line) - strlen(ltrim($line, " \t")) >= 4 || str_starts_with($line, "\t");
             if ($indented && $codeAllowed && !preg_match('/^\s*<\/?(inst|lock|postmeeting|host|student)(\s|>|$)/i', $line)) {
-                $out[] = $hold($line);
+                $block[] = $line;
                 continue;
             }
+            if ($block !== array() && trim($line) === '') {
+                $block[] = $line; # a blank line inside an indented block
+                continue;
+            }
+            $flush();
             $masked = preg_replace_callback('/(`+)(?!`)(.+?)(?<!`)\1(?!`)/', static function ($m) use ($hold) {
                 return $hold($m[0]);
             }, $line);
             $out[] = $masked === null ? $line : $masked;
             $codeAllowed = trim($line) === '' || ($indented && $codeAllowed);
         }
+        $flush();
         return array(implode("\n", $out), $codes);
     }
 
@@ -635,7 +650,7 @@ final class Markdown
         # (code spans and math fail closed: unprocessed, their text would be read as HTML, L-71)
         #    (an HTML tag that starts first wins, so a backtick inside an attribute value does not
         #    start a code span, as in CommonMark, L-85)
-        $text = $this->orFail(preg_replace_callback('/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"\'>\/=]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*\s*\/?>/s', function ($m) {
+        $text = $this->orFail(preg_replace_callback('/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"\'>\/=<]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*+\s*\/?>/s', function ($m) {
             if (!isset($m[1]) || $m[1] === '') {
                 return $m[0]; # a tag: left for step 4
             }
@@ -669,8 +684,10 @@ final class Markdown
         }, $text));
 
         # 4. Raw inline HTML (and Cal4 tags) pass through unchanged
-        #    (a tag with quoted values first, so <!-- or > inside a value stays in the tag)
-        $text = $this->orFail(preg_replace_callback('/<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"\'>\/=]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*\s*\/?>|<!--.*?-->|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*?)?\s*\/?>/s', function ($m) {
+        #    (a tag with quoted values first, so <!-- or > inside a value stays in the tag; the
+        #    attribute loop is possessive and names never take "<", so prose such as "x <y"
+        #    many times stays linear, L-106)
+        $text = $this->orFail(preg_replace_callback('/<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"\'>\/=<]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*+\s*\/?>|<!--.*?-->|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*?)?\s*\/?>/s', function ($m) {
             return $this->hold($m[0]);
         }, $text));
 

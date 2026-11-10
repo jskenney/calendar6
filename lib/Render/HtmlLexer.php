@@ -54,6 +54,14 @@ final class HtmlLexer
         return $m[0][1] + strlen($m[0][0]);
     }
 
+    /** Whether a start tag's text ends in a "/" of its own (not the end of an unquoted value). */
+    private static function selfClosing(string $tag): bool
+    {
+        $attributes = self::attributes($tag);
+        $last = $attributes === [] ? 1 + strcspn($tag, " \t\n\r\f/>", 1) : end($attributes)[5];
+        return (bool) preg_match('#/\s*>?$#', substr($tag, $last));
+    }
+
     /** The end of the tag that starts at $lt (its name included), read with the browser's quote rules. */
     public static function tagEnd(string $html, int $lt): int
     {
@@ -260,7 +268,9 @@ final class HtmlLexer
             // </svg> or a tag such as <p>); read them as bounded, both ways (L-77)
             // (inside an integration point such as <foreignObject> or <mi> content is HTML again:
             // breakout tags do not end the foreign content there, and script/style are raw, L-88)
-            $selfClosing = str_ends_with(substr($html, $lt, $end - $lt), '/>');
+            // self-closing only for a "/" of its own, not the end of an unquoted value
+            // (<svg width=10/> opens an svg, L-101)
+            $selfClosing = self::selfClosing(substr($html, $lt, $end - $lt));
             // a stack of namespaces (L-95): svg and math push their own, an integration point
             // pushes HTML only in the namespace it belongs to (foreignObject, desc, title under
             // svg; mi, mo, mn, ms, mtext and annotation-xml with an HTML encoding under math),
@@ -268,8 +278,12 @@ final class HtmlLexer
             $current = $stack === [] ? 'html' : end($stack)[0];
             $inForeign = $current !== 'html'; // where this tag itself stands
             if ($closing) {
-                if ($stack !== [] && end($stack)[1] === $name) {
-                    array_pop($stack);
+                // to the nearest open element of that name, as a browser walks up (L-101)
+                for ($k = count($stack) - 1; $k >= 0; $k--) {
+                    if ($stack[$k][1] === $name) {
+                        array_splice($stack, $k);
+                        break;
+                    }
                 }
             } elseif (!$selfClosing && ($name === 'svg' || $name === 'math')) {
                 $stack[] = [$name, $name];
@@ -282,7 +296,13 @@ final class HtmlLexer
                     array_pop($stack);
                 }
             }
-            $asBounded = !$closing && !$plain && (in_array($name, self::BOUNDED, true) || ($inForeign && ($name === 'script' || $name === 'style')));
+            // while any svg or math is open, script and style are read both ways, whatever the
+            // lexer thinks of integration points (the browser's namespace rules are subtle, L-101)
+            $anyForeign = false;
+            foreach ($stack as [$kind]) {
+                $anyForeign = $anyForeign || $kind !== 'html';
+            }
+            $asBounded = !$closing && !$plain && (in_array($name, self::BOUNDED, true) || (($inForeign || $anyForeign) && ($name === 'script' || $name === 'style')));
             if ($asBounded) {
                 $close = $name === 'plaintext' || ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);
                 if ($close === false) {

@@ -713,10 +713,13 @@ comment (`<!DOCTYPE ...>`, `<![CDATA[ ...` outside `<svg>`/`<math>`, `<? ...>`) 
 Inside `<svg>`/`<math>`, the content of `<foreignObject>`, `<desc>`, `<title>`, `<mi>` and the
 like is HTML again (L-88); this follows the namespace an element is in (`<desc>` only under
 `<svg>`, `<mi>` only under `<math>`, `<annotation-xml>` only with an HTML encoding, and an
-`<svg>` inside `<foreignObject>` is foreign again, L-95). In an injected file, hidden blocks in attribute values follow that
+`<svg>` inside `<foreignObject>` is foreign again, L-95), and while any `<svg>` or `<math>` is
+open, `<script>` and `<style>` are read both ways whatever the lexer makes of integration points
+(L-101). In an injected file, hidden blocks in attribute values follow that
 file's own place, and its `<replace>` values are filled in before its links are made relative
 to the page (L-87, L-90); its `<url>` values are filled in with the whole page, so the page's
-context counts (L-97), and a `<url>` in the path of its link is relative to the page; `<codeinject>` hides blocks in attribute values too (L-86). `<replace>` and `<url>` tags end where a browser
+context counts (L-97), and a `<url>` in the path of its link is relative to the page; `<codeinject>` hides blocks in attribute values too (L-86), and in a Markdown page's code as well
+(the page's own reading of what is code may differ, L-102). `<replace>` and `<url>` tags end where a browser
 would end them. `<codeinject>` of a Markdown page sets its code aside before hiding, so a code
 sample such as `` `<a href="` `` can not swallow the blocks after it. Inside `<svg>` and `<math>`,
 where a browser reads `<script>` and `<style>` as markup, they are read both ways too (L-77). A
@@ -810,7 +813,7 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | # | Requirement | In v4 |
 |---|---|---|
 | R1 | **Targets** at every level: a whole type, one event, a box of every event of a type, a box of one event, one file of one event | `lab`, `lab_6`, `class/notes`, `class_25/notes`, `lab_3/filename.ext` |
-| R2 | **A file name alone** matches that file in every event | `homework01.html` |
+| R2 | **A file name alone** matches that file in every event, also in a subfolder (`solution.pdf` matches `img/solution.pdf`, L-105) | `homework01.html` |
 | R3 | **Wildcards and synonyms** | `class_2/all` (= `class_2`), `class/*`, `class_2/*`, `*/homework`, `*` |
 | R4 | **Always / never** | `1 1 1999`, `99 99 9999` |
 | R5 | **Absolute dates** | `12 15 2020`, `12 15` (the year from `$YEAR`) |
@@ -998,7 +1001,8 @@ What the endpoints expect from it (the contract):
 - **Routes:** `html.php` writes links to other pages as `#/view/KEY`, with the link's query string
   if it had one (`#/view/KEY?week=3`, L-75); the front end shows that page
   (`html.php?file=KEY&week=3`) when the route changes, so the query fills `<url>` tags there.
-  `file`, `full`, `lock` and `csrf` are never taken from a link's query. Links to other files are absolute `get.php` URLs
+  `file`, `full`, `lock` and `csrf` are never taken from a link's query, also not under a
+  spelling PHP reads as one of them (`file%00x`, `file[]`, L-104). Links to other files are absolute `get.php` URLs
   and work as they are.
 - **Hidden links:** `<a data-cal6-hidden="1">` (no `href`) is a link to something the viewer may
   not see; show it as plain text.

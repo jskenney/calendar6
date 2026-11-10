@@ -267,18 +267,28 @@ final class PageRenderer
         if (preg_match('/\.md$/i', $path)) {
             [$source, $codes] = Markdown::maskCode($source);
         }
-        // until nothing changes, as render() does (L-61, L-69)
+        // until nothing changes, as render() does (L-61, L-69); the code set aside is hidden in
+        // too, since the page's own reading of it may differ (a list item's indented line is
+        // text there): fail closed (L-102)
+        $source = $this->hideForSourceToFixedPoint($source, $place);
+        foreach ($codes as $key => $code) {
+            $codes[$key] = $this->hideForSourceToFixedPoint($code, $place);
+        }
+        return strtr($source, $codes);
+    }
+
+    private function hideForSourceToFixedPoint(string $source, Place $place): string
+    {
         for ($round = 0; ; $round++) {
             $before = $source;
             $source = $this->hideForSourceOnce($source, $place);
             if ($source === $before) {
-                break;
+                return $source;
             }
             if ($round >= 8) {
                 self::failed();
             }
         }
-        return strtr($source, $codes);
     }
 
     private function hideForSourceOnce(string $source, Place $place): string
@@ -678,7 +688,8 @@ final class PageRenderer
         // other: no values there (M-37)
         $bounded = [];
         $tokens = [];
-        foreach (HtmlLexer::scan($marked) as $token) {
+        $all = HtmlLexer::scan($marked);
+        foreach ($all as $token) {
             if ($token[0] === 'bounded') {
                 $bounded[] = [$token[1], $token[2]];
             } else {
@@ -733,8 +744,18 @@ final class PageRenderer
             }
         }
         // a script or style that is never closed runs to the end in a browser: nothing after it
-        foreach ($tokens as $t => $token) {
-            if ($token[0] === 'tag' && !$token[4] && in_array($token[3], ['script', 'style'], true) && ($tokens[$t + 1][0] ?? '') !== 'raw') {
+        // (a script or style inside a textarea or noscript body, or one read as bounded inside an
+        // svg, is not one: L-103)
+        foreach ($all as $t => $token) {
+            if ($token[0] !== 'tag' || $token[4] || !in_array($token[3], ['script', 'style'], true)
+                || in_array($all[$t + 1][0] ?? '', ['raw', 'bounded'], true)) {
+                continue;
+            }
+            $inside = false;
+            foreach ($bounded as [$from, $to]) {
+                $inside = $inside || ($token[1] >= $from && $token[1] < $to);
+            }
+            if (!$inside) {
                 if (preg_match_all('/' . $marker . '(\d+)x/', substr($marked, $token[2]), $after) !== false) {
                     foreach ($after[1] as $number) {
                         unset($allowed[(int) $number]);
@@ -954,7 +975,10 @@ final class PageRenderer
             // parameters can not be set this way
             $kept = [];
             foreach ($query === '' ? [] : explode('&', $query) as $pair) {
-                $name = strtolower(rawurldecode(explode('=', $pair, 2)[0]));
+                // the name as PHP will read it: cut at NUL, "name[...]" is "name", leading spaces
+                // go and space or "." become "_" (file%00x=, file[]=, L-104)
+                $name = explode("\0", urldecode(explode('=', $pair, 2)[0]), 2)[0];
+                $name = strtolower(strtr(explode('[', ltrim($name, ' '), 2)[0], ' .', '__'));
                 if ($pair !== '' && !in_array($name, ['file', 'full', 'lock', 'csrf'], true)) {
                     $kept[] = $pair;
                 }

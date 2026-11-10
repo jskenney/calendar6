@@ -230,6 +230,16 @@ INI;
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/instructor.md', self::now($course)), 'instructor.md fills the instructor box (M-41)');
     }
 
+    public function testAFileNameRuleMatchesInSubfolders(): void
+    {
+        $course = $this->load([
+            'config/default.ini' => "class_1 = always\nsolution.pdf = never\n",
+            'class/01.Introduction/index.html' => '<a href="img/solution.pdf">s</a>',
+            'class/01.Introduction/img/solution.pdf' => 'S',
+        ]);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/img/solution.pdf', self::now($course)), 'R2 also in a subfolder (L-105)');
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);

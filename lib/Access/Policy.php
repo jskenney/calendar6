@@ -155,6 +155,11 @@ final class Policy
     {
         $event = "{$type}_$number";
         $targets = ["$event/$file", $file];
+        if (str_contains($file, '/')) {
+            // "a file name alone matches that file in every event" (R2), also in a subfolder:
+            // solution.pdf = never hides img/solution.pdf too (L-105)
+            $targets[] = basename($file);
+        }
         if ($box !== null) {
             $targets[] = "$event/$box";
             $targets[] = "$type/$box";
