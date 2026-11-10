@@ -57,6 +57,18 @@ final class IniAndTimeTest extends TestCase
         $this->assertSame(1, count(array_filter($config->problems, static fn ($p): bool => str_contains($p->message, 'proxy.example'))), 'a host name is a problem');
     }
 
+    public function testForwardedForWithPortsAndUnknownHops(): void
+    {
+        $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $dir = Fixture::course(['config/config.ini' => $template . "\n[server]\ntrusted_proxies = 10.0.0.1\n"]);
+        $config = CourseConfig::load($dir);
+        Fixture::remove($dir);
+        $address = static fn (string $xff): string => (new \Cal6\Http\Context($dir, $config, ['REMOTE_ADDR' => '10.0.0.1', 'HTTP_X_FORWARDED_FOR' => $xff], [], [], time()))->address();
+        $this->assertSame('203.0.113.7', $address('9.9.9.9, 203.0.113.7:5555'), 'a port is dropped (L-93)');
+        $this->assertSame('2001:db8::1', $address('9.9.9.9, [2001:db8::1]:443'));
+        $this->assertSame('10.0.0.1', $address('9.9.9.9, unknown'), 'a hop that is not an address ends the walk: never the client\'s own entry');
+    }
+
     public function testOddLoginAttemptsKeepTheDefault(): void
     {
         $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');

@@ -1,9 +1,10 @@
-# The course root: never serve a name that starts with a dot (.git, .env, ...) or an .ini file,
+# The course root: never serve a name that starts with a dot (.git, .env, ...), an .ini file or a
+# Markdown page (README.md, notes.md: pages go through html.php, DOC-20),
 # anywhere under the course, also through calendar/ (M-12); never run or send a PHP file
 # except the endpoints calendar/php/<name>.php (L-27, L-28), also not through a path after the
 # script name (report.php/calendar/php/get.php, M-20). Needs only AllowOverride AuthConfig.
 <IfModule mod_authz_core.c>
-    <If "%{REQUEST_URI} =~ m#/\.(?!well-known/)# || %{REQUEST_URI} =~ m#\.ini$#i">
+    <If "%{REQUEST_URI} =~ m#/\.(?!well-known/)# || %{REQUEST_URI} =~ m#\.(ini|md)$#i">
         Require all denied
     </If>
     <If "(%{REQUEST_URI} =~ m#\.(php\d*|phtml?|phar|phps|pht|inc)([^a-z0-9/][^/]*)?$#i) && !(%{REQUEST_URI} =~ m#/calendar/php/[a-z]+\.php$#)">
@@ -14,7 +15,7 @@
     </If>
 </IfModule>
 <IfModule !mod_authz_core.c>
-    <FilesMatch "(^\.|\.ini$)">
+    <FilesMatch "(^\.|\.ini$|\.md$)">
         Order allow,deny
         Deny from all
     </FilesMatch>

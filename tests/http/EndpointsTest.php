@@ -371,6 +371,19 @@ HTML;
         $this->assertTrue($unknown > $known * 0.4, sprintf('an unknown user costs about as much as the costliest account (L-63): %.3f s vs %.3f s', $unknown, $known));
     }
 
+    public function testLockCodesInsideHiddenBlocksAreNotAccepted(): void
+    {
+        $client = $this->start([
+            'class/01.Introduction/index.html' => '<lock code="open1">A</lock><inst><lock code="hidden1">B</lock></inst>',
+        ]);
+        $key = $client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['files'][0]['key'] ?? '';
+        preg_match('/name="csrf" value="([^"]+)"/', $client->get("calendar/php/html.php?file=$key")->body, $t);
+        $hidden = $client->post("calendar/php/html.php?file=$key", ['lock' => 'hidden1', 'csrf' => $t[1] ?? '']);
+        $this->assertSame('', $hidden->header('set-cookie'), 'a code inside <inst> is not accepted (L-91)');
+        $open = $client->post("calendar/php/html.php?file=$key", ['lock' => 'open1', 'csrf' => $t[1] ?? '']);
+        $this->assertContains('cal6_', $open->header('set-cookie'), 'a reachable code is');
+    }
+
     public function testRateLimitsAndProxies(): void
     {
         $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');

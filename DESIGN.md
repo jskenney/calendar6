@@ -704,14 +704,20 @@ text around it into a new comment or block that still carries hidden content. A 
 tag counts only where both readings see a closing tag (with and without these elements, since a
 `<title>` inside `<svg>` is markup), so a `</inst>` written inside a `<textarea>` never closes an
 `<inst>` opened outside it. End tags are read as a browser reads them (quoted attributes, and
-`</` followed by a non-letter is a comment). `<replace>` and `<url>` tags end where a browser
+`</` followed by a non-letter is a comment). A comment ends at `-->` or `--!>` (M-42); a bogus
+comment (`<!DOCTYPE ...>`, `<![CDATA[ ...` outside `<svg>`/`<math>`, `<? ...>`) ends at the first
+`>` as in a browser, but before an opening tag written in it, so that tag still counts (L-84).
+Inside `<svg>`/`<math>`, the content of `<foreignObject>`, `<desc>`, `<title>`, `<mi>` and the
+like is HTML again (L-88). In an injected file, hidden blocks in attribute values follow that
+file's own place, and its `<replace>` and `<url>` values are filled in before its links are made
+relative to the page (L-87, L-90); `<codeinject>` hides blocks in attribute values too (L-86). `<replace>` and `<url>` tags end where a browser
 would end them. `<codeinject>` of a Markdown page sets its code aside before hiding, so a code
 sample such as `` `<a href="` `` can not swallow the blocks after it. Inside `<svg>` and `<math>`,
 where a browser reads `<script>` and `<style>` as markup, they are read both ways too (L-77). A
 hidden block written inside an attribute value (a tooltip: `title="Hint: <inst>42</inst>"`) is
 removed for viewers who may not see it, and its tags go in any case (L-79). Comments and the
-doctype inside a `<textarea>`, `<xmp>` or `<title>` are text the reader sees, so they stay,
-unless they hold a block tag (L-82). Blocks of one tag
+doctype inside a `<textarea>`, `<xmp>` or `<title>` (not one inside `<svg>`) are text the
+reader sees, so they stay, unless they hold a block tag (L-82, L-89). Blocks of one tag
 nested more than 256 deep are removed with their content.
 
 **`<url>` and other sites (DOC-18):** in `href` and `src`, `<url>` accepts any relative or
@@ -727,7 +733,9 @@ an `<inst>` inside a fenced code block (or a code span) is shown as code, so to 
 block, put `<inst>` and `</inst>` on lines of their own around the fence. Image alt text, link
 titles and heading ids are plain text: a hidden block written there is removed, with its
 content, for everyone, and so is one in a link's destination. In math (`\( \)`, `\[ \]`,
-`$$ $$`) a block tag is still markup, so `\( x = <inst>42</inst> \)` hides the 42 (M-40). A link reference definition inside
+`$$ $$`) a block tag is still markup, so `\( x = <inst>42</inst> \)` hides the 42 (M-40). An HTML
+tag that starts before a backtick wins over a code span, as in CommonMark, so a backtick inside
+an attribute value (`<kbd title="`">`) does not turn the rest into code (L-85). A link reference definition inside
 a hidden block is part of the block, not a definition.
 `<codeinject>` of a page shows its source without what the viewer may not see. If any other
 pattern fails on a page, the request fails rather than sending the page half processed.
@@ -737,7 +745,7 @@ pattern fails on a page, the request fails rather than sending the page half pro
 | `<inst>` ... `</inst>` | only for instructors (`instructor = true`) |
 | `<student>` ... `</student>` | answers behind a "reveal" icon (sent to everyone, hidden only visually, as v4) |
 | `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times). In an injected or codeinjected page, that page's own event decides (a file without an event, such as `shared/`, follows the page that injects it). A page with no event at all (a `paths.ini` page) has no meeting to wait for: its `<postmeeting>` is always shown (DOC-19), so do not use it there to hide anything |
-| `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it) |
+| `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it). Only codes of `<lock>`s this viewer can reach count: one inside a hidden block (`<inst>`, an unmet `<postmeeting>`, another `<host>`) is not accepted (L-91) |
 | `<host server="name">` ... `</host>` | shown only when served by that server |
 | `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`; compared by real path, so a type directory that is a link still counts, L-83) |
 | `<codeinject src="file">` | another file, escaped so it shows as source code |
@@ -1036,11 +1044,18 @@ The plan:
 - **Finding the course** relies on `SCRIPT_FILENAME` keeping the linked path; with PHP-FPM set it
   from `$document_root$fastcgi_script_name` (not `$realpath_root`). If it is resolved, every
   endpoint answers `500` instead of guessing.
+- **Files at the course root are served by the web server as they are** (DOC-20): only the
+  content directories (`class/`, `lab/`, `pages/`, `shared/`, `config/`, ...) are closed. The
+  template refuses Markdown files (`README.md`) and `.ini` files everywhere, but an `.html` page
+  or any other file kept at the root next to `index.html` is sent raw, `<inst>` and all: keep
+  pages in `pages/` (through `paths.ini`) and material in the event directories.
 - **Reverse proxies:** list them in `config.ini` `[server] trusted_proxies`; only then are
   `X-Forwarded-For` (the client's address, for rate limits) and `X-Forwarded-Proto` (HTTPS, for
   the `Secure` cookie flag) believed. Entries are addresses or CIDR ranges (`10.0.0.0/8`),
   compared in binary (any IPv6 spelling, and `::ffff:10.0.0.5` is `10.0.0.5`); anything else is
-listed as a problem and ignored.
+  listed as a problem and ignored. In `X-Forwarded-For` a port is dropped, and a hop that is not
+  an address (`unknown`) ends the walk: the proxy's own address is used then, never an entry to
+  its left (L-93).
 - **Sessions:** a login lasts `[users] session`; Calendar 6 sets PHP's `session.gc_maxlifetime`
   to match and keeps the course's sessions in its private directory
   (`<temp>/cal6-<uid>-<hash>/sessions`) when it can, so another application's cleanup does not

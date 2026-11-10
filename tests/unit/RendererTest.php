@@ -635,6 +635,47 @@ final class RendererTest extends TestCase
         $this->assertNotContains('notes.md2', json_encode($json), 'and calendar.php does not list it');
     }
 
+    public function testReview14Leftovers(): void
+    {
+        $cases = [
+            'bang' => '<p>Q1 <!-- old note --!> <inst>The answer is <!-- check --> U1</inst></p>',
+            'cdata' => '<![CDATA[ if a > b <inst> ]]> U2 </inst><p>END</p>',
+            'foreign' => '<math><mi><b>x</b></mi><style><inst>U3</inst></style></math>',
+            'codeattr' => '<codeinject src="part.html">',
+        ];
+        $files = [
+            'config/default.ini' => "class_1 = always\nclass_2 = always\n",
+            'class/01.Introduction/part.html' => '<img title="tip <inst>U4</inst>" src="x.png">',
+            'class/01.Introduction/md.md' => "Run <kbd title=\"`\">Ctrl</kbd> then <inst>U5</inst> then <kbd title=\"`\">Esc</kbd>.\n\n\$\$ y = <inst title=\"a>b\">U6</inst> \$\$ AFTER\n\nQ <!-- x --!> <inst>U7 <!-- c --></inst>\n",
+            'class/01.Introduction/c.html' => '<noscript><!-- C1 --></noscript><svg><title><!-- C2 --></title></svg><textarea><!-- KEEP --></textarea>',
+            'class/01.Introduction/inj.html' => '<inject src="../02.Topic2/part.html"><inject src="../../shared/s.html">',
+            'class/02.Topic2/part.html' => '<p>Q <postmeeting>U8</postmeeting></p><abbr title="Answer: <postmeeting>U9</postmeeting>">a</abbr>',
+            'shared/s.html' => '<a href="page.html#<url value=sec default=top>">p</a><img src="logo-<replace value=course>.png">',
+            'shared/logo-AB123.png' => 'L',
+            'shared/page.html' => 'P',
+        ];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html;
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $this->assertSame(0, preg_match('/U[1-4]\b/', $this->render($course, "class_1/$name.html")), "hidden (M-42, L-84, L-88, L-86): $name");
+        }
+        $page = $this->render($course, 'class_1/md.md');
+        $this->assertSame(0, preg_match('/U[5-7]\b/', $page), 'Markdown: backticks in attributes, math tags with ">", --!> (L-85, L-94, M-42): ' . $page);
+        $this->assertContains('AFTER', $page, 'the rest of the page stays (L-94)');
+        $page = $this->render($course, 'class_1/c.html');
+        $this->assertNotContains('C1', $page, 'comments in noscript and svg are removed (L-89)');
+        $this->assertNotContains('C2', $page);
+        $this->assertContains('<!-- KEEP -->', $page);
+        $before = $course->events['class_2']->time->start()->getTimestamp() - 60;
+        $page = $this->render($course, 'class_1/inj.html', [], null, $before);
+        $this->assertSame(0, preg_match('/U[89]\b/', $page), 'an injected page\'s attributes follow its own event (L-87): ' . $page);
+        $this->assertContains('#/view/', $page, 'value tags in an injected file are filled in before its links are rebased (L-90): ' . $page);
+        $this->assertContains('#top', $page);
+        $this->assertContains('get.php?file=', $page);
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

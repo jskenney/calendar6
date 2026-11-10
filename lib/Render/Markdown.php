@@ -117,9 +117,10 @@ final class Markdown
             $length = strlen($line);
             while ($pos < $length) {
                 if ($inComment) {
-                    $end = strpos($line, '-->', $pos);
-                    if ($end === False) { $pos = $length; break; }
-                    $pos = $end + 3;
+                    # "-->" or "--!>" ends it, as in a browser (M-42)
+                    $end = HtmlLexer::commentEnd($line, $pos);
+                    if ($end >= $length && substr($line, -3) !== '-->' && substr($line, -4) !== '--!>') { $pos = $length; break; }
+                    $pos = $end;
                     $inComment = False;
                     continue;
                 }
@@ -432,7 +433,7 @@ final class Markdown
                     while ($i < $n) {
                         $block[] = $lines[$i];
                         $i++;
-                        if (strpos(end($block), '-->') !== False) { break; }
+                        if (strpos(end($block), '-->') !== False || strpos(end($block), '--!>') !== False) { break; }
                     }
                 } else {
                     while ($i < $n && !$this->isBlank($lines[$i])) {
@@ -632,7 +633,12 @@ final class Markdown
     private function inline($text) {
         # 1. Code spans
         # (code spans and math fail closed: unprocessed, their text would be read as HTML, L-71)
-        $text = $this->orFail(preg_replace_callback('/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/s', function ($m) {
+        #    (an HTML tag that starts first wins, so a backtick inside an attribute value does not
+        #    start a code span, as in CommonMark, L-85)
+        $text = $this->orFail(preg_replace_callback('/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"\'>\/=]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*\s*\/?>/s', function ($m) {
+            if (!isset($m[1]) || $m[1] === '') {
+                return $m[0]; # a tag: left for step 4
+            }
             $code = $m[2];
             if (strlen($code) > 2 && $code[0] === ' ' && substr($code, -1) === ' ' && trim($code) !== '') {
                 $code = substr($code, 1, -1);
@@ -643,7 +649,7 @@ final class Markdown
         # 2. Math for MathJax: keep exactly as written (only HTML-escape it)
         #    (hidden block tags inside math stay markup, so the block is still hidden, M-40)
         $text = $this->orFail(preg_replace_callback('/\$\$.+?\$\$|\\\\\(.+?\\\\\)|\\\\\[.+?\\\\\]/s', function ($m) {
-            $parts = preg_split('/(<\/?(?:inst|lock|postmeeting|host|student)(?=[\s>\/])[^>]*>)/i', $m[0], -1, PREG_SPLIT_DELIM_CAPTURE);
+            $parts = preg_split('/(<\/?(?:inst|lock|postmeeting|host|student)(?=[\s>\/])(?:[^>"\']|"[^"]*"|\'[^\']*\')*>)/i', $m[0], -1, PREG_SPLIT_DELIM_CAPTURE);
             if ($parts === false) {
                 throw new \RuntimeException('markdown: math could not be processed');
             }

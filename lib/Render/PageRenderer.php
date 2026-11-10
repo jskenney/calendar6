@@ -60,6 +60,29 @@ final class PageRenderer
         return $this->injects($this->load($place->file->realPath), dirname($place->file->realPath), 0, $place);
     }
 
+    /**
+     * The page as this viewer may see it before locks: injected, with <postmeeting>, <inst>,
+     * <host> and comments handled, so lock codes are taken only from <lock>s this viewer can
+     * reach (a code inside a hidden block is not accepted, L-91).
+     */
+    public function visibleSource(Place $place): string
+    {
+        $html = $this->expandedSource($place);
+        for ($round = 0; ; $round++) {
+            $before = $html;
+            $html = $this->postmeeting($html, $place);
+            $html = self::block($html, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
+            $html = $this->host($html);
+            $html = self::stripComments($html);
+            if ($html === $before) {
+                return $html;
+            }
+            if ($round >= 8) {
+                self::failed();
+            }
+        }
+    }
+
     /** Constant-time comparison of a code with each of the page's codes (L-5). @param list<string> $codes */
     public static function codeMatches(string $code, array $codes): bool
     {
@@ -128,7 +151,8 @@ final class PageRenderer
         $range = [-1, -1];
         foreach (HtmlLexer::scan($html) as $token) {
             if ($token[0] === 'bounded') {
-                $range = [$token[1], $token[2]];
+                // only these show their content as text, and not inside <svg>/<math> (L-89)
+                $range = in_array($token[3], ['textarea', 'xmp', 'title'], true) && empty($token[4]) ? [$token[1], $token[2]] : [-1, -1];
                 continue;
             }
             if ($token[0] === 'comment') {
@@ -221,9 +245,16 @@ final class PageRenderer
                 return htmlspecialchars($source, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
             $inner = $this->postmeeting($this->load($real), $owner);
+            // hidden blocks in its attribute values follow its own place too (L-87)
+            $inner = $this->hideInAttributes($inner, $owner);
             $inner = $depth < self::MAX_INJECT_DEPTH ? $this->injects($inner, dirname($real), $depth + 1, $owner, [...$ancestors, $real]) : $inner;
-            // its links, <calphp> and <showlink> are relative to the injected file, not the page (L-21)
-            return dirname($real) === $dir ? $inner : self::rebase($inner, dirname($real), $dir);
+            if (dirname($real) === $dir) {
+                return $inner;
+            }
+            // its links, <calphp> and <showlink> are relative to the injected file, not the page
+            // (L-21); value tags are filled in first, so href="page.html#<url ...>" and
+            // src="logo-<replace ...>.png" are rebased as the values make them (L-90)
+            return self::rebase($this->url($this->replace($inner, $place)), dirname($real), $dir);
         });
     }
 
@@ -252,6 +283,7 @@ final class PageRenderer
     private function hideForSourceOnce(string $source, Place $place): string
     {
         $source = self::stripComments($source); // a commented-out block is still hidden content
+        $source = $this->hideInAttributes($source, $place); // and so is one in an attribute (L-86)
         $source = $this->postmeeting($source, $place);
         $source = self::block($source, 'inst', fn (string $inner, string $opening): string => $this->viewer->instructor ? $opening . $inner . '</inst>' : '');
         $source = $this->host($source);
@@ -315,14 +347,16 @@ final class PageRenderer
     private static function rebase(string $html, string $fromDir, string $toDir): string
     {
         $fix = static function (string $url) use ($fromDir, $toDir): string {
-            if ($url === '' || self::isAbsolute($url)) {
+            // a value from <url> keeps its mark where it was, path or fragment (link rewriting
+            // needs it, M-36)
+            $cut = strcspn($url, '?#');
+            [$path, $suffix] = [substr($url, 0, $cut), substr($url, $cut)];
+            $mark = str_contains($path, self::URL_MARK) ? self::URL_MARK : '';
+            $path = str_replace(self::URL_MARK, '', $path);
+            if ($path === '' || self::isAbsolute($path . str_replace(self::URL_MARK, '', $suffix))) {
                 return $url;
             }
-            $suffix = '';
-            if (($cut = strcspn($url, '?#')) < strlen($url)) {
-                [$url, $suffix] = [substr($url, 0, $cut), substr($url, $cut)];
-            }
-            return self::relativePath($toDir, $fromDir . '/' . $url) . $suffix;
+            return $mark . self::relativePath($toDir, $fromDir . '/' . $path) . $suffix;
         };
         $html = self::replaceTags($html, self::LINK_ELEMENTS, static function (string $element, string $tag) use ($fix): string {
             return self::editLinks($tag, static function (string $attribute, string $value) use ($fix): string {
@@ -837,7 +871,8 @@ final class PageRenderer
     private function rewrite(string $value, string $dir, Place $place, string $element): ?string
     {
         // a value filled in by <url> carries the marker: the visitor chose this target (M-36)
-        $fromUrl = str_contains($value, self::URL_MARK);
+        // (only a value in the path counts: page.html#<url ...> still links to page.html)
+        $fromUrl = str_contains(substr($value, 0, strcspn($value, '?#')), self::URL_MARK);
         $value = str_replace(self::URL_MARK, '', $value);
         if ($value === '' || self::isAbsolute($value)) {
             return $value;

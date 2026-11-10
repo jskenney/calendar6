@@ -25,6 +25,38 @@ final class HtmlLexer
      * attribute name or an unquoted value, and the tag ends at the first ">" outside a quoted
      * value.
      */
+    /**
+     * Where a bogus comment (<!DOCTYPE ...>, <![CDATA[ ...>, <? ...>, </1 ...>) ends: a browser
+     * ends it at the first ">", even one inside a tag written in it (<![CDATA[ <inst>S</inst>
+     * shows S); the lexer ends it before an opening tag instead, so that tag still counts, and
+     * lets it swallow a closing tag as the browser does: hidden under both readings (L-84).
+     */
+    private static function bogusEnd(string $html, int $from): int
+    {
+        $gt = strpos($html, '>', $from);
+        $lt = strpos($html, '<', $from);
+        // an opening tag inside still counts (fail closed); a closing tag the browser swallows
+        // does not, as in the browser
+        if ($lt !== false && ($gt === false || $lt < $gt) && ctype_alpha($html[$lt + 1] ?? '')) {
+            return $lt;
+        }
+        return $gt === false ? strlen($html) : $gt + 1;
+    }
+
+    /** Where a comment whose text starts at $from ends: after "-->" or "--!>", as in a browser (M-42). */
+    public static function commentEnd(string $html, int $from): int
+    {
+        $a = strpos($html, '-->', $from);
+        $b = strpos($html, '--!>', $from);
+        if ($a === false && $b === false) {
+            return strlen($html);
+        }
+        if ($b === false || ($a !== false && $a < $b)) {
+            return $a + 3;
+        }
+        return $b + 4;
+    }
+
     /** The end of the tag that starts at $lt (its name included), read with the browser's quote rules. */
     public static function tagEnd(string $html, int $lt): int
     {
@@ -147,6 +179,9 @@ final class HtmlLexer
      */
     private const BOUNDED = ['textarea', 'title', 'noscript', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext'];
 
+    /** Elements inside <svg>/<math> whose content a browser reads as HTML. */
+    private const INTEGRATION = ['foreignobject', 'desc', 'title', 'mi', 'mo', 'mn', 'ms', 'mtext', 'annotation-xml'];
+
     /** Tags that end <svg>/<math> foreign content in a browser. */
     private const BREAKOUT = ['b', 'big', 'blockquote', 'body', 'br', 'center', 'code', 'dd', 'div', 'dl', 'dt', 'em', 'embed',
         'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'hr', 'i', 'img', 'li', 'listing', 'menu', 'meta', 'nobr', 'ol', 'p', 'pre',
@@ -176,6 +211,7 @@ final class HtmlLexer
         $tokens = [];
         $noClose = [];
         $foreign = 0;
+        $integration = 0;
         $length = strlen($html);
         $pos = 0;
         while (($lt = strpos($html, '<', $pos)) !== false) {
@@ -186,25 +222,23 @@ final class HtmlLexer
                 } elseif (substr_compare($html, '->', $lt + 4, 2) === 0) {
                     $end = $lt + 6;                      // <!--->
                 } else {
-                    $close = strpos($html, '-->', $lt + 4);
-                    $end = $close === false ? $length : $close + 3;
+                    $end = self::commentEnd($html, $lt + 4);
                 }
                 $tokens[] = ['comment', $lt, $end];
                 $pos = $end;
                 continue;
             }
-            if (substr_compare($html, '<![CDATA[', $lt, 9, true) === 0) {
-                // a browser ends this at the first ">" and shows the rest; removing the whole
-                // section up to "]]>" fails closed instead (L-36)
+            if ($foreign > 0 && substr_compare($html, '<![CDATA[', $lt, 9, true) === 0) {
+                // a real CDATA section only inside <svg> or <math>; elsewhere a browser reads it
+                // as a bogus comment up to the first ">" (below), and so does the lexer (L-84)
                 $close = strpos($html, ']]>', $lt + 9);
                 $end = $close === false ? $length : $close + 3;
                 $tokens[] = ['comment', $lt, $end];
                 $pos = $end;
                 continue;
             }
-            if ($next === '!' || $next === '?') {         // doctype, processing instruction
-                $close = strpos($html, '>', $lt + 2);
-                $end = $close === false ? $length : $close + 1;
+            if ($next === '!' || $next === '?') {         // doctype, processing instruction, CDATA
+                $end = self::bogusEnd($html, $lt + 2);
                 $tokens[] = ['comment', $lt, $end];
                 $pos = $end;
                 continue;
@@ -214,8 +248,7 @@ final class HtmlLexer
             if (!ctype_alpha($html[$nameStart] ?? '')) {
                 if ($closing && $nameStart < $length) {
                     // "</" and a non-letter: a bogus comment up to ">", as in a browser (L-68)
-                    $close = strpos($html, '>', $nameStart);
-                    $end = $close === false ? $length : $close + 1;
+                    $end = self::bogusEnd($html, $nameStart);
                     $tokens[] = ['comment', $lt, $end];
                     $pos = $end;
                     continue;
@@ -232,19 +265,27 @@ final class HtmlLexer
             $pos = $end;
             // inside <svg> or <math> a browser reads <script> and <style> as markup (they end at
             // </svg> or a tag such as <p>); read them as bounded, both ways (L-77)
+            // (inside an integration point such as <foreignObject> or <mi> content is HTML again:
+            // breakout tags do not end the foreign content there, and script/style are raw, L-88)
+            $selfClosing = str_ends_with(substr($html, $lt, $end - $lt), '/>');
+            $inForeign = $foreign > 0 && $integration === 0; // where this tag itself stands
             if ($name === 'svg' || $name === 'math') {
-                $foreign = $closing ? max(0, $foreign - 1) : $foreign + (str_ends_with(substr($html, $lt, $end - $lt), '/>') ? 0 : 1);
-            } elseif (!$closing && $foreign > 0 && in_array($name, self::BREAKOUT, true)) {
+                if ($integration === 0) {
+                    $foreign = $closing ? max(0, $foreign - 1) : $foreign + ($selfClosing ? 0 : 1);
+                }
+            } elseif ($foreign > 0 && in_array($name, self::INTEGRATION, true) && !$selfClosing) {
+                $integration = $closing ? max(0, $integration - 1) : $integration + 1;
+            } elseif (!$closing && $foreign > 0 && $integration === 0 && in_array($name, self::BREAKOUT, true)) {
                 $foreign = 0;
             }
-            $asBounded = !$closing && !$plain && (in_array($name, self::BOUNDED, true) || ($foreign > 0 && ($name === 'script' || $name === 'style')));
+            $asBounded = !$closing && !$plain && (in_array($name, self::BOUNDED, true) || ($inForeign && ($name === 'script' || $name === 'style')));
             if ($asBounded) {
                 $close = $name === 'plaintext' || ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);
                 if ($close === false) {
                     $noClose[$name] = min($noClose[$name] ?? PHP_INT_MAX, $end);
                     $close = $length;
                 }
-                $tokens[] = ['bounded', $end, $close, $name];
+                $tokens[] = ['bounded', $end, $close, $name, $inForeign];
                 foreach (self::scanRange(substr($html, $end, $close - $end), true, true) as $inner) {
                     $inner[1] += $end;
                     $inner[2] += $end;

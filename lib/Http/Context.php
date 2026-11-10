@@ -129,7 +129,16 @@ final class Context
         }
         $hops = array_reverse(array_map('trim', explode(',', (string) ($this->server['HTTP_X_FORWARDED_FOR'] ?? ''))));
         foreach ($hops as $hop) {
-            if (filter_var($hop, FILTER_VALIDATE_IP) !== false && !self::isTrusted($hop, $this->config->trustedProxies)) {
+            // a port is dropped (203.0.113.7:5555, [2001:db8::1]:443); a hop that is still not an
+            // address (unknown, a name) ends the walk: what lies left of it was written by the
+            // client, so it is never used (L-93)
+            if (preg_match('/^\[([0-9A-Fa-f:.]+)\](?::\d+)?$/', $hop, $m) || preg_match('/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/', $hop, $m)) {
+                $hop = $m[1];
+            }
+            if (filter_var($hop, FILTER_VALIDATE_IP) === false) {
+                return $remote;
+            }
+            if (!self::isTrusted($hop, $this->config->trustedProxies)) {
                 return $hop;
             }
         }

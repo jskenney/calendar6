@@ -224,13 +224,30 @@ final class Course
      * to, relative to its own directory, get keys decided by $page's rules; files that
      * already have a key keep it.
      */
+    /**
+     * <replace> values of the course itself filled in, so a link such as
+     * src="logo-<replace value=course>.png" gets a key (L-90); values that depend on the event
+     * (type, event, title) are left, and such links get none.
+     */
+    private function withReplaceValues(string $html): string
+    {
+        if (stripos($html, '<replace') === false) {
+            return $html;
+        }
+        $values = $this->config->replace + ['course' => $this->config->number, 'coursename' => $this->config->name];
+        return (string) (preg_replace_callback('/<replace\b[^>]*>/i', static function (array $m) use ($values): string {
+            $name = (string) PageRenderer::attribute($m[0], 'value');
+            return isset($values[$name]) ? htmlspecialchars((string) $values[$name], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : $m[0];
+        }, $html) ?? $html);
+    }
+
     private function addLinkedAssets(Place $page, string $htmlReal): void
     {
         $html = (string) @file_get_contents($htmlReal);
         if (preg_match('/\.md$/i', $htmlReal)) {
             $html = (new Markdown())->text($html);
         }
-        foreach (PageRenderer::linkTargets($html) as $link) {
+        foreach (PageRenderer::linkTargets($this->withReplaceValues($html)) as $link) {
             $target = $this->boundary->resolve(dirname($htmlReal) . '/' . rawurldecode($link));
             if ($target === null || !is_file($target) || Boundary::neverServed($target) || $this->hasOwnPlace($target)) {
                 continue;
@@ -263,7 +280,7 @@ final class Course
             if (preg_match('/\.md$/i', $real)) {
                 $html = (new Markdown())->text($html);
             }
-            foreach (PageRenderer::linkTargets($html) as $link) {
+            foreach (PageRenderer::linkTargets($this->withReplaceValues($html)) as $link) {
                 $target = $this->boundary->resolve(dirname($real) . '/' . rawurldecode($link));
                 if ($target === null || isset($seen[$target]) || !is_file($target) || Boundary::neverServed($target)) {
                     continue;
