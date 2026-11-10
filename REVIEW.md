@@ -13,8 +13,13 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 9 is in progress; its findings will be added here.
-2. **E** items; E-1 (the front end) is the next big piece of work.
+1. **M-32**: `<url>` only in text and allowlisted quoted attributes, with the enclosing tag taken
+   from the lexer; with it **L-52** (script double-escaped state).
+2. **M-33**: sections in `default.ini` fail closed.
+3. **L-50, L-51**: cross-site lock POSTs; the link existence oracle.
+4. **L-54, L-55, L-53, L-56, L-57**.
+5. **T-14** with the fixes.
+6. **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -26,11 +31,23 @@ None open.
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-32 | 9 | `lib/Render/PageRenderer.php` (`valueTags`) | **`<url>` values still reach script contexts** (residual of M-28, L-39): the guard takes "the last `<`" as the enclosing tag and needs a space before `on*=`, so `onclick="if (n < 3) f('<url value=m>')"`, `<img/onerror="...">`, `href="x"onclick="..."` are substituted; also `href="javascript:go('<url value=m>')"` (only the value's scheme is checked), unquoted `href=<url value=m>` (spaces add attributes) and `srcdoc`. A link to `html.php?full=1&m=...` can then run script on the course origin. Confirmed. | Find the enclosing tag from the lexer and parse its attributes; substitute only in text and quoted values of an allowlist (href, src, title, alt, value, class, id, data-*); in href/src only when the text before the value has no scheme or http(s); never unquoted or `srcdoc`. |
+| M-33 | 9 | `lib/Access/Rules.php:62` (`fromIni`), `lib/Course/Course.php:65` | **A section header in `default.ini` drops every rule after it, silently** (fails open): `[rules]` above `exam = never` makes the exam visible, no problem listed. In account files a `valid =` after `[grants]` becomes a grant on a target named `valid`. Confirmed by reading and by the reviewer. | Lines outside the top section of `default.ini` are problems and fail closed (as M-19); unknown keys in account files are problems. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-50 | 9 | `lib/Endpoint/HtmlEndpoint.php:62-98` | Residual of L-43: the lock token is public (page and hour), so a cross-site POST with a known code (every student knows it) creates a session and may replace the instructor's cookie (browser behaviour suspected). Server side confirmed by the reviewer. | Refuse a lock POST with `Sec-Fetch-Site: cross-site` or a foreign `Origin` (403, no session). |
+| L-51 | 9 | `lib/Render/PageRenderer.php:606` | An existence oracle: a link that resolves to an existing file without a visible key gets `data-cal6-hidden`, a missing one is left as written, and the `realpath()` has no boundary check; with `<url>` in an `href`, anyone can probe `../../../../etc/shadow` or a hidden course file. Confirmed by the reviewer. | Resolve with the course boundary; give hidden and missing the same answer (at least for values from `<url>`). |
+| L-52 | 9 | `lib/Render/HtmlLexer.php:227-242` | The lexer ends a script at a `</script>` that a browser reads as part of the double-escaped state (`<script><!-- document.write('<script>..</script>'); ...`), so `<url>` is substituted inside live JavaScript. Confirmed. | Model the script-data escaped states, or treat a script body containing `<!--` as running to the last `</script>` for the `<url>` guard. |
+| L-53 | 9 | `lib/Schedule/Periods.php:38`, `lib/Course/CourseConfig.php:117-129` | A meeting whose end is before its start (`22:00-00:30`, `10:00-09:00`) or with an hour above 23 is accepted, and `<postmeeting>` opens before the meeting. Confirmed by the reviewer. | List end <= start and impossible times as problems (or roll a midnight end to the next day). |
+| L-54 | 9 | `lib/Render/PageRenderer.php:84`, `:647` (`anchors`) | `<keyword>`/`<search>` removal (and `anchors()`) are regular expressions over the whole page, so they edit script bodies: `if (a<search.length) ... // > end` loses code. Confirmed. | Use the lexer's tags (`replaceTags`). |
+| L-55 | 9 | `lib/Render/HtmlLexer.php:229` | Quadratic on many unclosed `<script>`/`<style>` (residual of L-37, from M-27's change): each searches to the end again; 160 KB takes about 1 s per scan, about 15 scans per render. Confirmed by the reviewer. | Remember that no closing tag follows an offset and skip later searches for that name. |
+| L-56 | 9 | `lib/Render/Markdown.php:637-640` | An `<inst>` in Markdown image alt text or a link title is sent (`alt="diagram ALT-SECRET"`, `title="<inst>...</inst>"` read as attribute text). Needs an unusual author choice. Confirmed by the reviewer. | Remove hidden blocks from alt/title, or drop raw HTML there. |
+| L-57 | 9 | `lib/Course/Boundary.php:84-94` | Pages named `menu.inc.html` / `x.inc.md` match the PHP rule and are dropped silently (never listed, served or injected; no problem). Confirmed by the reviewer. | List them as problems, or document it. |
 
 ## Documentation
 
@@ -38,7 +55,9 @@ None open.
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-14 | 9 | `tests/` | No tests for `<url>` in the contexts of M-32 and L-52, sections in `default.ini`, cross-site lock POSTs, the link existence oracle, reversed meeting times, keyword removal in scripts, many unclosed scripts, Markdown alt/title, `.inc.html` pages. | Tests with each fix. |
 
 ## Enhancements
 
@@ -185,6 +204,7 @@ None open.
 | 6 | 2026-11-09 | `96f7d95` | an **independent** review again, after fixing M-15, L-20, L-21, L-23, L-24 and DOC-11..13; probes on `php -S`, Apache + FPM and nginx; M-17 and L-27 reproduced again before recording. Nothing found that lets an anonymous visitor reach hidden material without an author or configuration mistake | M-17..M-19, L-26..L-34, DOC-14, DOC-15 |
 | 7 | 2026-11-09 | `391a353` | an **independent** review again, after fixing every M, L and DOC item of review 6; probes on `php -S`, Apache + FPM and nginx; M-20, M-21, M-22, M-23 and M-25 reproduced again before recording | M-20..M-26, L-35..L-41, DOC-16, T-12 |
 | 8 | 2026-11-09 | `a21ac98` | an **independent** review again, after fixing every M, L, DOC and T item of review 7; probes on `php -S`, Apache + FPM and nginx (every direct-access probe refused); H-5, M-27, M-28 and M-29 reproduced again before recording | H-5, M-27..M-31, L-42..L-49, DOC-17, T-13 |
+| 9 | 2026-11-10 | `f0e61b3` | an **independent** review again, after fixing every H, M, L, DOC and T item of review 8 (`9270e6f`..`f0e61b3`); probes on Apache + FPM and nginx (about 25 direct-access probes each, all refused); fuzzed `.ini` files and request input (no 500s); M-32, L-52 and L-54 reproduced again and M-33 confirmed by reading before recording. Nothing found that reads hidden material, raw page source, `config/` or code through `get.php` or the web servers | M-32, M-33, L-50..L-57, T-14 |
 
 ## CI notes
 
