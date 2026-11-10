@@ -103,6 +103,16 @@ final class Boundary
      * is not a letter or digit, unless it ends in a file type that is served as such
      * (report.html.pdf, slides.md.zip, notes.html.md).
      */
+    /**
+     * A Markdown copy with a number (notes.md2, notes.md1; not a .md5 checksum): a plain file,
+     * never a page, never listed by calendar.php, so its key is seen only where a page links to
+     * it (Decided, L-92).
+     */
+    public static function isUnlisted(string $name): bool
+    {
+        return (bool) preg_match('/\.md\d+$/i', basename($name)) && !preg_match('/\.md5$/i', $name);
+    }
+
     public static function isPageBackup(string $name): bool
     {
         $base = basename($name);

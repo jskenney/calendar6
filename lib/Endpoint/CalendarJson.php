@@ -48,8 +48,8 @@ final class CalendarJson
             $opens = null;
             foreach ($event->files as $name => $file) {
                 $name = (string) $name;
-                if (!$file->topLevel) {
-                    continue;
+                if (!$file->topLevel || \Cal6\Course\Boundary::isUnlisted($name)) {
+                    continue; // notes.md2 is reached only through a page's link (L-92)
                 }
                 $place = $this->course->places[$this->course->keysByEvent[$event->id][$name]];
                 $decision = $policy->decide($viewer, $place, $now);

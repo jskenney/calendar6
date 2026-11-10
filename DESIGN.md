@@ -600,7 +600,10 @@ viewer may see, with their keys. Things the viewer may not see are left out enti
 serves only pages. A page is an `.html`, `.htm` or `.md` file (by its name and by the real file
 behind a link). `get.php` answers `404` for a page key, for everyone, so the raw source of a page
 (`<inst>`, `<lock>` codes, `<postmeeting>`, `<host>`) never leaves the server; Markdown stays a
-page type, processed like HTML. Editors' backups of pages (`index.html~`, `notes.md.bak`,
+page type, processed like HTML. A numbered Markdown copy (`notes.md2`; not a `.md5` checksum) is
+a plain file, never a page and never listed by `calendar.php`: its key is seen only where a page
+links to it (`<a href="notes.md2">`), and not through a `<url>` value (Decided, L-92). Editors'
+backups of pages (`index.html~`, `notes.md.bak`,
 `x.html.orig`, `index.html.~1~`, `x.html_bak`, `x.html,v`, `#index.html#`: any name with `.html`,
 `.htm` or `.md` followed by something other than a letter or digit, unless it ends in a type that
 is served as such, like `report.html.pdf`; also `index.html2` and a page extension followed by
@@ -653,7 +656,7 @@ processed:
   | Link | Result |
   |---|---|
   | external (`https://…`, `mailto:`, `/path`, `#anchor`, `?query`) | unchanged |
-  | written by the author, to a course file this viewer may see | rewritten to `#/view/KEY` (pages) or `get.php?file=KEY` |
+  | written by the author, to a course file this viewer may see | rewritten to `#/view/KEY` (pages; a query string goes along: `#/view/KEY?week=3`, or `html.php?file=KEY&full=1&week=3` for frames) or `get.php?file=KEY` |
   | written by the author, to a course file this viewer may not see (or one never served) | text kept, target removed (`data-cal6-hidden`) |
   | written by the author, to a missing file, or a path outside the course (or into `config/`, `calendar/`) | left exactly as written, as in Calendar 4; nothing is said about the disk outside the course |
   | filled in by `<url>` (the visitor chose it) | rewritten only to a visible file with a rule of its own (an event's own file or a `paths.ini` page, as `calendar.php` lists them); anything else (a missing file, a path outside the course, a file in a subfolder or one that borrows a page's rule) loses its target, all alike |
@@ -978,8 +981,10 @@ pointer to any one course. Instead:
 
 What the endpoints expect from it (the contract):
 
-- **Routes:** `html.php` writes links to other pages as `#/view/KEY`; the front end shows that page
-  (`html.php?file=KEY`) when the route changes. Links to other files are absolute `get.php` URLs
+- **Routes:** `html.php` writes links to other pages as `#/view/KEY`, with the link's query string
+  if it had one (`#/view/KEY?week=3`, L-75); the front end shows that page
+  (`html.php?file=KEY&week=3`) when the route changes, so the query fills `<url>` tags there.
+  `file`, `full`, `lock` and `csrf` are never taken from a link's query. Links to other files are absolute `get.php` URLs
   and work as they are.
 - **Hidden links:** `<a data-cal6-hidden="1">` (no `href`) is a link to something the viewer may
   not see; show it as plain text.

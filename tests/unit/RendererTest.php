@@ -616,6 +616,25 @@ final class RendererTest extends TestCase
         $this->assertNotContains('DEEP-SECRET', $page, 'a file without a key in a linked event directory is not injected (L-83)');
     }
 
+    public function testQueryStringsAndNumberedMarkdownCopies(): void
+    {
+        $course = $this->course([
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/index.html' => '<a href="notes.html?week=3&amp;file=x#q2">n</a> <a href="notes.md2">old</a> <a href="<url value=next>">u</a>',
+            'class/01.Introduction/notes.html' => 'N',
+            'class/01.Introduction/notes.md2' => '# OLD <inst>S</inst>',
+        ]);
+        $place = $course->places[$course->keysByEvent['class_1']['index.html']];
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['next' => 'notes.md2']))->render($place);
+        $this->assertSame(1, preg_match('~href="#/view/[A-Za-z0-9_-]+\?week=3#q2"~', $page), 'a page link keeps its query string, without html.php\'s own names (L-75): ' . $page);
+        $this->assertContains('get.php?file=', $page, 'a link the author wrote to notes.md2 works (L-92)');
+        $this->assertContains('<a data-cal6-hidden="1">u</a>', $page, 'but a <url> value can not reach it');
+        $copy = $course->places[$course->keysByEvent['class_1']['notes.md2']];
+        $this->assertSame('file', $copy->file->kind(), 'it is never a page');
+        $json = (new \Cal6\Endpoint\CalendarJson($course, new \Cal6\Http\Context($this->dir, $course->config, [], [], [], time())))->build(Viewer::anonymous(), time());
+        $this->assertNotContains('notes.md2', json_encode($json), 'and calendar.php does not list it');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

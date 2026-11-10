@@ -847,7 +847,7 @@ final class PageRenderer
             $fragment = substr($value, $hash);
             $value = substr($value, 0, $hash);
         }
-        $path = explode('?', $value, 2)[0];
+        [$path, $query] = array_pad(explode('?', $value, 2), 2, '');
         $target = $path === '' ? null : $this->course->placeForPath($place, $dir, $path);
         if ($target !== null && $fromUrl && !$this->hasOwnRule($target)) {
             // a target chosen through <url> may only be a file with a rule of its own, as
@@ -861,7 +861,7 @@ final class PageRenderer
             return null; // a page can not be an image, script or style sheet: get.php never sends pages
         }
         if ($target !== null) {
-            return $this->urlFor($target, $element) . $fragment;
+            return $this->urlFor($target, $element, $query) . $fragment;
         }
         if ($fromUrl) {
             return null; // missing, outside the course or never served: all look alike (L-51)
@@ -877,7 +877,7 @@ final class PageRenderer
     private function hasOwnRule(Place $target): bool
     {
         if ($target->event !== null) {
-            return $target->file->topLevel && $target->assetOf === null;
+            return $target->file->topLevel && $target->assetOf === null && !Boundary::isUnlisted($target->file->name);
         }
         return $target->page !== null && !$target->asset && $target->assetOf === null
             && ($this->course->pageKeys[$target->page] ?? null) === $target->key;
@@ -900,14 +900,24 @@ final class PageRenderer
         return $target;
     }
 
-    private function urlFor(Place $target, string $element): string
+    private function urlFor(Place $target, string $element, string $query = ''): string
     {
         if ($target->file->kind() === 'page') {
             // pages are only ever served by html.php (C-1): links open them in the front end,
-            // frames get the whole processed document
+            // frames get the whole processed document. A link's query string goes along, so
+            // notes.html?week=3 fills <url value="week"> on that page (L-75); html.php's own
+            // parameters can not be set this way
+            $kept = [];
+            foreach ($query === '' ? [] : explode('&', $query) as $pair) {
+                $name = strtolower(rawurldecode(explode('=', $pair, 2)[0]));
+                if ($pair !== '' && !in_array($name, ['file', 'full', 'lock', 'csrf'], true)) {
+                    $kept[] = $pair;
+                }
+            }
+            $query = implode('&', $kept);
             return $element === 'a' && !$this->full
-                ? '#/view/' . rawurlencode($target->key)
-                : $this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($target->key) . '&full=1';
+                ? '#/view/' . rawurlencode($target->key) . ($query !== '' ? '?' . $query : '')
+                : $this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($target->key) . '&full=1' . ($query !== '' ? '&' . $query : '');
         }
         return $this->baseUrl . 'calendar/php/get.php?file=' . rawurlencode($target->key);
     }
