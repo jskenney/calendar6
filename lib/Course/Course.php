@@ -391,8 +391,12 @@ final class Course
                 }
             }
         }
+        $notes = array_column(array_filter($this->config->boxes, static fn (array $b): bool => $b['notes'] ?? false), 'box');
         $stems = [];
         foreach ($boxes as $file => $box) {
+            if (in_array($box, $notes, true)) {
+                continue; // a notes file has no assets: its text is all there is
+            }
             $stems[] = [mb_strtolower((string) preg_replace('/\.[^.\/]+$/', '', (string) $file), 'UTF-8'), $box];
         }
         usort($stems, static fn (array $a, array $b): int => strlen($b[0]) <=> strlen($a[0]));

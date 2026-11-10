@@ -20,6 +20,16 @@ final class CalendarJson
     }
 
     /** @return array<string, mixed> */
+    /** A notes file's text, as written (trimmed; at most 2000 bytes, cut on a character boundary). */
+    private static function noteText(string $path): string
+    {
+        $text = trim((string) @file_get_contents($path, false, null, 0, 2004));
+        if (strlen($text) > 2000) {
+            $text = mb_strcut($text, 0, 2000, 'UTF-8') . '…';
+        }
+        return mb_convert_encoding($text, 'UTF-8', 'UTF-8');
+    }
+
     public function build(Viewer $viewer, int $now): array
     {
         $policy = new Policy($this->course);
@@ -37,6 +47,7 @@ final class CalendarJson
             }
         }
 
+        $notesBoxes = array_column(array_filter($this->course->config->boxes, static fn (array $b): bool => $b['notes'] ?? false), 'box');
         $events = [];
         foreach ($this->course->events as $event) {
             if ($event->date === null && !$instructor) {
@@ -44,6 +55,7 @@ final class CalendarJson
             }
             $boxes = [];
             $files = [];
+            $notes = [];
             $anyVisible = false;
             $opens = null;
             foreach ($event->files as $name => $file) {
@@ -62,6 +74,19 @@ final class CalendarJson
                     continue;
                 }
                 $anyVisible = true;
+                if ($place->box !== null && !$place->asset && in_array($place->box, $notesBoxes, true)) {
+                    // a notes file: its text, not a key (short remarks; nothing to serve)
+                    $note = ['name' => $place->box, 'text' => self::noteText($file->realPath)];
+                    if ($instructor && !$anonymousView->visible) {
+                        $note['visible'] = false;
+                        $note['rule'] = $anonymousView->rule?->describe() ?? ($event->date === null ? 'on no calendar day' : '');
+                        if ($anonymousView->opens !== null) {
+                            $note['opens'] = $this->c->iso($anonymousView->opens);
+                        }
+                    }
+                    $notes[] = $note;
+                    continue;
+                }
                 $item = ['name' => $name, 'key' => $place->key, 'kind' => $file->kind(), 'size' => $file->size];
                 if ($instructor && !$anonymousView->visible) {
                     $item['visible'] = false;
@@ -97,6 +122,9 @@ final class CalendarJson
             }
             $entry['boxes'] = $ordered;
             $entry['files'] = $files;
+            if ($notes !== []) {
+                $entry['notes'] = $notes;
+            }
             if ($opens !== null) {
                 $entry['opens'] = $this->c->iso($opens);
             }

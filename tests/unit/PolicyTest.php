@@ -87,7 +87,7 @@ INI;
         $see = fn (string $place): bool => self::sees($course, $anon, $place, $now);
         $this->assertTrue($see('class_1/index.html'), 'class_1 = always');
         $this->assertFalse($see('class_1/instructor.html'), 'a box beats an event (class/instructor = never)');
-        $this->assertTrue($see('class_1/notes.md'), 'class/notes');
+        $this->assertTrue($see('class_1/reading.md'), 'class/notes');
         $this->assertTrue($see('class_2/index.html'), 'the later line wins');
         $this->assertFalse($see('class_3/index.html'), 'a range');
         $this->assertTrue($see('lab_1/index.html'), 'a date in the past');
@@ -354,7 +354,7 @@ INI;
             'config/default.ini' => "CLASS_1/INDEX.HTML = never\npage/Solutions = never\nLab/Lab-Solution = 2000-01-01\n",
             'config/paths.ini' => "[pages]\nhome = pages/home.html\nSolutions = pages/syllabus.html\n",
             'config/dates.ini' => "2026-09-18 = EXAM\n",
-            'class/01.Introduction/Notes.md' => 'two names that differ only in case',
+            'class/01.Introduction/Reading.md' => 'two names that differ only in case',
         ]);
         $now = self::now($course);
         $anon = Viewer::anonymous();
@@ -363,7 +363,7 @@ INI;
         $this->assertTrue(self::sees($course, $anon, 'lab_1/lab-solution.html', $now), 'Lab/Lab-Solution');
         $this->assertSame('2026-09-18', $course->events['exam_1']->date, 'dates.ini: EXAM is the type exam');
         $messages = implode("\n", array_map(static fn ($p): string => $p->message, $course->problems));
-        $this->assertContains('"Notes.md" and "notes.md" differ only in case', $messages, 'a case clash is a problem');
+        $this->assertContains('"Reading.md" and "reading.md" differ only in case', $messages, 'a case clash is a problem');
     }
 
     public function testNamesMadeOfDigits(): void

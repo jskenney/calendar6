@@ -146,7 +146,7 @@ final class EndpointsTest extends TestCase
 
     public function testPageBackupsAreNeverServed(): void
     {
-        $client = $this->start(['class/01.Introduction/index.html~' => '<inst>INST-SECRET</inst><lock code="hunter2">x</lock>', 'class/01.Introduction/#notes.md#' => 'x']);
+        $client = $this->start(['class/01.Introduction/index.html~' => '<inst>INST-SECRET</inst><lock code="hunter2">x</lock>', 'class/01.Introduction/#reading.md#' => 'x']);
         $body = $client->get('calendar/php/calendar.php')->body;
         $this->assertNotContains('index.html~', $body, 'not listed (M-22)');
         $this->login($client);
@@ -197,7 +197,7 @@ final class EndpointsTest extends TestCase
         $this->assertSame('10', $head->header('content-length'));
         $this->assertSame('text/javascript; charset=utf-8', $client->get('calendar/php/get.php?file=' . $keys['class_1/app.js'])->header('content-type'), 'scripts can run (M-4)');
         $this->assertContains('inline', $client->get('calendar/php/get.php?file=' . $keys['class_1/app.js'])->header('content-disposition'));
-        foreach (['class_1/page2.html', 'class_1/index.html', 'class_1/notes.md'] as $page) {
+        foreach (['class_1/page2.html', 'class_1/index.html', 'class_1/reading.md'] as $page) {
             $this->assertSame(404, $client->get('calendar/php/get.php?file=' . $keys[$page])->status, "get.php never sends a page's source (C-1): $page");
         }
         $this->assertContains('attachment', $client->get('calendar/php/get.php?download=1&file=' . $keys['class_1/data.txt'])->header('content-disposition'));
@@ -219,7 +219,7 @@ final class EndpointsTest extends TestCase
     {
         $page = <<<'HTML'
 <h2><replace value="ctype"> <replace value="event">: <replace value="title"></h2>
-<img src="pic.png" alt="p"> <a href="notes.md#part">notes</a> <a href="instructor.html">hidden</a>
+<img src="pic.png" alt="p"> <a href="reading.md#part">notes</a> <a href="instructor.html">hidden</a>
 <a href="https://example.com/x">out</a> <a href="#top">top</a> <a href="missing.html">missing</a>
 <inst><p>INST-ONLY</p><a href="secret.pdf">s</a></inst>
 <student>ANSWER</student>
@@ -250,7 +250,7 @@ HTML;
         $body = $response->body;
         $this->assertContains('<h2>Class 1: Introduction</h2>', $body, '<replace>');
         $this->assertContains('src="/calendar/php/get.php?file=' . $keys['class_1/pic.png'] . '"', $body, 'images become keys');
-        $this->assertContains('href="#/view/' . $keys['class_1/notes.md'] . '#part"', $body, 'pages become front end routes');
+        $this->assertContains('href="#/view/' . $keys['class_1/reading.md'] . '#part"', $body, 'pages become front end routes');
         $this->assertContains('data-cal6-hidden="1">hidden</a>', $body, 'links to hidden files lose their target');
         $this->assertNotContains('instructor.html', $body);
         $this->assertContains('href="https://example.com/x"', $body);
@@ -294,7 +294,7 @@ HTML;
         $this->assertContains('INJECTED-LOCKED', $client->get("calendar/php/html.php?file=$index")->body, 'a lock inside an injected file can be opened too (L-4)');
         $full = $client->get("calendar/php/html.php?file=$index&full=1")->body;
         $this->assertContains('<!doctype html>', $full);
-        $this->assertContains('href="/calendar/php/html.php?file=' . $keys['class_1/notes.md'] . '&amp;full=1#part"', $full);
+        $this->assertContains('href="/calendar/php/html.php?file=' . $keys['class_1/reading.md'] . '&amp;full=1#part"', $full);
         $this->assertSame(404, $client->get('calendar/php/html.php?file=' . $keys['class_1/pic.png'])->status, 'only pages');
         $token = (string) $client->get('calendar/php/config.php')->json()['csrf'];
         $client->post('calendar/php/auth.php', ['csrf' => $token]);
@@ -307,7 +307,7 @@ HTML;
         $this->assertContains('LOCKED-PART', $prof);
         $profKeys = self::keys($client->get('calendar/php/calendar.php')->json());
         $this->assertSame(404, (new HttpClient($this->server))->get('calendar/php/html.php?file=' . $profKeys['class_1/instructor.html'])->status);
-        $markdown = $client->get('calendar/php/html.php?file=' . $profKeys['class_1/notes.md'])->body;
+        $markdown = $client->get('calendar/php/html.php?file=' . $profKeys['class_1/reading.md'])->body;
         $this->assertContains('<h1', $markdown, 'Markdown');
     }
 
@@ -409,6 +409,26 @@ HTML;
         $this->assertContains('INNER-OPEN', $client->get("calendar/php/html.php?file=$key")->body, 'the inner lock opens once the outer one has (M-49)');
     }
 
+    public function testNotesComeBackAsText(): void
+    {
+        $client = $this->start([
+            'config/default.ini' => "class = always\nclass/notes = always\nclass_2/notes = never\n",
+            'class/01.Introduction/notes.txt' => "  The class meets in the auditorium today.\n",
+            'class/02.Second/notes.txt' => 'Hidden remark',
+        ]);
+        $events = $client->get('calendar/php/calendar.php')->json()['events'];
+        $this->assertSame([['name' => 'notes', 'text' => 'The class meets in the auditorium today.']], $events['class_1']['notes'] ?? null, 'notes are text, not keys');
+        $this->assertNotContains('notes.txt', json_encode($events['class_1']['files']), 'and not listed as files');
+        $this->assertSame(false, isset($events['class_2']['notes']), 'released by rules like a box: class_2/notes = never hides them');
+        $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
+        $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf]);
+        $note = $client->get('calendar/php/calendar.php')->json()['events']['class_2']['notes'][0] ?? [];
+        $this->assertSame(false, $note['visible'] ?? null, 'an instructor sees a hidden note, marked');
+        $this->assertSame('Hidden remark', $note['text'] ?? null);
+        $boxes = array_column($client->get('calendar/php/config.php')->json()['boxes'] ?? [], 'box');
+        $this->assertSame(false, in_array('notes', $boxes, true), 'notes are not a box in config.php');
+    }
+
     public function testRateLimitsAndProxies(): void
     {
         $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
@@ -482,7 +502,7 @@ HTML;
     {
         $client = $this->start([
             'config/dates.ini' => (string) file_get_contents(__DIR__ . '/../../template/config/dates.ini'), // the template's own
-            'class/01.Introduction/notes.md' => "# Notes\n\n## First part\n\nText with **bold** and [index](index.html).\n",
+            'class/01.Introduction/reading.md' => "# Notes\n\n## First part\n\nText with **bold** and [index](index.html).\n",
         ]);
         $data = $client->get('calendar/php/config.php')->json();
         $this->assertSame(['number' => 'AB123', 'name' => 'Web and Internet Programming', 'timezone' => 'America/New_York'], $data['course'] ?? null);
@@ -510,7 +530,7 @@ HTML;
         $this->assertSame(['classyear' => '27', 'office' => 'Michelson 342'], $data['replace'] ?? null);
 
         $keys = self::keys($client->get('calendar/php/calendar.php')->json());
-        $markdown = $client->get('calendar/php/html.php?file=' . $keys['class_1/notes.md'])->body;
+        $markdown = $client->get('calendar/php/html.php?file=' . $keys['class_1/reading.md'])->body;
         $this->assertContains('<h1>Notes</h1>', $markdown, 'Markdown');
         $this->assertContains('<h2 id="first-part">First part</h2>', $markdown, 'level-2 headings get ids for the menu');
         $this->assertContains('<strong>bold</strong>', $markdown);

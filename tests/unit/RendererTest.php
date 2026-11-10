@@ -120,7 +120,7 @@ final class RendererTest extends TestCase
     public function testPagesAreLinkedOnlyThroughHtmlPhp(): void
     {
         $course = $this->course([
-            'class/01.Introduction/index.html' => '<a href="other.html">a</a><iframe src="other.html"></iframe><img src="other.html"><script src="notes.md"></script><a href="data.txt">d</a>',
+            'class/01.Introduction/index.html' => '<a href="other.html">a</a><iframe src="other.html"></iframe><img src="other.html"><script src="reading.md"></script><a href="data.txt">d</a>',
             'class/01.Introduction/other.html' => 'O',
             'class/01.Introduction/data.txt' => 'D',
             'config/default.ini' => "class_1 = always\n",
@@ -208,7 +208,7 @@ final class RendererTest extends TestCase
     {
         $course = $this->course([
             'class/01.Introduction/index.html' => '<inject src="../../shared/footer.html">',
-            'shared/footer.html' => '<img src="logo.png"><calphp src="c.php"><showlink src="logo.png"><a href="../class/01.Introduction/notes.md#x">notes</a>',
+            'shared/footer.html' => '<img src="logo.png"><calphp src="c.php"><showlink src="logo.png"><a href="../class/01.Introduction/reading.md#x">notes</a>',
             'shared/logo.png' => 'LOGO',
             'shared/c.php' => '<?php echo "FOOTER-SCRIPT";',
             'config/default.ini' => "class_1 = always\n",
@@ -217,7 +217,7 @@ final class RendererTest extends TestCase
         $this->assertContains('FOOTER-SCRIPT', $page, '<calphp> relative to the injected file (L-21)');
         $this->assertNotContains('data-cal6-hidden', $page, 'its image has a key');
         $this->assertSame(2, substr_count($page, 'get.php?file='), 'the image and <showlink>');
-        $this->assertContains('href="#/view/' . $course->keysByEvent['class_1']['notes.md'] . '#x"', $page, 'and its link back into the event');
+        $this->assertContains('href="#/view/' . $course->keysByEvent['class_1']['reading.md'] . '#x"', $page, 'and its link back into the event');
     }
 
     public function testCommentsScriptsAndDeepNesting(): void
@@ -620,19 +620,19 @@ final class RendererTest extends TestCase
     {
         $course = $this->course([
             'config/default.ini' => "class_1 = always\n",
-            'class/01.Introduction/index.html' => '<a href="notes.html?week=3&amp;file=x#q2">n</a> <a href="notes.md2">old</a> <a href="<url value=next>">u</a>',
+            'class/01.Introduction/index.html' => '<a href="notes.html?week=3&amp;file=x#q2">n</a> <a href="reading.md2">old</a> <a href="<url value=next>">u</a>',
             'class/01.Introduction/notes.html' => 'N',
-            'class/01.Introduction/notes.md2' => '# OLD <inst>S</inst>',
+            'class/01.Introduction/reading.md2' => '# OLD <inst>S</inst>',
         ]);
         $place = $course->places[$course->keysByEvent['class_1']['index.html']];
-        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['next' => 'notes.md2']))->render($place);
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['next' => 'reading.md2']))->render($place);
         $this->assertSame(1, preg_match('~href="#/view/[A-Za-z0-9_-]+\?week=3#q2"~', $page), 'a page link keeps its query string, without html.php\'s own names (L-75): ' . $page);
-        $this->assertContains('get.php?file=', $page, 'a link the author wrote to notes.md2 works (L-92)');
+        $this->assertContains('get.php?file=', $page, 'a link the author wrote to reading.md2 works (L-92)');
         $this->assertContains('<a data-cal6-hidden="1">u</a>', $page, 'but a <url> value can not reach it');
-        $copy = $course->places[$course->keysByEvent['class_1']['notes.md2']];
+        $copy = $course->places[$course->keysByEvent['class_1']['reading.md2']];
         $this->assertSame('file', $copy->file->kind(), 'it is never a page');
         $json = (new \Cal6\Endpoint\CalendarJson($course, new \Cal6\Http\Context($this->dir, $course->config, [], [], [], time())))->build(Viewer::anonymous(), time());
-        $this->assertNotContains('notes.md2', json_encode($json), 'and calendar.php does not list it');
+        $this->assertNotContains('reading.md2', json_encode($json), 'and calendar.php does not list it');
     }
 
     public function testReview14Leftovers(): void

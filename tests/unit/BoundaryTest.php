@@ -39,7 +39,7 @@ final class BoundaryTest extends TestCase
         $course = Course::load($this->dir);
         $names = array_keys($course->events['class_1']->files);
         sort($names);
-        $this->assertSame(['index.html', 'notes.md', 'ok.md'], $names, 'links out of the course or into config/ are not material');
+        $this->assertSame(['index.html', 'notes.txt', 'ok.md', 'reading.md'], $names, 'links out of the course or into config/ are not material');
         $this->assertSame(['home'], array_keys($course->pageKeys), 'pages outside the course or in config/ are refused');
         $messages = implode("\n", array_map(static fn ($p): string => $p->file . ' ' . $p->message, $course->problems));
         $this->assertSame(3, substr_count($messages, 'virtual.ini the real file is missing or outside the course'));
@@ -56,7 +56,7 @@ final class BoundaryTest extends TestCase
         foreach (['a.php', 'a.PHP5', 'a.phtml', 'a.phps', 'a.pht', 'db.inc', 'grades.php~', 'db.php.bak', 'x.inc.old', 'config.ini', '.htaccess', 'x.pht.bak', 'x.phar~', 'x.phtm', 'x.phar_old', 'x.php7', 'db.ini-dist', 'x.php.html', 'menu.inc.php', 'a.inc.txt'] as $name) {
             $this->assertTrue(Boundary::neverServed($name), "never served: $name (L-28)");
         }
-        foreach (['index.html~', 'notes.md.bak', 'x.html.orig', '#index.html#', 'a.htm.1', 'b.html.swp', 'index.html.~1~', 'notes.md.~3~', 'index.html.bak~', 'index.html_bak', 'x.html.new', 'x.html-', 'x.html,v', 'x.html.prev', 'x.html.dist', 'x.html.swo', 'X.HTML.BAK', 'index.html2', 'notes.mdold', 'x.htmlbak'] as $name) {
+        foreach (['index.html~', 'reading.md.bak', 'x.html.orig', '#index.html#', 'a.htm.1', 'b.html.swp', 'index.html.~1~', 'reading.md.~3~', 'index.html.bak~', 'index.html_bak', 'x.html.new', 'x.html-', 'x.html,v', 'x.html.prev', 'x.html.dist', 'x.html.swo', 'X.HTML.BAK', 'index.html2', 'reading.mdold', 'x.htmlbak'] as $name) {
             $this->assertTrue(Boundary::neverServed($name), "a page backup is never served (M-22): $name");
         }
         foreach (['notes.html', 'phpinfo.pdf', 'include.txt', 'slides.pptx', 'report.html.pdf', 'notes (copy).html', 'slides.md.zip', 'notes.html.md', 'a.mdx', 'html.txt', 'markdown.md', 'menu.inc.html', 'part.inc.md', 'data.md5', 'x.mdx'] as $name) {

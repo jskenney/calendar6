@@ -74,7 +74,7 @@ final class ConfigEndpoint
             'periods' => $config->periods->toArray(),
             'sections' => $config->sections->toArray(),
             'types' => array_map(static fn (string $label): array => ['label' => $label], $config->types),
-            'boxes' => array_map(static fn (array $b): array => ['box' => $b['box'], 'label' => $b['label']], $config->boxes),
+            'boxes' => array_values(array_map(static fn (array $b): array => ['box' => $b['box'], 'label' => $b['label']], array_filter($config->boxes, static fn (array $b): bool => !($b['notes'] ?? false)))),
             'replace' => (object) $config->replace,
         ];
     }

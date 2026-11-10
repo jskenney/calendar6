@@ -136,7 +136,14 @@ final class CourseConfig
         foreach ($ini->section('boxes') as $line) {
             [$files, $label] = array_pad(explode('|', $line->value, 2), 2, '');
             $names = array_values(array_filter(array_map('trim', explode(',', $files)), static fn (string $f): bool => $f !== ''));
-            $config->boxes[] = ['box' => $line->key, 'files' => $names, 'label' => trim($label) !== '' ? trim($label) : $line->key];
+            $config->boxes[] = ['box' => $line->key, 'files' => $names, 'label' => trim($label) !== '' ? trim($label) : $line->key, 'notes' => false];
+        }
+        // [notes]: files whose text calendar.php returns itself (short remarks such as "the class
+        // meets in the auditorium today"); matched and released like a box (lab/notes = always)
+        foreach ($ini->section('notes') as $line) {
+            [$files] = explode('|', $line->value, 2);
+            $names = array_values(array_filter(array_map('trim', explode(',', $files)), static fn (string $f): bool => $f !== ''));
+            $config->boxes[] = ['box' => $line->key, 'files' => $names, 'label' => $line->key, 'notes' => true];
         }
 
         foreach (['lockdown' => ['access', 'lockdown'], 'usersValid' => ['users', 'valid']] as $property => [$section, $key]) {

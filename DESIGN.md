@@ -182,12 +182,15 @@ exam    = Exam
 [boxes]
 ; box = the file names that fill it (the first one found wins) | label
 title             = index.html, index.md        | Lecture
-notes             = notes.html, notes.md        | Notes
 homework          = homework.html, homework.md  | Homework
 homework-solution = homework-solution.html, homework-solution.md | Homework solution
 lab-solution      = lab-solution.html, lab-solution.md | Solution
 slides            = slides.pdf, slides.pptx     | Slides
 instructor        = instructor.html, instructor.md | Instructor
+
+[notes]
+; short remarks ("the class meets in the auditorium today"): calendar.php returns the text itself
+notes             = notes.txt, notes.html, notes.md
 
 [access]
 ; lockdown: from then on anonymous viewers only see what an "always" rule decides
@@ -555,7 +558,8 @@ viewer may see, with their keys. Things the viewer may not see are left out enti
         {"box": "title",    "files": [{"name": "index.html", "key": "a1Xc9", "kind": "page"}]},
         {"box": "homework", "files": [{"name": "homework.html", "key": "b4Rt0", "kind": "page"}]}
       ],
-      "files": [{"name": "slides.pdf", "key": "c8Ld3", "kind": "file", "size": 482113}]
+      "files": [{"name": "slides.pdf", "key": "c8Ld3", "kind": "file", "size": 482113}],
+      "notes": [{"name": "notes", "text": "The class meets in the auditorium today."}]
     },
     "lab_10": {"type": "lab", "number": 10, "title": "Cookies", "date": "2026-11-09",
                "boxes": [], "files": [], "opens": "2026-11-10T08:00:00-05:00"},
@@ -567,6 +571,11 @@ viewer may see, with their keys. Things the viewer may not see are left out enti
 
 - `boxes` follow the order of `config.php`'s `boxes`; `files` are the event's other files (v4's
   Files menu). `kind` says which script serves it: `page` → `html.php`, `file` → `get.php`.
+- `notes`: the text of the event's notes file (`config.ini` `[notes]`: `notes.txt`, `notes.html`
+  or `notes.md`, the first one found), as written, at most 2000 bytes: short remarks such as "the
+  assignment is due Tuesday". It is released like a box (`lab/notes = always`) and comes back as
+  text, not as a key; a notes file is not listed in `boxes` or `files`. The front end shows it as
+  plain text.
 - `opens`: the next time something in the event becomes visible to this viewer (proposed: only
   when the rule that hides it is a date, not `never`).
 - `copy_of` / `mode`: an event from `duplicate.ini`. A `same` repeat is shown under the source's
@@ -574,7 +583,8 @@ viewer may see, with their keys. Things the viewer may not see are left out enti
   relative rules can give each showing a different window. Events on no calendar day are left out.
 - **Instructors** get everything, with each hidden file marked:
   `{"name": "solution.html", "key": "d2Wq7", "kind": "page", "visible": false, "rule":
-  "lab/lab-solution = +7 17:00", "opens": "2026-11-16T17:00:00-05:00"}`, events on no calendar
+  "lab/lab-solution = +7 17:00", "opens": "2026-11-16T17:00:00-05:00"}` (notes the same way:
+  `{"name": "notes", "text": "...", "visible": false, "opens": ...}`), events on no calendar
   day (with `"date": null`), and `problems` (bad lines in the `.ini` files, overridden lines,
   names that are not UTF-8 or differ only in case, copies that can not be made). Whether material
   can be fetched directly is checked from outside, by `tests/deploy/smoke.php` (and later
