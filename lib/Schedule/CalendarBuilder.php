@@ -18,7 +18,7 @@ use InvalidArgumentException;
  * The one course calendar (DESIGN.md, "Sections, periods and period schedules"):
  * config.ini [schedule] gives each weekday its event type, dates.ini changes single
  * days, and events are placed in order (class 1, 2, 3 ... on the class days), with
- * duplicate.ini's copies taking their slots.
+ * duplicate.ini's copies taking the numbers written (M-38).
  */
 final class CalendarBuilder
 {
@@ -179,7 +179,7 @@ final class CalendarBuilder
         }
     }
 
-    /** @return array<string, array<int, array{source: int, mode: string, line: int}>> type => slot => copy */
+    /** @return array<string, array<int, array{source: int, mode: string, line: int}>> type => number => copy */
     private function duplicates(IniFile $ini): array
     {
         array_push($this->problems, ...$ini->problems);
@@ -209,7 +209,7 @@ final class CalendarBuilder
     /** @param array<string, array<int, array{source: int, mode: string, line: int}>> $copies */
     private function place(array $copies): void
     {
-        $slot = $nextDir = $nextNumber = [];
+        $nextDir = $nextNumber = $used = [];
         $dirOfNumber = []; // type => calendar number => directory (regular events only)
         $copyNumbers = []; // type => calendar numbers that are numbered copies
         foreach ($this->days as $day) {
@@ -219,20 +219,25 @@ final class CalendarBuilder
                     continue;
                 }
                 $folders = $this->folders[$type] ?? [];
-                $s = $slot[$type] = ($slot[$type] ?? 0) + 1;
                 $nextDir[$type] ??= 1;
                 $nextNumber[$type] ??= 1;
-                $copy = $copies[$type][$s] ?? null;
+                // the left side of duplicate.ini names the number this meeting would carry (M-38):
+                // class_6 = class_5 makes the event numbered 6 a copy of 5 (the folders move on
+                // by one); with "same" that meeting shows class 5 again and the next meeting is
+                // still number 6, so a line is used once
+                $n = $nextNumber[$type];
+                $copy = isset($used[$type][$n]) ? null : ($copies[$type][$n] ?? null);
                 if ($copy !== null) {
+                    $used[$type][$n] = true;
                     // the source is the event with that number on the calendar (M-15)
                     $source = $copy['source'];
                     if (isset($copyNumbers[$type][$source])) {
-                        $this->problems[] = new Problem("{$type}_$s copies {$type}_$source, which is itself a copy; copy its source instead", 'duplicate.ini', $copy['line']);
+                        $this->problems[] = new Problem("{$type}_$n copies {$type}_$source, which is itself a copy; copy its source instead", 'duplicate.ini', $copy['line']);
                         continue;
                     }
                     $d = $dirOfNumber[$type][$source] ?? null;
                     if ($d === null) {
-                        $this->problems[] = new Problem("{$type}_$s copies {$type}_$source, which is not on the calendar before it", 'duplicate.ini', $copy['line']);
+                        $this->problems[] = new Problem("{$type}_$n copies {$type}_$source, which is not on the calendar before it", 'duplicate.ini', $copy['line']);
                         continue;
                     }
                     $folder = $folders[$d - 1];

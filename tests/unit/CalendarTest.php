@@ -129,4 +129,16 @@ final class CalendarTest extends TestCase
         $this->assertSame(['duplicate.ini:3', 'duplicate.ini:4'], array_values($lines), 'with their line numbers (DOC-15)');
         $this->assertContains('class_9 copies class_12, which is not on the calendar before it', $messages, 'a source must come first');
     }
+
+    public function testTheLeftSideIsTheNumberTheMeetingWouldCarry(): void
+    {
+        $course = $this->course('', "class_4 = class_1 same\nclass_6 = class_2\n", '2026-09-30');
+        $title = fn (string $id): string => $course->events[$id]->title();
+        $same = array_values(array_filter(array_keys($course->events), static fn (string $id): bool => str_starts_with($id, 'class_1@')));
+        $this->assertSame(1, count($same), 'the meeting that would be class 4 shows class 1 again, once');
+        $this->assertSame('Class 4', $title('class_4'), 'the next meeting is still class 4, with the 4th folder');
+        $this->assertSame('Class 5', $title('class_5'));
+        $this->assertSame('class_2', $course->events['class_6']->copyOf, 'class_6 = class_2 is the event numbered 6 (M-38), not the 6th meeting');
+        $this->assertSame('Class 6', $title('class_7'), 'and the 6th folder becomes class 7');
+    }
 }

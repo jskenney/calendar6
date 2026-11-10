@@ -390,7 +390,7 @@ lab_2,4,6/checklist.md = shared/checklist.md
 
 ### `duplicate.ini` (Decided: an event used again)
 
-One event's material used for other calendar slots, with or without a new number:
+One event's material used for other calendar meetings, with or without a new number:
 
 ```ini
 # copies = source [numbered | same]
@@ -399,11 +399,14 @@ class_6..10   = class_5            ; five more slots with class 5's material
 class_6,8,22  = class_5 same       ; the calendar shows "class 5" on each of those days
 ```
 
-Proposed meaning:
+Meaning (Decided, M-38):
 
-- Event numbers on the left are **slots on the calendar** (the 6th class meeting, ...). The copies
-  take those slots, and the remaining event directories fill the other slots in order, so with
-  `class_6 = class_5` the directory that would have been class 6 moves to the next slot.
+- The number on the left is **the number that meeting would carry** on the calendar. With
+  `class_6 = class_5`, the meeting that would be class 6 is class 6 with class 5's material, and
+  the 6th folder becomes class 7. With `class_6 = class_5 same`, that meeting shows class 5
+  again, and the next meeting is the real class 6 (the 6th folder): two days show class 5. A
+  `same` repeat does not use up a number, so after `class_4 = class_1 same` a later
+  `class_6 = class_2` is still the event numbered 6 (not the 6th meeting).
 - **`numbered`**: each copy is a separate event with its own number (`class_6`), title and date;
   the following events keep counting (directory 6 becomes class 7).
 - **`same`**: each copy is shown as the source again (`class 5`, same title); the repeat does not
@@ -414,8 +417,8 @@ Proposed meaning:
 - The source is the event **with that number on the calendar** (Decided, M-15), so after
   `class_3 = class_1` the folder that would have been class 3 is class 4, and `class_6 = class_5`
   copies that event. The source must be on the calendar before the copy, it must not be a copy
-  itself, and it must be the same type; otherwise the line is listed as a problem and the slot
-  stays empty.
+  itself, and it must be the same type; otherwise the line is listed as a problem and that
+  meeting stays empty.
 
 Pages from `paths.ini` (Decided): each gets a key like any file, is served by `html.php`, is
 listed in `calendar.php`'s `pages` when visible, and is targeted by rules and grants as
