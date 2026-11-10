@@ -741,6 +741,33 @@ final class RendererTest extends TestCase
         $this->assertContains('if x', $this->render($course, 'class_1/prose.md'), 'long prose with "<" converts (L-106)');
     }
 
+    public function testReview17Leftovers(): void
+    {
+        $cases = [
+            'svgspace' => '<svg / ><style>x{}<p><inst>X1</inst></p></style></svg>',
+            'fo' => '<svg><foreignObject><span>t</svg></span></foreignObject><style>x{}<p><inst>X2</inst></p></style></svg>',
+            'attr' => 'A<div class="x"<inst>X3</inst></div>B',
+            'attr2' => 'A<p title=x<inst>X4</inst>>B',
+        ];
+        $files = [
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/deep.html' => str_repeat('<svg>', 5000) . str_repeat('<svg></x>', 5000),
+            'class/01.Introduction/many.html' => '<url value=a>' . str_repeat('<textarea><script></textarea>', 16000),
+        ];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html;
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $this->assertSame(0, preg_match('/X[1-4]\b/', $this->render($course, "class_1/$name.html")), "hidden (L-109, L-110): $name");
+        }
+        foreach (['deep.html', 'many.html'] as $file) {
+            $start = microtime(true);
+            $this->render($course, "class_1/$file");
+            $this->assertTrue(microtime(true) - $start < 3.0, "$file renders quickly (L-107, L-108)");
+        }
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

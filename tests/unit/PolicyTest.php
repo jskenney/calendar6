@@ -240,6 +240,19 @@ INI;
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/img/solution.pdf', self::now($course)), 'R2 also in a subfolder (L-105)');
     }
 
+    public function testAFileNameRuleDoesNotReleaseAHiddenBoxsFiles(): void
+    {
+        $course = $this->load([
+            'config/default.ini' => "lab = always\nlab/lab-solution = never\ndata.csv = always\nindex.html = always\n",
+            'lab/01.Setup/lab-solution/index.html' => 'S',
+            'lab/01.Setup/lab-solution/data.csv' => 'D',
+        ]);
+        $now = self::now($course);
+        foreach (['lab_1/lab-solution/index.html', 'lab_1/lab-solution/data.csv'] as $id) {
+            $this->assertFalse(self::sees($course, Viewer::anonymous(), $id, $now), "the box wins over a file-name rule (M-43): $id");
+        }
+    }
+
     public function testOpensAndNextChange(): void
     {
         $course = $this->load(['config/default.ini' => "lab/lab-solution = +7 17:00\n"]);

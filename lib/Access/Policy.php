@@ -155,14 +155,19 @@ final class Policy
     {
         $event = "{$type}_$number";
         $targets = ["$event/$file", $file];
-        if (str_contains($file, '/')) {
-            // "a file name alone matches that file in every event" (R2), also in a subfolder:
-            // solution.pdf = never hides img/solution.pdf too (L-105)
-            $targets[] = basename($file);
+        // "a file name alone matches that file in every event" (R2), also in a subfolder:
+        // solution.pdf = never hides img/solution.pdf too (L-105); for a box's own files the box
+        // comes first, so index.html = always can not release lab-solution/index.html (M-43)
+        $base = str_contains($file, '/') ? basename($file) : null;
+        if ($base !== null && $box === null) {
+            $targets[] = $base;
         }
         if ($box !== null) {
             $targets[] = "$event/$box";
             $targets[] = "$type/$box";
+            if ($base !== null) {
+                $targets[] = $base;
+            }
         }
         array_push($targets, $event, "$type/*", "$event/all", "$event/*");
         if ($box !== null) {

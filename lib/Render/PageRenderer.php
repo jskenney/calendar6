@@ -746,16 +746,17 @@ final class PageRenderer
         // a script or style that is never closed runs to the end in a browser: nothing after it
         // (a script or style inside a textarea or noscript body, or one read as bounded inside an
         // svg, is not one: L-103)
+        $boundedEnd = -1; // the end of the bounded bodies seen so far (tokens come in order, L-108)
         foreach ($all as $t => $token) {
+            if ($token[0] === 'bounded') {
+                $boundedEnd = max($boundedEnd, $token[2]);
+                continue;
+            }
             if ($token[0] !== 'tag' || $token[4] || !in_array($token[3], ['script', 'style'], true)
                 || in_array($all[$t + 1][0] ?? '', ['raw', 'bounded'], true)) {
                 continue;
             }
-            $inside = false;
-            foreach ($bounded as [$from, $to]) {
-                $inside = $inside || ($token[1] >= $from && $token[1] < $to);
-            }
-            if (!$inside) {
+            if ($token[1] >= $boundedEnd) {
                 if (preg_match_all('/' . $marker . '(\d+)x/', substr($marked, $token[2]), $after) !== false) {
                     foreach ($after[1] as $number) {
                         unset($allowed[(int) $number]);
@@ -1022,6 +1023,29 @@ final class PageRenderer
      *
      * @param callable(string, string): string $replace
      */
+    /**
+     * Where "<$tag" stands in a tag's attribute name or unquoted value (not inside quotes), as an
+     * offset in $tagText, or null.
+     */
+    private static function blockInAttributes(string $tagText, string $tag): ?int
+    {
+        if (stripos($tagText, '<' . $tag, 1) === false) {
+            return null;
+        }
+        foreach (HtmlLexer::attributes($tagText) as [, $start, $end, $quoted, $nameStart, $attributeEnd]) {
+            $spans = [[$nameStart, $start < 0 ? $attributeEnd : $start]];
+            if ($start >= 0 && !$quoted) {
+                $spans[] = [$start, $end];
+            }
+            foreach ($spans as [$from, $to]) {
+                if (preg_match('/<' . preg_quote($tag, '/') . '(?=[\t\n\f\r \/>]|$)/i', substr($tagText, $from, $to - $from) . ' ', $m, PREG_OFFSET_CAPTURE)) {
+                    return $from + $m[0][1];
+                }
+            }
+        }
+        return null;
+    }
+
     public static function block(string $html, string $tag, callable $replace): string
     {
         $tag = strtolower($tag);
@@ -1043,6 +1067,18 @@ final class PageRenderer
         foreach (HtmlLexer::scan($html) as $token) {
             if ($token[0] === 'bounded') {
                 $range = [$rangeCount++, $token[1], $token[2]];
+                continue;
+            }
+            if ($token[0] === 'tag' && !$token[4] && $token[3] !== $tag && $skip === 0
+                && ($at = self::blockInAttributes(substr($html, $token[1], $token[2] - $token[1]), $tag)) !== null) {
+                // a block tag typed where attributes are (a missing ">": <div class="x"<inst>S</inst>)
+                // opens a block all the same, as Calendar 4's patterns did (fail closed, L-110)
+                $start = $token[1] + $at;
+                $buffers[count($buffers) - 1] .= substr($html, $pos, $start - $pos);
+                $openings[] = '<' . $tag . '>';
+                $ranges[] = -1;
+                $buffers[] = '';
+                $pos = $start + strlen($tag) + 1;
                 continue;
             }
             if ($token[0] !== 'tag' || $token[3] !== $tag) {
