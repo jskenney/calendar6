@@ -509,7 +509,7 @@ changes, apart from `viewer` and `csrf`.
   "semester": {"start": "2026-08-24", "end": "2026-12-18"},
   "schedule": {"mon": "class", "tue": "class", "wed": "lab", "fri": "class"},
   "days":     [{"date": "2026-10-13", "as": "mon", "label": "Monday schedule"},
-               {"date": "2026-11-25", "until": "2026-11-27", "kind": "holiday", "label": "Thanksgiving"},
+               {"date": "2026-11-25", "until": "2026-11-27", "as": "holiday", "label": "Thanksgiving"},
                {"date": "2026-12-03", "period": "2_hour_delay", "label": "2-hour delay (snow)"}],
   "periods":  {"normal": {"label": "Normal", "times": {"1": "07:45-08:35", "4": "10:45-11:35"}},
                "2_hour_delay": {"label": "2 Hour Delay", "times": {"1": "09:45-10:35", "4": "13:45-14:35"}}},
@@ -529,66 +529,85 @@ codes, the lockdown date (its effect shows in `calendar.php`).
 
 ### `calendar.php` (Decided: everything this viewer may see, cached)
 
-**Inputs:** `GET`, none for everyone. For instructors only (ignored otherwise):
+**Inputs:** `GET` or `POST`, none needed. For everyone:
+
+| Field | Meaning |
+|---|---|
+| `section=1121` | a section of `sections.ini`: each event then carries that section's `start`, `end`, `period`, `instructor` and `room` on its day (404 for an unknown section). Without it no times are sent. |
+
+For instructors only (ignored otherwise):
 
 | Field | Meaning |
 |---|---|
 | `as=anonymous` or `as=<username>` | the answer that viewer would get |
 | `at=YYYY-MM-DD HH:MM` | the answer at that moment instead of now |
 
-**Output:** the calendar days, the events on them, and for each event the boxes and files the
-viewer may see, with their keys. Things the viewer may not see are left out entirely.
+**Output:** every day of the semester, the events on them, and for each event the box files and
+notes the viewer may see, with their keys. Files the viewer may not see are left out entirely.
 
 ```json
 {
   "generated":   "2026-11-09T14:05:00-05:00",
   "next_change": "2026-11-10T08:00:00-05:00",
-  "viewer":      {"user": "jdoe", "instructor": false},
-  "pages":  [{"name": "policy", "title": "Policy", "key": "p7Kq2"}],
+  "viewer":      {"user": null, "instructor": false},
+  "section":     "1121",
+  "pages":  {"policy": {"title": "Policy", "key": "p7Kq2", "filename": "policy.html", "kind": "html"}},
   "days": [
-    {"date": "2026-11-09", "events": ["class_30", "lab_10"]},
-    {"date": "2026-11-11", "events": ["class_5@2026-11-11"]},
-    {"date": "2026-11-26", "kind": "holiday", "label": "Thanksgiving", "events": []}
+    {"date": "2026-11-09", "events": ["class_30", "lab_10"],
+     "items": [{"event": "class_30", "type": "class", "number": 30, "title": "Sessions and Cookies"},
+               {"event": "lab_10", "type": "lab", "number": 10, "title": "Cookies"}]},
+    {"date": "2026-11-10", "label": "lab day", "events": ["lab_11"], "type": "lab", "number": 11, "title": "Forms"},
+    {"date": "2026-11-11", "events": ["class_5@2026-11-11"], "type": "class", "number": 5, "title": "Forms"},
+    {"date": "2026-11-26", "as": "holiday", "label": "Thanksgiving", "events": []}
   ],
   "events": {
     "class_30": {
-      "type": "class", "number": 30, "title": "Sessions and Cookies",
-      "date": "2026-11-09", "start": "08:00", "end": "08:50",
+      "type": "class", "number": 30, "title": "Sessions and Cookies", "date": "2026-11-09",
+      "start": "07:45", "end": "08:35", "period": "1", "instructor": "SMITH", "room": "HP111",
       "boxes": [
-        {"box": "title",    "files": [{"name": "index.html", "key": "a1Xc9", "kind": "page"}]},
-        {"box": "homework", "files": [{"name": "homework.html", "key": "b4Rt0", "kind": "page"}]}
+        {"box": "title",    "filename": "index.html",    "key": "a1Xc9", "kind": "html"},
+        {"box": "homework", "filename": "homework.html", "key": "b4Rt0", "kind": "html"},
+        {"box": "slides",   "filename": "slides.pdf",    "key": "c8Pz3", "kind": "get"}
       ],
-      "notes": [{"name": "notes", "text": "The class meets in the auditorium today."}]
+      "notes": [{"filename": "notes.txt", "text": "The class meets in the auditorium today."}]
     },
-    "lab_10": {"type": "lab", "number": 10, "title": "Cookies", "date": "2026-11-09",
-               "boxes": [], "opens": "2026-11-10T08:00:00-05:00"},
+    "lab_10": {"type": "lab", "number": 10, "title": "Cookies", "date": "2026-11-09", "boxes": []},
     "class_5@2026-11-11": {"type": "class", "number": 5, "title": "Forms", "date": "2026-11-11",
-                "copy_of": "class_5", "mode": "same", "boxes": []}
+                "boxes": [], "copy_of": "class_5", "mode": "same"}
   }
 }
 ```
 
-- `boxes` follow the order of `config.php`'s `boxes`; `kind` says which script serves a file:
-  `page` → `html.php`, `file` → `get.php`. **There is no list of an event's other files**
-  (Decided, E-8): `calendar.php` lists only the files `config.ini` names for boxes, plus notes;
-  any other file is reached through a link in a page.
-- `notes`: the text of the event's notes file (`config.ini` `[notes]`: `notes.txt`, `notes.html`
-  or `notes.md`, the first one found), as written, at most 2000 bytes: short remarks such as "the
-  assignment is due Tuesday". It is released like a box (`lab/notes = always`) and comes back as
-  text, not as a key; a notes file is not listed in `boxes` or `files`. The front end shows it as
-  plain text.
-- `opens`: the next time something in the event becomes visible to this viewer (proposed: only
-  when the rule that hides it is a date, not `never`).
+- `days`: every day from the semester's start to its end. `as` says what the day is instead of
+  its own weekday: `holiday`, `none`, or another weekday (`mon`); a `dates.ini` line that only
+  gives the day another type (`2026-11-10 = lab | lab day`) has no `as`, just its `label` and
+  events. `period` appears when the day keeps another period schedule. A day with one shown
+  event repeats its `type`, `number` and `title`; a day with several lists them in `items`.
+- `title`: always shown, to everyone, even for an event with nothing visible yet (Decided).
+- `pages`: the `paths.ini` pages by name, each with its title, key, file name and kind; a page
+  hidden by a rule (`page/policy = never`) is left out.
+- `boxes`: one item per visible file, in the order of `config.php`'s `boxes`; `kind` says which
+  script serves it: `html` → `html.php`, `get` → `get.php`. **There is no list of an event's
+  other files** (Decided, E-8): `calendar.php` lists only the files `config.ini` names for boxes,
+  plus notes; any other file is reached through a link in a page.
+- `notes`: the text of the event's notes file (`config.ini` `[notes]`), as written, at most 2000
+  bytes: short remarks such as "the assignment is due Tuesday". It is released like a box
+  (`lab/notes = always`) and comes back as text, not as a key; a notes file is never in `boxes`.
+  The front end shows it as plain text.
+- **No hints for anonymous viewers** (Decided): they get only what they may see, with no
+  `visible` or `opens`. A **logged-on viewer** (an instructor, or a user with grants) sees, on
+  each file it may see that anonymous viewers may not yet, `"visible": false` and, when a moment
+  will release it (not `never`), `"opens"`:
+  `{"box": "lab-solution", "filename": "lab-solution.html", "key": "d2Wq7", "kind": "html",
+  "visible": false, "opens": "2026-11-16T17:00:00-05:00"}` (notes the same way); the event's
+  own `opens` is the earliest of them. Files anonymous viewers already see carry neither.
 - `copy_of` / `mode`: an event from `duplicate.ini`. A `same` repeat is shown under the source's
   number, so its id adds the date (`class_5@2026-11-11`); its files have their own keys, since
   relative rules can give each showing a different window. Events on no calendar day are left out.
-- **Instructors** get everything, with each hidden file marked:
-  `{"name": "solution.html", "key": "d2Wq7", "kind": "page", "visible": false, "rule":
-  "lab/lab-solution = +7 17:00", "opens": "2026-11-16T17:00:00-05:00"}` (notes the same way:
-  `{"name": "notes", "text": "...", "visible": false, "opens": ...}`), events on no calendar
-  day (with `"date": null`), and `problems` (bad lines in the `.ini` files, overridden lines,
-  names that are not UTF-8 or differ only in case, copies that can not be made). Whether material
-  can be fetched directly is checked from outside, by `tests/deploy/smoke.php` (and later
+- **Instructors** get every file, events on no calendar day (with `"date": null`), each event's
+  `directory`, and `problems` (bad lines in the `.ini` files, overridden lines, names that are
+  not UTF-8 or differ only in case, copies that can not be made). Whether material can be
+  fetched directly is checked from outside, by `tests/deploy/smoke.php` (and later
   `bin/cal6 check`, E-5), not by `calendar.php`.
 
 **Caching (Decided: cache when possible):**
@@ -1149,8 +1168,7 @@ Choices the code made where the design left room (change them here if they are w
   remaining slots stay empty; directories that do not fit are events on no day (instructors
   only). A `dates.ini` line with one date means that day only; a window with times only cancels
   meetings whose first section starts inside it.
-- **calendar.php:** an event whose files are all hidden is listed without its title (so hidden
-  titles do not leak). Only the files `config.ini` names for boxes are listed (and notes, as
+- **calendar.php:** titles are always shown, to everyone. Only the files `config.ini` names for boxes are listed (and notes, as
   text); every other file, in the event directory or below it (`img/pic.png`), gets a key so
   pages can link to it, and is never listed.
 - **Keys:** 22 characters of base64url HMAC-SHA256.

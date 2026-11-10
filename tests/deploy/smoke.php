@@ -55,10 +55,8 @@ $calendar = json_decode($body, true) ?: [];
 $key = '';
 foreach ($calendar['events'] ?? [] as $event) {
     foreach ($event['boxes'] as $box) {
-        foreach ($box['files'] as $file) {
-            if ($key === '' && $file['kind'] === 'page') {
-                $key = $file['key'];
-            }
+        if ($key === '' && $box['kind'] === 'html') {
+            $key = $box['key'];
         }
     }
 }

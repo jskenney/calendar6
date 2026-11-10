@@ -56,9 +56,7 @@ final class EndpointsTest extends TestCase
         $course = \Cal6\Course\Course::load($this->dir);
         foreach ($calendar['events'] ?? [] as $id => $event) {
             foreach ($event['boxes'] as $box) {
-                foreach ($box['files'] as $file) {
-                    $keys["$id/$file[name]"] = $file['key'];
-                }
+                $keys["$id/$box[filename]"] = $box['key'];
             }
             foreach ($course->keysByEvent[$id] ?? [] as $name => $key) {
                 if ($course->places[$key]->box === null) {
@@ -66,8 +64,8 @@ final class EndpointsTest extends TestCase
                 }
             }
         }
-        foreach ($calendar['pages'] ?? [] as $page) {
-            $keys["page/$page[name]"] = $page['key'];
+        foreach ($calendar['pages'] ?? [] as $name => $page) {
+            $keys["page/$name"] = $page['key'];
         }
         return $keys;
     }
@@ -110,13 +108,22 @@ final class EndpointsTest extends TestCase
         $this->assertFalse(isset($keys['class_1/instructor.html']), 'hidden files are left out');
         $this->assertFalse(isset($keys['lab_1/lab-solution.html']));
         $this->assertFalse(isset($data['events']['exam_2']), 'events on no day are left out');
-        $this->assertSame('', $data['events']['class_3']['title'] ?? 'x', 'no title when nothing is visible');
+        $this->assertSame('Third', $data['events']['class_3']['title'] ?? 'x', 'the title is always shown, even with nothing visible');
         $this->assertSame(['class_1'], $data['days'][0]['events'] ?? null);
-        $this->assertSame(filesize("$this->dir/class/01.Introduction/index.html"), $data['events']['class_1']['boxes'][0]['files'][0]['size'] ?? null, 'files carry their size (DOC-12)');
-        $this->assertSame(['home', 'policy'], array_column($data['pages'], 'name'));
+        $first = $data['events']['class_1']['boxes'][0] ?? [];
+        $this->assertSame(['box', 'filename', 'key', 'kind'], array_keys($first), 'one item per file: box, filename, key, kind (no size)');
+        $this->assertSame(['title', 'index.html', 'html'], [$first['box'], $first['filename'], $first['kind']]);
+        $this->assertSame(['home', 'policy'], array_keys($data['pages']), 'pages by name');
+        $this->assertSame(['title', 'key', 'filename', 'kind'], array_keys($data['pages']['home']));
+        $this->assertSame(['class', 1, 'Introduction'], [$data['days'][0]['type'] ?? null, $data['days'][0]['number'] ?? null, $data['days'][0]['title'] ?? null], 'a day carries its event\'s type, number and title');
+        $this->assertFalse(isset($data['events']['class_1']['start']), 'no times without a section');
+        $this->assertNotContains('"opens"', $anon->body, 'no hints for anonymous viewers');
+        $this->assertNotContains('"visible"', $anon->body);
         $this->assertFalse(isset($data['problems']), 'problems are for instructors');
         $this->assertNotContains('instructor.html', $anon->body);
-        $this->assertNotContains('Midterm', $anon->body, 'the titles of hidden events');
+        $this->assertSame('Midterm', $data['events']['exam_1']['title'] ?? null, 'titles are shown to everyone, even of events with nothing visible yet');
+        $this->assertSame([], $data['events']['exam_1']['boxes'] ?? null);
+        $this->assertNotContains('Final', $anon->body, 'but not events on no calendar day');
 
         $again = $client->get('calendar/php/calendar.php', ['If-None-Match' => $anon->header('etag')]);
         $this->assertSame(304, $again->status, 'unchanged: 304');
@@ -128,9 +135,9 @@ final class EndpointsTest extends TestCase
         $this->assertTrue(isset($profKeys['class_1/instructor.html']), 'instructors see everything');
         $this->assertSame(true, $prof['viewer']['instructor'] ?? null);
         $hidden = $prof['events']['class_1']['boxes'];
-        $instructorBox = array_values(array_filter($hidden, static fn (array $b): bool => $b['box'] === 'instructor'))[0]['files'][0] ?? [];
+        $instructorBox = array_values(array_filter($hidden, static fn (array $b): bool => $b['box'] === 'instructor'))[0] ?? [];
         $this->assertSame(false, $instructorBox['visible'] ?? null, 'marked hidden for anonymous viewers');
-        $this->assertSame('class/instructor = never', $instructorBox['rule'] ?? null);
+        $this->assertFalse(isset($instructorBox['opens']), '"never" has no opening moment');
         $this->assertTrue(array_key_exists('exam_2', $prof['events']) && $prof['events']['exam_2']['date'] === null, 'events on no day, for instructors');
         $this->assertTrue(isset($prof['problems']));
 
@@ -385,7 +392,7 @@ HTML;
         $client = $this->start([
             'class/01.Introduction/index.html' => '<lock code="open1">A</lock><inst><lock code="hidden1">B</lock></inst>',
         ]);
-        $key = $client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['files'][0]['key'] ?? '';
+        $key = $client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['key'] ?? '';
         preg_match('/name="csrf" value="([^"]+)"/', $client->get("calendar/php/html.php?file=$key")->body, $t);
         $hidden = $client->post("calendar/php/html.php?file=$key", ['lock' => 'hidden1', 'csrf' => $t[1] ?? '']);
         $this->assertSame('', $hidden->header('set-cookie'), 'a code inside <inst> is not accepted (L-91)');
@@ -407,7 +414,7 @@ HTML;
     public function testNestedLocksOpenInTurn(): void
     {
         $client = $this->start(['class/01.Introduction/index.html' => '<lock code="outer">OUTER-OPEN <lock code="inner">INNER-OPEN</lock></lock>']);
-        $key = $client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['files'][0]['key'] ?? '';
+        $key = $client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['key'] ?? '';
         $token = static fn (string $body): string => preg_match('/name="csrf" value="([^"]+)"/', $body, $m) ? $m[1] : '';
         $t = $token($client->get("calendar/php/html.php?file=$key")->body);
         $client->post("calendar/php/html.php?file=$key", ['lock' => 'outer', 'csrf' => $t]);
@@ -418,6 +425,61 @@ HTML;
         $this->assertContains('INNER-OPEN', $client->get("calendar/php/html.php?file=$key")->body, 'the inner lock opens once the outer one has (M-49)');
     }
 
+    public function testOpensOnlyForLoggedOnViewers(): void
+    {
+        $hash = password_hash(Fixture::PASSWORD, PASSWORD_DEFAULT);
+        $client = $this->start([
+            'config/default.ini' => "class = always\nclass/slides = 2099-01-01 08:00\nclass/instructor = never\n",
+            'class/01.Introduction/slides.pdf' => 'PDF',
+            'config/auth/ta.ini' => "password_hash = $hash\nvalid = always\n[grants]\nclass_1/slides.pdf = always\n",
+        ]);
+        $anon = $client->get('calendar/php/calendar.php');
+        $this->assertNotContains('slides.pdf', $anon->body, 'anonymous viewers do not see it');
+        $this->assertNotContains('"opens"', $anon->body, 'and get no hint of when it opens');
+
+        $this->login($client, 'ta');
+        $ta = $client->get('calendar/php/calendar.php')->json()['events']['class_1'] ?? [];
+        $slides = array_values(array_filter($ta['boxes'] ?? [], static fn (array $b): bool => $b['filename'] === 'slides.pdf'))[0] ?? [];
+        $this->assertSame(['box' => 'slides', 'filename' => 'slides.pdf', 'key' => $slides['key'] ?? '', 'kind' => 'get', 'visible' => false, 'opens' => '2099-01-01T08:00:00-05:00'], $slides, 'a granted user learns when students will see it');
+        $this->assertSame('2099-01-01T08:00:00-05:00', $ta['opens'] ?? null, 'and the event says its earliest opening');
+        $index = array_values(array_filter($ta['boxes'], static fn (array $b): bool => $b['filename'] === 'index.html'))[0] ?? [];
+        $this->assertFalse(isset($index['opens']) || isset($index['visible']), 'nothing extra on what students already see');
+
+        $this->login($client);
+        $prof = $client->get('calendar/php/calendar.php')->json()['events']['class_1'] ?? [];
+        $instructor = array_values(array_filter($prof['boxes'], static fn (array $b): bool => $b['box'] === 'instructor'))[0] ?? [];
+        $this->assertSame(false, $instructor['visible'] ?? null, 'instructors see what is hidden');
+        $this->assertFalse(isset($instructor['opens']), '"never" has no opening');
+    }
+
+    public function testSectionTimes(): void
+    {
+        $client = $this->start(['config/dates.ini' => "2026-08-28 = lab | lab day\n"]);
+        $plain = $client->get('calendar/php/calendar.php')->json();
+        $this->assertFalse(isset($plain['section']) || isset($plain['events']['class_1']['start']), 'no times without a section');
+
+        $data = $client->get('calendar/php/calendar.php?section=1121')->json();
+        $this->assertSame('1121', $data['section'] ?? null);
+        $one = $data['events']['class_1'] ?? [];
+        $this->assertSame(['start' => '07:45', 'end' => '08:35', 'period' => '1', 'instructor' => 'SMITH', 'room' => 'HP111'],
+            array_intersect_key($one, array_flip(['start', 'end', 'period', 'instructor', 'room'])), 'Monday: MF1');
+        $two = $data['events']['class_2'] ?? [];
+        $this->assertSame(['07:45', '09:35', '12'], [$two['start'] ?? null, $two['end'] ?? null, $two['period'] ?? null], 'Tuesday: T12');
+        $this->assertFalse(isset($data['events']['lab_1']['start']), 'the section does not meet for labs');
+
+        $posted = $client->post('calendar/php/calendar.php', ['section' => '4345'])->json();
+        $this->assertSame(['10:45', '11:35', 'HP132', 'JONES'], [$posted['events']['class_1']['start'] ?? null, $posted['events']['class_1']['end'] ?? null, $posted['events']['class_1']['room'] ?? null, $posted['events']['class_1']['instructor'] ?? null], 'section by POST');
+        $this->assertSame(404, $client->get('calendar/php/calendar.php?section=9999')->status, 'an unknown section');
+
+        $day = array_values(array_filter($data['days'], static fn (array $d): bool => $d['date'] === '2026-08-28'))[0] ?? [];
+        $this->assertFalse(isset($day['as']), 'a day given another type is not "as" anything');
+        $this->assertSame('lab day', $day['label'] ?? null);
+        $this->assertSame('lab', $day['type'] ?? null);
+        $this->assertSame(1, preg_match('/^lab_\d+$/', $day['events'][0] ?? ''));
+        $this->assertSame(count($data['days']), count(array_unique(array_column($data['days'], 'date'))));
+        $this->assertSame('2026-12-18', end($data['days'])['date'], 'every day of the semester');
+    }
+
     public function testNotesComeBackAsText(): void
     {
         $client = $this->start([
@@ -426,8 +488,8 @@ HTML;
             'class/02.Second/notes.txt' => 'Hidden remark',
         ]);
         $events = $client->get('calendar/php/calendar.php')->json()['events'];
-        $this->assertSame([['name' => 'notes', 'text' => 'The class meets in the auditorium today.']], $events['class_1']['notes'] ?? null, 'notes are text, not keys');
-        $this->assertNotContains('notes.txt', json_encode($events['class_1']), 'and never as a file');
+        $this->assertSame([['filename' => 'notes.txt', 'text' => 'The class meets in the auditorium today.']], $events['class_1']['notes'] ?? null, 'notes are text, not keys');
+        $this->assertSame([], array_filter($events['class_1']['boxes'], static fn (array $b): bool => $b['filename'] === 'notes.txt'), 'and never as a file');
         $this->assertSame(false, isset($events['class_2']['notes']), 'released by rules like a box: class_2/notes = never hides them');
         $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
         $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf]);
@@ -480,8 +542,8 @@ HTML;
         $repeat = $data['events']['class_1@2026-08-25'] ?? [];
         $this->assertSame(1, $repeat['number'] ?? null);
         $this->assertSame('same', $repeat['mode'] ?? null);
-        $first = $data['events']['class_1']['boxes'][0]['files'][0]['key'];
-        $second = $repeat['boxes'][0]['files'][0]['key'] ?? '';
+        $first = $data['events']['class_1']['boxes'][0]['key'];
+        $second = $repeat['boxes'][0]['key'] ?? '';
         $this->assertTrue($first !== $second && $second !== '', 'its own keys');
         $page = $client->get("calendar/php/html.php?file=$second")->body;
         $this->assertSame(1, preg_match('/get\.php\?file=([A-Za-z0-9_-]{22})/', $page, $m), 'a nested file gets a key');
@@ -518,14 +580,14 @@ HTML;
         $this->assertSame(['start' => '2026-08-24', 'end' => '2026-12-18', 'weekends' => false], $data['semester'] ?? null);
         $this->assertSame(['mon' => 'class', 'tue' => 'class', 'wed' => 'lab', 'fri' => 'class'], $data['schedule'] ?? null);
         $this->assertSame([
-            ['date' => '2026-09-07', 'events' => [], 'kind' => 'holiday', 'label' => 'Labor Day'],
-            ['date' => '2026-10-12', 'events' => [], 'kind' => 'holiday', 'label' => 'Columbus Day'],
+            ['date' => '2026-09-07', 'events' => [], 'as' => 'holiday', 'label' => 'Labor Day'],
+            ['date' => '2026-10-12', 'events' => [], 'as' => 'holiday', 'label' => 'Columbus Day'],
             ['date' => '2026-10-13', 'events' => ['class'], 'as' => 'mon', 'label' => 'Monday schedule'],
             ['date' => '2026-10-14', 'events' => ['lab'], 'label' => 'Lab day'],
-            ['date' => '2026-11-11', 'events' => [], 'kind' => 'holiday', 'label' => 'Veterans Day'],
-            ['date' => '2026-11-25', 'events' => [], 'kind' => 'holiday', 'label' => 'Thanksgiving'],
-            ['date' => '2026-11-26', 'events' => [], 'kind' => 'holiday', 'label' => 'Thanksgiving'],
-            ['date' => '2026-11-27', 'events' => [], 'kind' => 'holiday', 'label' => 'Thanksgiving'],
+            ['date' => '2026-11-11', 'events' => [], 'as' => 'holiday', 'label' => 'Veterans Day'],
+            ['date' => '2026-11-25', 'events' => [], 'as' => 'holiday', 'label' => 'Thanksgiving'],
+            ['date' => '2026-11-26', 'events' => [], 'as' => 'holiday', 'label' => 'Thanksgiving'],
+            ['date' => '2026-11-27', 'events' => [], 'as' => 'holiday', 'label' => 'Thanksgiving'],
         ], $data['days'] ?? null, 'the days of dates.ini (T-6)');
         $this->assertSame('normal', $data['period'] ?? null);
         $this->assertSame(['label' => '2 Hour Delay', 'times' => ['1' => '09:45-10:35', '2' => '10:45-11:35', '3' => '12:45-13:35', '4' => '13:45-14:35', '5' => '14:45-15:35', '6' => '15:45-16:35', '7' => '16:45-17:35', '8' => '09:45-11:00', '9' => '12:45-14:00', '10' => '14:45-16:00']], $data['periods']['2_hour_delay'] ?? null);

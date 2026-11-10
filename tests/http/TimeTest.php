@@ -44,10 +44,8 @@ final class TimeTest extends TestCase
     private static function hasFile(array $calendar, string $event, string $name): bool
     {
         foreach ($calendar['events'][$event]['boxes'] ?? [] as $box) {
-            foreach ($box['files'] as $file) {
-                if ($file['name'] === $name) {
-                    return true;
-                }
+            if ($box['filename'] === $name) {
+                return true;
             }
         }
         return false;
@@ -69,7 +67,7 @@ final class TimeTest extends TestCase
         $client = $this->start([
             'class/01.Introduction/index.html' => '<p>BEFORE</p><postmeeting>AFTER-MEETING</postmeeting>',
         ], '2026-08-24 15:29');
-        $key = (string) ($client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['files'][0]['key'] ?? '');
+        $key = (string) ($client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['key'] ?? '');
         $this->assertNotContains('AFTER-MEETING', $client->get("calendar/php/html.php?file=$key")->body, 'section 6541 meets until 15:30');
         $this->at('2026-08-24 15:30');
         $this->assertContains('AFTER-MEETING', $client->get("calendar/php/html.php?file=$key")->body, 'shown once every section has met');

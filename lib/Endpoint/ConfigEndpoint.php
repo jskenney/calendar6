@@ -49,14 +49,15 @@ final class ConfigEndpoint
             if ($day->explicit) {
                 $item['events'] = $day->types;
             }
-            if ($day->weekday !== (int) $day->date->format('N')) {
+            // "as": what the day is instead of its own weekday (holiday, none, or another weekday),
+            // as calendar.php says it
+            if ($day->kind !== null) {
+                $item['as'] = $day->kind;
+            } elseif ($day->weekday !== (int) $day->date->format('N')) {
                 $item['as'] = $names[$day->weekday];
             }
             if ($day->period !== $config->defaultPeriod) {
                 $item['period'] = $day->period;
-            }
-            if ($day->kind !== null) {
-                $item['kind'] = $day->kind;
             }
             if ($day->label !== null) {
                 $item['label'] = $day->label;

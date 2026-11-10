@@ -20,8 +20,15 @@ final class CalendarEndpoint
 {
     public static function handle(Context $c): void
     {
-        if ($c->method() !== 'GET' && $c->method() !== 'HEAD') {
-            Response::error(405, 'GET only', ['Allow: GET, HEAD']);
+        if (!in_array($c->method(), ['GET', 'HEAD', 'POST'], true)) {
+            Response::error(405, 'GET or POST only', ['Allow: GET, HEAD, POST']);
+            return;
+        }
+        // ?section=1121 (GET or POST): that section's times, period, instructor and room per event
+        $section = $c->query('section') ?? $c->post('section');
+        $section = is_string($section) && $section !== '' ? $section : null;
+        if ($section !== null && !isset($c->config->sections->sections[$section])) {
+            Response::error(404, 'no such section');
             return;
         }
         $viewer = $c->viewer();
@@ -54,12 +61,13 @@ final class CalendarEndpoint
 
         $cache = AnswerCache::forCourse($c->courseDir);
         $fingerprint = $preview ? '' : $c->fingerprint();
-        $body = $preview ? null : $cache->get($viewer->cacheName(), $fingerprint, $now);
+        $cacheName = $viewer->cacheName() . ($section !== null ? '|section=' . $section : '');
+        $body = $preview ? null : $cache->get($cacheName, $fingerprint, $now);
         if ($body === null) {
             $json = new CalendarJson($c->course(), $c);
-            $body = Response::encode($json->build($viewer, $now));
+            $body = Response::encode($json->build($viewer, $now, $section));
             if (!$preview) {
-                $cache->put($viewer->cacheName(), $fingerprint, $json->nextChange, $body);
+                $cache->put($cacheName, $fingerprint, $json->nextChange, $body);
             }
         }
         Response::jsonWithEtag($body, $c->server);
