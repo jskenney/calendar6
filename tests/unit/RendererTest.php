@@ -358,6 +358,10 @@ final class RendererTest extends TestCase
     {
         $course = $this->course([
             'class/01.Introduction/url.html' => '<button onclick="show(\'<url value="n" default="1">\')">x</button><script>var n = <url value="n" default="1">;</script><p><url value="n" default="1"></p><a href="?x=<url value="n" default="1">" title="<replace value="course">">a</a><p style="color:<url value="n">" onmouseover=\'f("<url value="n">")\'>s</p><script>x</script>',
+            'class/01.Introduction/ctx.html' => '<a href="#" onclick="if (n < 3) f(\'<url value=n>\')">a</a><img/onerror="f(\'<url value=n>\')" src=x><a href="x"onclick="f(\'<url value=n>\')">c</a>'
+                . '<a href="javascript:go(\'<url value=n>\')">d</a><a href=<url value=n>>e</a><iframe srcdoc="<url value=n>"></iframe>'
+                . "<script><!--\ndocument.write('<script>i()</script>');\nvar a='<url value=n>';\n// --></script>"
+                . '<p title="<url value=n>" data-x=\'<url value=n>\'>OK <url value=n></p><a href="https://example.org/?q=<url value=n>">f</a>',
             'class/01.Introduction/open.html' => '<p><url value="n"></p><script>var n = <url value="n">;',
             'class/01.Introduction/attr.html' => '<img alt="<inject src=\'secret.txt\'>" src="a.png"><p>A-END</p>',
             'class/01.Introduction/secret.txt' => 'INJECTED',
@@ -370,6 +374,9 @@ final class RendererTest extends TestCase
         $this->assertSame(2, substr_count($page, 'EVIL'), '<url> is substituted in text and ordinary attributes (as v4), not in handlers, style or scripts (M-28): ' . $page);
         $this->assertContains('href="?x=EVIL"', $page, 'as v4');
         $this->assertNotContains('<replace', $page, '<replace> anywhere');
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['n' => 'EVIL']))->render($place('ctx.html'));
+        $this->assertSame(4, substr_count($page, 'EVIL'), 'only in text, title, data-* and after an http(s) URL (M-32), not in handlers, javascript: links, unquoted values, srcdoc or an escaped script (L-52): ' . $page);
+        $this->assertContains('q=EVIL', $page);
         $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['n' => 'EVIL']))->render($place('open.html'));
         $this->assertSame(1, substr_count($page, 'EVIL'), 'not in a script that is never closed: ' . $page);
         $this->assertNotContains('INJECTED', $this->render($course, 'class_1/attr.html'), 'an <inject> inside an attribute value is text (L-47)');
@@ -403,16 +410,17 @@ final class RendererTest extends TestCase
         $course = $this->course([
             'class/01.Introduction/deep.html' => str_repeat('<inst>', 70000) . 'X' . str_repeat('</inst>', 70000) . '<p>DEEP-END</p>',
             'class/01.Introduction/scripts.html' => str_repeat('<script ', 80000),
+            'class/01.Introduction/unclosed.html' => str_repeat('<script>x', 20000) . '<inst>U</inst><p>U-END</p>',
             'class/01.Introduction/self.html' => str_repeat('<inject src="self.html">', 8) . 'SELF',
             'class/01.Introduction/emph.md' => str_repeat('_a ', 50000),
             'class/01.Introduction/list.md' => implode("\n", array_map(static fn (int $i): string => str_repeat('  ', $i) . '- item', range(0, 3000))),
             'config/default.ini' => "class_1 = always\n",
         ]);
-        foreach (['deep.html' => 'DEEP-END', 'scripts.html' => '', 'self.html' => 'SELF', 'emph.md' => 'a', 'list.md' => 'item'] as $file => $expect) {
+        foreach (['unclosed.html' => 'U-END', 'deep.html' => 'DEEP-END', 'scripts.html' => '', 'self.html' => 'SELF', 'emph.md' => 'a', 'list.md' => 'item'] as $file => $expect) {
             $start = microtime(true);
             $memory = memory_get_usage();
             $page = $this->render($course, "class_1/$file");
-            $this->assertTrue(microtime(true) - $start < 3.0, "$file renders quickly (L-37)");
+            $this->assertTrue(microtime(true) - $start < 3.0, "$file renders quickly (L-37, L-55)");
             $this->assertTrue(memory_get_peak_usage() < 256 * 1024 * 1024, "$file within memory");
             $this->assertContains($expect, $page, $file);
             unset($memory);

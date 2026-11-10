@@ -663,12 +663,16 @@ browser ends them, and a CDATA section is removed whole. `<inject>`, `<codeinjec
 inside a quoted attribute value or a script or style body they are text. The value tags `<replace>`
 and `<url>` are also found inside other tags' attribute values, as in v4 (`<a href="<url
 value=next>">`); `<replace>` works anywhere (its values are the course's own), but **`<url>` is
-left as written inside a `<script>` or `<style>` body (also one never closed) and inside `on*` and
-`style` attributes**, because HTML escaping does not make a value from a link safe in JavaScript
-or CSS. **Block tags inside a `<script>` or `<style>` body are sent as written too**: an `<inst>`
+replaced only in text and in quoted values of `href`, `src`, `title`, `alt`, `value`, `class`,
+`id`, `name`, `placeholder`, `label` and `data-*`** (in `href` and `src` only when the URL before
+it has no scheme or `http(s):`). Anywhere else (a script or style body, also one never closed or
+an old-style `<script><!-- ... <script>...</script> ... --></script>`, an event handler, `style`,
+`srcdoc`, an unquoted value, a `javascript:` link) it is left as written, because HTML escaping
+does not make a value from a link safe in JavaScript or CSS. **Block tags inside a `<script>` or `<style>` body are sent as written too**: an `<inst>`
 there is script text, not hidden, so keep hidden material out of scripts. A `<script>` or `<style>`
 that is never closed is not raw text for hiding: the rest of the page is read as markup, so the
-blocks after it are still hidden. Processing is linear in the size of the page;
+blocks after it are still hidden. A script ends where a browser ends it, also in its "escaped"
+states (`<!--` ... `<script>` ... `</script>` ... `-->`). Processing is linear in the size of the page;
 `<inject>` does not follow cycles and stops after about 4 MB of injected text; the Markdown
 converter nests quotes and lists at most 16 deep and emphasis spans at most 1000 characters.
 **In Markdown**, HTML comments are removed from the source before it is converted (outside code),
@@ -689,7 +693,7 @@ pattern fails on a page, the request fails rather than sending the page half pro
 | `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`) |
 | `<codeinject src="file">` | another file, escaped so it shows as source code |
 | `<replace value="name">` | a value from `config.ini` (`[replace]`) or a built-in one (`type`, `ctype`, `event`, `zevent`, `title`, `course`, `coursename`) |
-| `<url value="name" default="x">` | a value from the page's URL, **HTML-escaped** (remembered in the session, as v4); not substituted inside script or style bodies or `on*`/`style` attributes (see above) |
+| `<url value="name" default="x">` | a value from the page's URL, **HTML-escaped** (remembered in the session, as v4); only in text and in quoted values of a few attributes (see above) |
 | `<showlink src="file">` | a link to another file of the event, by key |
 | `<calphp src="file.php">` | runs that PHP file and puts its output in place, passed through as-is |
 

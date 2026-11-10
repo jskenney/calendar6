@@ -58,10 +58,85 @@ final class HtmlLexer
         return $close === false ? strlen($html) : $close + 1;
     }
 
+    /**
+     * Where the body of a <script> or <style> that starts at $start ends (the "<" of its closing
+     * tag), or false.  A script follows the browser's escaped states (L-52): after "<!--", a
+     * "<script" makes the next "</script>" part of the script ("double escaped") until "-->".
+     */
+    private static function rawEnd(string $html, int $start, string $name): int|false
+    {
+        $pattern = $name === 'script' ? '/<\/script(?=[\s\/>]|$)|<!--|<script(?=[\s\/>])|-->/i' : '/<\/style(?=[\s\/>]|$)/i';
+        $state = 'data';
+        $pos = $start;
+        while (preg_match($pattern, $html, $m, PREG_OFFSET_CAPTURE, $pos) === 1) {
+            [$found, $at] = $m[0];
+            $pos = $at + strlen($found);
+            $token = strtolower($found);
+            if ($token[1] === '/') {                     // </script or </style
+                if ($state !== 'double') {
+                    return $at;
+                }
+                $state = 'escaped';
+            } elseif ($token === '<!--') {
+                if ($state === 'data') {
+                    $state = 'escaped';
+                }
+            } elseif ($token === '-->') {
+                $state = 'data';
+            } elseif ($state === 'escaped') {            // <script inside an escaped script
+                $state = 'double';
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The attributes of an opening tag's text, read as openingTagEnd() reads them:
+     * list of [lower-case name, value start, value end, quoted], positions in $tag (a value
+     * start of -1: no value).
+     *
+     * @return list<array{0: string, 1: int, 2: int, 3: bool}>
+     */
+    public static function attributes(string $tag): array
+    {
+        $length = strlen($tag);
+        $i = 1 + strspn($tag, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:.', 1);
+        $attributes = [];
+        while ($i < $length) {
+            $i += strspn($tag, " \t\n\r\f/", $i);
+            if ($i >= $length || $tag[$i] === '>') {
+                break;
+            }
+            $nameLength = max(1, strcspn($tag, " \t\n\r\f/>=", $i));
+            $name = strtolower(substr($tag, $i, $nameLength));
+            $i += $nameLength;
+            $i += strspn($tag, " \t\n\r\f", $i);
+            if (($tag[$i] ?? '') !== '=') {
+                $attributes[] = [$name, -1, -1, false];
+                continue;
+            }
+            $i++;
+            $i += strspn($tag, " \t\n\r\f", $i);
+            $quote = $tag[$i] ?? '';
+            if ($quote === '"' || $quote === "'") {
+                $close = strpos($tag, $quote, $i + 1);
+                $end = $close === false ? $length : $close;
+                $attributes[] = [$name, $i + 1, $end, true];
+                $i = $end + 1;
+            } else {
+                $end = $i + strcspn($tag, " \t\n\r\f>", $i);
+                $attributes[] = [$name, $i, $end, false];
+                $i = $end;
+            }
+        }
+        return $attributes;
+    }
+
     /** @return list<array{0: string, 1: int, 2: int, 3?: string, 4?: bool}> */
     public static function scan(string $html): array
     {
         $tokens = [];
+        $noClose = [];
         $length = strlen($html);
         $pos = 0;
         while (($lt = strpos($html, '<', $pos)) !== false) {
@@ -107,20 +182,17 @@ final class HtmlLexer
             $tokens[] = ['tag', $lt, $end, $name, $closing];
             $pos = $end;
             if (!$closing && ($name === 'script' || $name === 'style')) {
-                $close = $end;
-                while (($close = stripos($html, '</' . $name, $close)) !== false) {
-                    $after = $html[$close + strlen($name) + 2] ?? '';
-                    if ($after === '' || $after === '>' || $after === '/' || ctype_space($after)) {
-                        break;
-                    }
-                    $close += 2;
-                }
+                $close = ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);
                 if ($close !== false) {
                     $tokens[] = ['raw', $end, $close];
                     $pos = $close;
+                } else {
+                    // never closed (a typo such as </stlye>): the rest is read as ordinary markup,
+                    // so hidden blocks after it are still found and removed (fail closed, M-27);
+                    // no later element of this name is closed either, so it is not searched
+                    // for again (linear, L-55)
+                    $noClose[$name] = min($noClose[$name] ?? PHP_INT_MAX, $end);
                 }
-                // never closed (a typo such as </stlye>): the rest is read as ordinary markup,
-                // so hidden blocks after it are still found and removed (fail closed, M-27)
             }
         }
         return $tokens;

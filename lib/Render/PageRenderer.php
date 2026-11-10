@@ -427,20 +427,19 @@ final class PageRenderer
         ];
         $values = $this->course->config->replace + $values; // not array_merge: numeric names (L-26)
         // anywhere, also inside attribute values and scripts, as v4: the values are the course's own
-        return self::valueTags($html, 'replace', false, static function (string $tag) use ($values): string {
+        return self::valueTags($html, 'replace', static function (string $tag) use ($values): string {
             return htmlspecialchars($values[(string) self::attribute($tag, 'value')] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         });
     }
 
     /**
      * <url value="name" default="x">: from the page's URL (remembered in an existing session),
-     * HTML-escaped.  In text and in ordinary attribute values (`href="<url ...>"`, as v4), but
-     * not inside a script or style body or an on* or style attribute, where HTML escaping does
-     * not protect (M-28).
+     * HTML-escaped.  In text and in quoted values of a few attributes (`href="<url ...>"`, as
+     * v4), never where HTML escaping does not protect (M-28, M-32): see urlTags().
      */
     private function url(string $html): string
     {
-        return self::valueTags($html, 'url', true, function (string $tag): string {
+        return self::urlTags($html, function (string $tag): string {
             $name = (string) self::attribute($tag, 'value');
             if (isset($this->urlValues[$name]) && !self::hasUnsafeScheme($this->urlValues[$name])) {
                 $this->usedUrlValues[] = $name;
@@ -453,65 +452,110 @@ final class PageRenderer
     }
 
     /**
-     * Value tags (<url>, <replace>) are written inside other tags' attribute values in v4 pages
-     * (`<a href="<url value=next>">`), where the lexer does not see them, so they are found by
-     * pattern; their closing tags are removed.  With $guarded, a tag inside a script or style
-     * body, or inside an on* or style attribute of the tag around it, is left as written.  One
-     * pass with moving pointers (L-44).
+     * <replace> is written inside other tags' attribute values in v4 pages (`title="<replace
+     * value=course>"`), where the lexer does not see it, so it is found by pattern, anywhere
+     * (its values are the course's own); closing tags are removed.
      *
      * @param callable(string): string $fn
      */
-    private static function valueTags(string $html, string $name, bool $guarded, callable $fn): string
+    private static function valueTags(string $html, string $name, callable $fn): string
     {
-        if (preg_match_all('/<' . $name . '\b[^>]*>|<\/' . $name . '\s*>/i', $html, $matches, PREG_OFFSET_CAPTURE) === false) {
+        $out = preg_replace_callback('/<' . $name . '\b[^>]*>|<\/' . $name . '\s*>/i', static fn (array $m): string => $m[0][1] === '/' ? '' : $fn($m[0]), $html);
+        return $out ?? self::failed();
+    }
+
+    /** Attributes where a value from a link may go (quoted only); href and src also check the scheme. */
+    private const URL_ATTRIBUTES = ['href', 'src', 'title', 'alt', 'value', 'class', 'id', 'name', 'placeholder', 'label'];
+
+    /**
+     * Where each <url> tag may be replaced (M-32): every <url> is first swapped for a marker made
+     * of letters and digits, so the tags around it lex as the browser will read them; then a
+     * marker counts only in text, or in a quoted value of an attribute in URL_ATTRIBUTES (or
+     * data-*), and in href or src only when the value before it has no scheme or http(s). A
+     * marker in a script or style body (with the browser's escaped states, L-52), an unquoted
+     * value, an event handler, style, srcdoc or anywhere else keeps the tag as written.
+     *
+     * @param callable(string): string $fn
+     */
+    private static function urlTags(string $html, callable $fn): string
+    {
+        if (preg_match_all('/<url\b[^>]*>/i', $html, $matches) === false) {
             self::failed();
         }
         if ($matches[0] === []) {
-            return $html;
+            return preg_replace('/<\/url\s*>/i', '', $html) ?? self::failed();
         }
-        $raw = [];
-        $opens = [];
-        if ($guarded) {
-            $tokens = HtmlLexer::scan($html);
-            foreach ($tokens as $i => $token) {
-                if ($token[0] === 'raw') {
-                    $raw[] = [$token[1], $token[2]];
-                } elseif ($token[0] === 'tag' && !$token[4] && in_array($token[3], ['script', 'style'], true)
-                    && ($tokens[$i + 1][0] ?? '') !== 'raw') {
-                    // never closed: a browser runs the rest of the page as script, so no values there
-                    $raw[] = [$token[2], strlen($html)];
-                    break;
-                }
-            }
-            // where the other tags start: the tag around a value tag is the last of these before it
-            if (preg_match_all('/<(?!\/?(?:url|replace)\b)/i', $html, $starts, PREG_OFFSET_CAPTURE) === false) {
-                self::failed();
-            }
-            $opens = array_column($starts[0], 1);
-        }
-        $out = '';
+        $tags = $matches[0];
+        $marker = 'cal6url' . bin2hex(random_bytes(6)) . 'n';
+        $counter = 0;
+        $marked = preg_replace_callback('/<url\b[^>]*>/i', static function () use ($marker, &$counter): string {
+            return $marker . ($counter++) . 'x';
+        }, $html) ?? self::failed();
+        $marked = preg_replace('/<\/url\s*>/i', '', $marked) ?? self::failed();
+        $allowed = [];
         $pos = 0;
-        $r = 0;
-        $o = -1;
-        foreach ($matches[0] as [$tag, $start]) {
-            $replacement = $tag[1] === '/' ? '' : null;
-            if ($guarded) {
-                while ($r < count($raw) && $raw[$r][1] <= $start) {
-                    $r++;
-                }
-                while ($o + 1 < count($opens) && $opens[$o + 1] < $start) {
-                    $o++;
-                }
-                $inRaw = $r < count($raw) && $raw[$r][0] <= $start;
-                $before = $o >= 0 ? substr($html, $opens[$o], $start - $opens[$o]) : '';
-                if ($inRaw || preg_match('/\s(?:on[a-z]+|style)\s*=\s*(?:"[^"]*|\'[^\']*|[^\s"\'>]*)$/i', $before)) {
-                    continue;
+        $tokens = HtmlLexer::scan($marked);
+        $count = count($tokens);
+        foreach ($tokens as $t => $token) {
+            if ($token[0] === 'tag' && !$token[4]) {
+                $tag = substr($marked, $token[1], $token[2] - $token[1]);
+                if (str_contains($tag, $marker)) {
+                    foreach (HtmlLexer::attributes($tag) as [$attribute, $start, $end, $quoted]) {
+                        if ($start < 0 || !$quoted || !(in_array($attribute, self::URL_ATTRIBUTES, true) || str_starts_with($attribute, 'data-'))) {
+                            continue;
+                        }
+                        $value = substr($tag, $start, $end - $start);
+                        if (preg_match_all('/' . $marker . '(\d+)x/', $value, $found, PREG_OFFSET_CAPTURE) === false) {
+                            self::failed();
+                        }
+                        foreach ($found[1] as $k => [$number, $offset]) {
+                            $before = substr($value, 0, $found[0][$k][1]);
+                            if (in_array($attribute, ['href', 'src'], true) && self::hasUnsafeScheme(preg_replace('/' . $marker . '\d+x/', '', $before) . 'x')) {
+                                continue;
+                            }
+                            $allowed[(int) $number] = true;
+                        }
+                    }
                 }
             }
-            $out .= substr($html, $pos, $start - $pos) . ($replacement ?? $fn($tag));
-            $pos = $start + strlen($tag);
+            // text between tokens (not a script/style body or a comment)
+            if ($token[0] !== 'raw') {
+                $textEnd = $token[1];
+                self::allowMarkersIn(substr($marked, $pos, $textEnd - $pos), $marker, $allowed);
+            }
+            $pos = $token[2];
+            if ($t === $count - 1) {
+                self::allowMarkersIn(substr($marked, $pos), $marker, $allowed);
+            }
         }
-        return $out . substr($html, $pos);
+        if ($tokens === []) {
+            self::allowMarkersIn($marked, $marker, $allowed);
+        }
+        // a script or style that is never closed runs to the end in a browser: nothing after it
+        foreach ($tokens as $t => $token) {
+            if ($token[0] === 'tag' && !$token[4] && in_array($token[3], ['script', 'style'], true) && ($tokens[$t + 1][0] ?? '') !== 'raw') {
+                if (preg_match_all('/' . $marker . '(\d+)x/', substr($marked, $token[2]), $after) !== false) {
+                    foreach ($after[1] as $number) {
+                        unset($allowed[(int) $number]);
+                    }
+                }
+                break;
+            }
+        }
+        return preg_replace_callback('/' . $marker . '(\d+)x/', static function (array $m) use ($tags, $allowed, $fn): string {
+            $n = (int) $m[1];
+            return isset($allowed[$n]) ? $fn($tags[$n]) : $tags[$n];
+        }, $marked) ?? self::failed();
+    }
+
+    /** @param array<int, true> $allowed */
+    private static function allowMarkersIn(string $text, string $marker, array &$allowed): void
+    {
+        if ($text !== '' && preg_match_all('/' . $marker . '(\d+)x/', $text, $found) > 0) {
+            foreach ($found[1] as $number) {
+                $allowed[(int) $number] = true;
+            }
+        }
     }
 
     /** A value that would make a link run script (javascript:, data:, vbscript:, ...): only http(s) and plain text pass (L-39). */
