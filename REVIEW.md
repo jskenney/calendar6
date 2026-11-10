@@ -13,11 +13,8 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **H-6** at once: links rewritten from parsed attributes, never by pattern over the tag text.
-2. **M-34, M-35**: the scheme check on whole values; leading-zero targets.
-3. **L-59, L-58, L-60**.
-4. **T-15** with the fixes.
-5. **E** items; E-1 (the front end) is the next big piece of work.
+1. Review 11 is in progress; its findings will be added here.
+2. **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -25,24 +22,15 @@ None open.
 
 ## High
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| H-6 | 10 | `lib/Render/PageRenderer.php:580` (`LINK_ATTRIBUTES`), `links()`, `rebase()`, `linkTargets()` | **A `<url>` value in an allowed attribute adds attributes through link rewriting** (residual of M-32): `links()` matches `\s(href|src|...)=` anywhere in a link tag's text, also inside `title`/`alt`/`class` values that `<url>` filled (spaces and `=` are not escaped); the replacement ` data-cal6-hidden="1"` closes the quoted value, so the rest of the value (an `on*` handler) becomes attributes. A crafted link to `html.php?full=1&...` runs script on the course origin. Confirmed (an injected attribute appears; the reviewer ran a handler in headless Chrome). | Rewrite links from `HtmlLexer::attributes()` by position, never by pattern over the tag text; tests with `<url>` in `title`/`alt`/`class`. |
+None open.
 
 ## Medium
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| M-34 | 10 | `lib/Render/PageRenderer.php` (`urlTags`, `url`) | **Two adjacent `<url>` tags pass the scheme check**: each value is checked alone, so `href="<url value=a><url value=b>"` with `a=javascript`, `b=:...` gives `href="javascript:..."`. Needs such a page. Confirmed. | Fill the values in, then check the whole attribute value's scheme; restore the tags when it is not relative or http(s). |
-| M-35 | 10 | `lib/Access/Target.php:116-121` | **A target with a leading zero (`class_01/secret.pdf = never`) matches nothing, silently** (fails open); a list or range (`class_01,01`) is normalised. Folder names are written `01.Introduction`, so authors will type it. Also grants, `virtual.ini`, `duplicate.ini`. Confirmed. | Normalise the number (`(int)`); list a rule whose event or type matches nothing as a problem. |
+None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-58 | 10 | `lib/Render/Markdown.php:196-199` (`slug`) | A Markdown heading's id keeps hidden content: `## Quiz 3 <inst>answer is 42</inst>` gives `id="quiz-3-answer-is-42"` to anonymous viewers. Confirmed by the reviewer. | Remove hidden blocks with their content before slugging. |
-| L-59 | 10 | `lib/Render/HtmlLexer.php` (`rawEnd`, tag names) | Lexer and browser still differ on unusual markup: `<!-->` inside a script leaves the lexer "escaped"; `\s` includes vertical tab in `</script\x0B>`; tag names stop at characters a browser keeps (`<p"x="y>`, `<scripté>`). Each can hide an `<inst>` from the lexer or put a `<url>` into live script. Confirmed by the reviewer in Chrome. | `<!-->` returns to script data; use `[\t\n\f\r />]`; read tag names up to whitespace, `/` or `>`. |
-| L-60 | 10 | `lib/Render/PageRenderer.php:343, 89` | (suspected) A `<url>` value can contain the `<calphp>` output placeholder (`\x00cal6-calphp-N\x00`; NUL is not escaped), so calphp output lands in an attribute. Needs a page with both. | Strip NUL from values; a random placeholder per render. |
+None open.
 
 ## Documentation
 
@@ -50,9 +38,7 @@ None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-15 | 10 | `tests/` | No tests for `<url>` inside `title`/`alt`/`class` of link elements, adjacent `<url>` tags, leading-zero targets, heading ids with hidden blocks, the lexer cases of L-59, NUL in values. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -74,6 +60,7 @@ None open.
 | H-3 | 1 | `73e5799` | When the private temporary directory can not be used (wrong owner or permissions, `sys_get_temp_dir()` not writable, or a directory another account created first under the predictable name `cal6-<uid>-<hash>`), `RateLimiter` silently stops counting: unlimited password and lock-code guessing. | New `RateLimiter`: fails closed (503), `flock()` around each check-and-record, attempts recorded before the password check and forgiven on success; limits per address+username, per address (x4), per username (x10); `[server] trusted_proxies` for `X-Forwarded-For` / `-Proto`; unknown users cost a `password_hash()`. |
 | H-4 | 5 | `4c14a1b` | **Hidden blocks fail open on large content.** Every `preg_replace_callback(...) ?? $html` returns the unprocessed page when PCRE gives up: with the default `pcre.backtrack_limit`, one `<inst>`, `<lock>`, `<postmeeting>` or `<host>` block of about 1 MB (a pasted base64 image is enough) is sent with its hidden text and the lock code. Confirmed (an `<inst>` of 1.1 MB, a `<lock>` around a 1 MB image). | Blocks are found with a `stripos()` tag scanner (no PCRE limit); every remaining pattern in `html.php` fails closed. |
 | H-5 | 8 | `9270e6f` | **The lexer treats a quote anywhere in a tag as the start of a quoted value** (residual of L-36): a browser quotes only right after `=`. An apostrophe in an unquoted value (`<img alt=it's>`) or a stray quote (`<td width=50%">`) makes the lexer skip to the next matching quote (or the end of the page), and every `<inst>`, `<lock>`, `<postmeeting>`, `<host>` and comment it skips is sent. Confirmed. | The lexer follows the HTML tokenizer: quotes only start a value after `=`; a quote elsewhere is part of a name or unquoted value. |
+| H-6 | 10 | `83e058c` | **A `<url>` value in an allowed attribute adds attributes through link rewriting** (residual of M-32): `links()` matches `\s(href|src|...)=` anywhere in a link tag's text, also inside `title`/`alt`/`class` values that `<url>` filled (spaces and `=` are not escaped); the replacement ` data-cal6-hidden="1"` closes the quoted value, so the rest of the value (an `on*` handler) becomes attributes. A crafted link to `html.php?full=1&...` runs script on the course origin. Confirmed (an injected attribute appears; the reviewer ran a handler in headless Chrome). | Link attributes and `attribute()` are read with `HtmlLexer::attributes()` (positions), never by a pattern over the tag text. |
 | M-1 | 1 | `4f067fc` | `json_encode(... JSON_THROW_ON_ERROR)`: one directory or file name that is not UTF-8 (common for files copied from older systems) makes `calendar.php` and `config.php` answer 500 for everyone. Confirmed with a file named `bad\xe9.txt`. | `JSON_INVALID_UTF8_SUBSTITUTE`; names that are not UTF-8 are listed as problems. |
 | M-2 | 1 | `f9ba660` | `<inject>` and `<codeinject>` read any file inside the course boundary without checking its release rule, so a visible page can pull in another event's hidden solution (or a hidden file of its own event). Authors write these tags, but the effect contradicts "access is checked where files are served". | An injected file with a key must be visible to the viewer; without a key it may only come from outside the event directories. |
 | M-3 | 1 | `f9ba660` | Files that fill no box are governed by the event's rule (v4 behaviour), so the images or attachments that go with a hidden solution page (for example `solution-figure.png`) are listed in `files` and served while the solution itself is hidden. | Box assets: files named after a box file follow that box's rule. |
@@ -107,6 +94,8 @@ None open.
 | M-31 | 8 | `16f77fb` | **Anyone at the same address can lock out the instructor and a whole room's lock codes:** the device cookie skips only the per-username gate, so 20 bad logins from a shared address (campus NAT, one IPv6 /64) block the instructor; the lock-code limit (10 per 15 minutes) is shared by everyone in a classroom. Confirmed by the reviewer on Apache. | A device cookie skips the per-address login limit (keeps its own pair limit); lock codes are limited per address and page (4x) and per address (20x), and a right code does not count. |
 | M-32 | 9 | `bd9e2a5` | **`<url>` values still reach script contexts** (residual of M-28, L-39): the guard takes "the last `<`" as the enclosing tag and needs a space before `on*=`, so `onclick="if (n < 3) f('<url value=m>')"`, `<img/onerror="...">`, `href="x"onclick="..."` are substituted; also `href="javascript:go('<url value=m>')"` (only the value's scheme is checked), unquoted `href=<url value=m>` (spaces add attributes) and `srcdoc`. A link to `html.php?full=1&m=...` can then run script on the course origin. Confirmed. | Each `<url>` is swapped for an alphanumeric marker so the tag around it lexes as the browser reads it; it is replaced only in text and in quoted values of `href`, `src`, `title`, `alt`, `value`, `class`, `id`, `name`, `placeholder`, `label`, `data-*` (href/src only after no scheme or http(s)). |
 | M-33 | 9 | `2f7b714` | **A section header in `default.ini` drops every rule after it, silently** (fails open): `[rules]` above `exam = never` makes the exam visible, no problem listed. In account files a `valid =` after `[grants]` becomes a grant on a target named `valid`. Confirmed by reading and by the reviewer. | Lines under any header in `default.ini` are read as rules (file order) and the header is a problem; `valid`, `instructor`, `password_hash` after `[grants]` stay the account's own. |
+| M-34 | 10 | `83e058c` | **Two adjacent `<url>` tags pass the scheme check**: each value is checked alone, so `href="<url value=a><url value=b>"` with `a=javascript`, `b=:...` gives `href="javascript:..."`. Needs such a page. Confirmed. | `href`/`src` values are checked as a whole after filling in; otherwise the tags are left as written. |
+| M-35 | 10 | `83e058c` | **A target with a leading zero (`class_01/secret.pdf = never`) matches nothing, silently** (fails open); a list or range (`class_01,01`) is normalised. Folder names are written `01.Introduction`, so authors will type it. Also grants, `virtual.ini`, `duplicate.ini`. Confirmed. | A single event number is normalised (`class_01` is `class_1`); a rule for an event that does not exist is a problem. |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -164,6 +153,9 @@ None open.
 | L-55 | 9 | `bd9e2a5` | Quadratic on many unclosed `<script>`/`<style>` (residual of L-37, from M-27's change): each searches to the end again; 160 KB takes about 1 s per scan, about 15 scans per render. Confirmed by the reviewer. | The lexer remembers that no closing tag follows and does not search again. |
 | L-56 | 9 | `7d33bdb` | An `<inst>` in Markdown image alt text or a link title is sent (`alt="diagram ALT-SECRET"`, `title="<inst>...</inst>"` read as attribute text). Needs an unusual author choice. Confirmed by the reviewer. | Markdown alt text and link titles drop hidden blocks with their content. |
 | L-57 | 9 | `7d33bdb` | Pages named `menu.inc.html` / `x.inc.md` match the PHP rule and are dropped silently (never listed, served or injected; no problem). Confirmed by the reviewer. | `*.inc.html` / `*.inc.md` are pages; a page with a PHP extension in its name is listed as a problem. |
+| L-58 | 10 | `83e058c` | A Markdown heading's id keeps hidden content: `## Quiz 3 <inst>answer is 42</inst>` gives `id="quiz-3-answer-is-42"` to anonymous viewers. Confirmed by the reviewer. | Heading ids are made without hidden blocks. |
+| L-59 | 10 | `83e058c` | Lexer and browser still differ on unusual markup: `<!-->` inside a script leaves the lexer "escaped"; `\s` includes vertical tab in `</script\x0B>`; tag names stop at characters a browser keeps (`<p"x="y>`, `<scripté>`). Each can hide an `<inst>` from the lexer or put a `<url>` into live script. Confirmed by the reviewer in Chrome. | `<!-->` returns a script to plain data; HTML whitespace only; tag names run to whitespace, `/` or `>`. |
+| L-60 | 10 | `83e058c` | (suspected) A `<url>` value can contain the `<calphp>` output placeholder (`\x00cal6-calphp-N\x00`; NUL is not escaped), so calphp output lands in an attribute. Needs a page with both. | calphp placeholders are random per render; NUL is removed from `<url>` values. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -195,6 +187,7 @@ None open.
 | T-12 | 7 | `0f91c9b`, `e2886f4`, `f8d901e`, `2bbb19f`, `8562407`, `feb2c85`, `04563f4`, `2df4f8e`, `a21ac98` | No tests for the PATH_INFO form and nginx extension/case variants (smoke), page backups, inject inside comments/scripts, `<postmeeting>` through inject, box-name case, mapped IPv4 keys, `%00` links. | Tests (and smoke checks) with each fix; the renderer tests fail on the previous renderer. |
 | T-13 | 8 | `9270e6f`..`f0e61b3` | No tests for quotes in unquoted attribute values, unclosed script/style, `<url>` in script/handler contexts, the further backup names, mid-line Markdown comments, shared-address lockouts, `>` in lock codes, odd `login_attempts`. | Tests with each fix (scanner cases, `<url>` contexts, backup names, Markdown comments and indents, shared-address lockouts, `>` in lock codes, `login_attempts`, inject size, virtual attachments). |
 | T-14 | 9 | `bd9e2a5`..`7d33bdb` | No tests for `<url>` in the contexts of M-32 and L-52, sections in `default.ini`, cross-site lock POSTs, the link existence oracle, reversed meeting times, keyword removal in scripts, many unclosed scripts, Markdown alt/title, `.inc.html` pages. | Tests with each fix. |
+| T-15 | 10 | `83e058c` | No tests for `<url>` inside `title`/`alt`/`class` of link elements, adjacent `<url>` tags, leading-zero targets, heading ids with hidden blocks, the lexer cases of L-59, NUL in values. | Tests with the fixes. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
