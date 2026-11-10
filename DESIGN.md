@@ -530,11 +530,13 @@ codes, the lockdown date (its effect shows in `calendar.php`).
 
 ### `calendar.php` (Decided: everything this viewer may see, cached)
 
-**Inputs:** `GET` or `POST`, none needed. For everyone:
+**Inputs:** none needed. Every field may come in the query or in the POST body (a form or
+JSON); the first non-empty value counts, the query's first, so an empty `?section=` does not hide
+a posted `section`. A list (`section[]=1121`) is a 400. For everyone:
 
 | Field | Meaning |
 |---|---|
-| `section=1121` | a section of `sections.ini`: each event then carries that section's `start`, `end`, `period`, `instructor` and `room` on its day (404 for an unknown section). Without it no times are sent. |
+| `section=1121` | a section of `sections.ini`: each event then carries that section's `start`, `end`, `period`, `instructor` and `room` on its day (404 for an unknown section). A meeting cancelled that day (its period is `cancelled` in the day's period schedule, or it starts inside a `dates.ini` `holiday`/`none` window with times) also carries `"cancelled": true`, without `start` and `end` when the period schedule cancelled it. Without `section` no times are sent. |
 
 For instructors only (ignored otherwise):
 
@@ -589,7 +591,8 @@ There is no `next_change` (E-10): an instructor's edit can change the answer at 
   weekday such as `mon`; empty when the line only gives the day another type, like
   `2026-11-10 = lab | lab day`), with its `label` and, for another period schedule, `schedule`.
   Then one item per shown event: `event` (its id in `events`), `type`, `number`, `title`, and with
-  `section` that section's `start`, `end`, `period`, `instructor` and `room`.
+  `section` that section's `start`, `end`, `period`, `instructor`, `room` and, for a cancelled
+  meeting, `"cancelled": true`.
 - `title`: always shown, to everyone, even for an event with nothing visible yet (Decided); its
   `boxes` are then empty. With `section`, an event the section meets for also carries the
   times, `period`, `instructor`, `room` and `section`.

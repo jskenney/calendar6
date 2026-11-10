@@ -24,9 +24,28 @@ final class CalendarEndpoint
             Response::error(405, 'GET or POST only', ['Allow: GET, HEAD, POST']);
             return;
         }
-        // ?section=1121 (GET or POST): that section's times, period, instructor and room per event
-        $section = $c->query('section') ?? $c->post('section');
-        $section = is_string($section) && $section !== '' ? $section : null;
+        // every field by GET or POST: the first non-empty value, the query's first; a list is an
+        // error (DOC-22)
+        $param = static function (string $name) use ($c): ?string {
+            foreach ([$c->query, $c->post] as $source) {
+                $value = $source[$name] ?? null;
+                if (is_array($value)) {
+                    throw new \InvalidArgumentException("$name: expected one value");
+                }
+                if ($value !== null && (string) $value !== '') {
+                    return (string) $value;
+                }
+            }
+            return null;
+        };
+        try {
+            $section = $param('section'); // that section's times, period, instructor and room per event
+            $as = $param('as');
+            $at = $param('at');
+        } catch (\InvalidArgumentException $e) {
+            Response::error(400, $e->getMessage());
+            return;
+        }
         if ($section !== null && !isset($c->config->sections->sections[$section])) {
             Response::error(404, 'no such section');
             return;
@@ -36,8 +55,7 @@ final class CalendarEndpoint
         $now = $c->now;
         $preview = false;
         if ($viewer->instructor) {
-            $as = $c->query('as');
-            if ($as !== null && $as !== '') {
+            if ($as !== null) {
                 $other = $as === 'anonymous' ? Viewer::anonymous() : Viewer::account($c->config, $as);
                 if ($other === null) {
                     Response::error(400, 'no such user');
@@ -46,8 +64,7 @@ final class CalendarEndpoint
                 $viewer = $other;
                 $preview = true;
             }
-            $at = $c->query('at');
-            if ($at !== null && $at !== '') {
+            if ($at !== null) {
                 $moment = \DateTimeImmutable::createFromFormat('!Y-m-d H:i', $at, $c->config->zone)
                     ?: \DateTimeImmutable::createFromFormat('!Y-m-d', $at, $c->config->zone);
                 if ($moment === false) {

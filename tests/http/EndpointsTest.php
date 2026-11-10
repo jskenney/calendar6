@@ -559,6 +559,32 @@ HTML;
         $this->assertSame(['date' => '2026-08-31', 'events' => [], 'as' => 'none'], array_values(array_filter($config, static fn (array $d): bool => $d['date'] === '2026-08-31'))[0] ?? null, 'config.php too');
     }
 
+    public function testCancelledSectionMeetings(): void
+    {
+        $client = $this->start(['config/dates.ini' => "2026-08-24 = period 4_hour_delay | late start\n2026-08-28 10:00 until 2026-08-28 12:00 = holiday | assembly\n"]);
+        $early = $client->get('calendar/php/calendar.php?section=1121')->json();
+        $one = $early['events']['class_1'] ?? [];
+        $this->assertSame(['period' => '1', 'instructor' => 'SMITH', 'room' => 'HP111', 'cancelled' => true, 'section' => '1121'],
+            array_intersect_key($one, array_flip(['start', 'end', 'period', 'instructor', 'room', 'section', 'cancelled'])), 'period 1 is cancelled on a 4-hour delay: no times, "cancelled" (L-129)');
+        $this->assertSame(true, $early['days']['2026-08-24'][1]['cancelled'] ?? null, 'on the day\'s item too');
+        $this->assertFalse(isset($early['events']['class_3']['cancelled']), '1121 meets at 07:45, before the assembly');
+        $late = $client->get('calendar/php/calendar.php?section=4345')->json()['events']['class_3'] ?? [];
+        $this->assertSame(['10:45', '11:35', true], [$late['start'] ?? null, $late['end'] ?? null, $late['cancelled'] ?? null], '4345 starts inside the assembly: its times, cancelled');
+    }
+
+    public function testParametersByGetOrPost(): void
+    {
+        $client = $this->start();
+        $this->assertSame('07:45', $client->post('calendar/php/calendar.php?section=', ['section' => '1121'])->json()['events']['class_1']['start'] ?? null, 'an empty query value does not hide a posted one (DOC-22)');
+        $this->assertSame('10:45', $client->post('calendar/php/calendar.php?section=4345', ['section' => '1121'])->json()['events']['class_1']['start'] ?? null, 'a non-empty query value comes first');
+        $this->assertSame(400, $client->get('calendar/php/calendar.php?section[]=1121')->status, 'a list is an error');
+        $this->login($client);
+        $csrf = (string) ($client->get('calendar/php/config.php?csrf=1')->json()['csrf'] ?? '');
+        $posted = $client->post('calendar/php/calendar.php', ['as' => 'anonymous', 'at' => '1999-06-01 10:00', 'csrf' => $csrf])->json();
+        $this->assertSame(['user' => null, 'instructor' => false], $posted['viewer'] ?? null, 'as and at by POST too');
+        $this->assertFalse(isset($this->keys($posted)['lab_1/index.html']), 'at a moment before lab = 2000-01-01');
+    }
+
     public function testSectionAndPlainAnswersAreCachedApart(): void
     {
         $client = $this->start();

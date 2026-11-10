@@ -148,7 +148,7 @@ final class CalendarJson
                 }
                 $one = $events[$id];
                 $item = ['event' => $id, 'type' => $one['type'], 'number' => $one['number'], 'title' => $one['title']];
-                foreach (['start', 'end', 'period', 'instructor', 'room'] as $field) {
+                foreach (['start', 'end', 'period', 'instructor', 'room', 'cancelled'] as $field) {
                     if (array_key_exists($field, $one)) {
                         $item[$field] = $one[$field];
                     }
@@ -177,8 +177,10 @@ final class CalendarJson
     /**
      * When and where a section meets for an event on its day: start, end, period, instructor,
      * room (from sections.ini and the day's period schedule); null when it does not meet then.
+     * A meeting cancelled by the period schedule (no start or end then) or starting inside a
+     * dates.ini holiday/none window with times carries "cancelled": true (L-129).
      *
-     * @return array{start: ?string, end: ?string, period: string, instructor: string, room: string}|null
+     * @return array{start?: string, end?: string, period: string, instructor: string, room: string, cancelled?: true}|null
      */
     private function sectionTimes(string $section, \Cal6\Schedule\ScheduledEvent $event): ?array
     {
@@ -192,13 +194,16 @@ final class CalendarJson
                 continue;
             }
             $times = $this->course->config->periods->meeting($day->period, $meeting['periods']);
-            return [
-                'start' => $times[0] ?? null,
-                'end' => $times[1] ?? null,
+            $out = $times !== null ? ['start' => $times[0], 'end' => $times[1]] : [];
+            $out += [
                 'period' => implode('', $meeting['periods']),
                 'instructor' => implode(', ', $data['instructor']),
                 'room' => $meeting['room'],
             ];
+            if ($times === null || $this->inCancelWindow($day, $times[0])) {
+                $out['cancelled'] = true;
+            }
+            return $out;
         }
         return null;
     }
@@ -219,6 +224,22 @@ final class CalendarJson
             return [];
         }
         return ['visible' => false] + ($anonymous->opens !== null ? ['opens' => $this->c->iso($anonymous->opens)] : []);
+    }
+
+    /** Whether a meeting starting at $start (HH:MM) on $day starts inside a dates.ini cancel window. */
+    private function inCancelWindow(\Cal6\Schedule\Day $day, string $start): bool
+    {
+        $moment = \DateTimeImmutable::createFromFormat('!Y-m-d H:i', $day->key() . ' ' . $start, $this->course->config->zone);
+        if ($moment === false) {
+            return false;
+        }
+        $at = $moment->getTimestamp();
+        foreach ($day->cancel as [$from, $to]) {
+            if ($at >= $from && $at < $to) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function note(?int $moment): void

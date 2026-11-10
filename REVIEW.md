@@ -13,7 +13,8 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. L-129 (section times on cancelled meetings) with DOC-22.
+1. No critical, high, medium, low, documentation or testing items are open. A further
+   independent review would show whether the review-21 fixes hold.
 2. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
@@ -30,15 +31,11 @@ None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-129 | 21 | `lib/Endpoint/CalendarJson.php:179-199` (`sectionTimes`) | Section times on cancelled meetings: a `dates.ini` window with times cancels only meetings whose first section starts inside it, yet later sections still get times inside the window (`2026-09-18 10:00 until 12:00 = holiday` with `?section=4345`: class at 10:45-11:35); on a period schedule where the section's period is `cancelled`, the event comes back with `start`/`end` null and a period, room and instructor, meaning undocumented. | Leave out the section fields, or add `"cancelled": true`, when the section's meeting is cancelled by the period schedule or starts inside a cancel window; document it; tests for both (left from T-27). |
+None open.
 
 ## Documentation
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| DOC-22 | 21 | `DESIGN.md:540-545`; `lib/Endpoint/CalendarEndpoint.php:28`, `:39`, `:49` | DESIGN lists `as`/`at` under "GET or POST" but they are read only from the query; an empty `?section=` hides a POSTed `section`, and `section[]=` is silently ignored; no meaning given for null `start`/`end` (L-129). | Say `as`/`at` are query-only (or accept both); use the first non-empty `section`; document null times with L-129. |
+None open.
 
 ## Testing
 
@@ -298,6 +295,8 @@ None open.
 | L-130 | 21 | `e56c852` | The day marker misses days dates.ini changes: `none` days get no `kind`, so `2026-09-22 = none` is `[]` like an ordinary empty day (and has no `as` in config.php); a type-only line without a label (`2026-09-03 = lab`) gets no marker, though DESIGN says it gets one with `title: ""`. | A whole-day `none` keeps `none` as the day's kind (`title`/`as`: `none`); every day `dates.ini` changes gets a marker, a type-only line without a label too. |
 | L-131 | 21 | `e56c852` | E-8 removed the M-41 warning with box assets: `lab-solution.pdf` or `instructor.htm` next to the box files now follows the event's rule, served at once if a visible page links to it, and instructors are no longer told. `boxesOf()` still returns an always-empty `$assets`; `Place::asset` and the `!$target->asset` check are dead. | Files named like a box's file (same stem as the box or one of its names) but not the one config.ini lists are listed as problems ("follows the event's rule"); access is unchanged. The empty box-assets code is gone. |
 | T-27 | 21 | `e56c852` | No tests for notes from a page or a symlinked page, notes truncation and leading whitespace, a `[notes]`/`[boxes]` clash; a `none` day or a type-only day without a label; section times on cancelled-period days and inside cancel windows; `?section=` first and the plain answer second (only one order of cache separation is tested); a logged-on user without grants getting no hints. | Tests for notes as written (HTML), truncation and leading whitespace, `notes` in `[boxes]`, `lab/notes = -0`, the L-131 problem, `none` and type-only day markers, section-then-plain caching, a logged-on user without grants. Cancelled-meeting times move to L-129. |
+| L-129 | 21 | (this commit) | Section times on cancelled meetings: a `dates.ini` window with times cancels only meetings whose first section starts inside it, yet later sections still get times inside the window (`2026-09-18 10:00 until 12:00 = holiday` with `?section=4345`: class at 10:45-11:35); on a period schedule where the section's period is `cancelled`, the event comes back with `start`/`end` null and a period, room and instructor, meaning undocumented. | A cancelled meeting carries `"cancelled": true` (owner): without `start`/`end` when the period schedule cancels it, with its times when it starts inside a cancel window; on the event and on the day's item. Tests for both. |
+| DOC-22 | 21 | (this commit) | DESIGN lists `as`/`at` under "GET or POST" but they are read only from the query; an empty `?section=` hides a POSTed `section`, and `section[]=` is silently ignored; no meaning given for null `start`/`end` (L-129). | Every calendar.php field (`section`, `as`, `at`) comes by GET or POST: the first non-empty value, the query's first; a list is a 400. DESIGN says so, and documents `cancelled` (L-129). Tests. |
 
 ## Reviews
 
