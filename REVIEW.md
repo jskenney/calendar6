@@ -13,8 +13,9 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 11 is in progress; its findings will be added here.
-2. **E** items; E-1 (the front end) is the next big piece of work.
+1. **M-37**, then **L-61..L-67**, **DOC-18**, **T-16**.
+2. **M-36, M-38** need the owner's decision (see their suggestions).
+3. **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -26,19 +27,35 @@ None open.
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-36 | 11 | `lib/Course/Course.php:183-270` (`addPageAssets`, `addLinkedAssets`, `injectedFiles`) | **A file linked only from inside a hidden block gets a key anonymous viewers may use**: asset links are collected from the raw source, also inside `<inst>`, `<lock>`, `<postmeeting>`, `<host>`, and the asset follows the linking page's rule; any visible page with the v4 idiom `<a href="<url value=next>">` then hands out that key (`next=../../pages/answers/exam-key.pdf`). Confirmed by the reviewer. | **Needs a decision:** (a) ignore links inside hidden blocks when giving keys (instructors' links inside `<inst>` then go dead), or (b) give such files a stricter rule (instructor-only for `<inst>`; for `<lock>`: never, or only after the code; for `<postmeeting>`: after the meeting). |
+| M-37 | 11 | `lib/Render/HtmlLexer.php:194`, `urlTags()`, `block()` | **`<textarea>`, `<title>`, `<noscript>`, `<xmp>`, `<iframe>`, `<noembed>`, `<noframes>` end at a closing tag inside a quoted attribute in a browser, not in the lexer**: a `<url>` value filled into such a "title" lands in a live `onerror` (the reviewer logged a marker in Chromium), and an `<inst>` there is sent. Needs unusual author markup. Confirmed. | Treat RCDATA/RAWTEXT elements as bounded by their closing tag; no `<url>` inside them; hide block tags inside them too (fail closed under both readings). |
+| M-38 | 11 | `lib/Schedule/CalendarBuilder.php:243` | **A numbered copy takes the next free number, not the slot written in `duplicate.ini`**: after `class_4 = class_1 same`, `class_6 = class_2` gives `class_5` = the copy and `class_6` = directory 05, so rules written for `class_6` apply to another folder. No problem listed. Confirmed. | **Needs a decision:** the copy takes the slot number written (later events shift), or a line whose slot and number differ is a problem. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-61 | 11 | `lib/Render/PageRenderer.php` (`render`, `stripComments`) | Comments that form only after processing keep hidden content in the response: `A<<!-- x -->!-- <inst>S</inst> -->B` and `A<<inst>x</inst>!-- <lock code=abc>S</lock> -->B` send `<!-- ... S ... -->`. Residual of M-23. Confirmed. | Repeat comment removal and hiding until nothing changes. |
+| L-62 | 11 | `lib/Render/Markdown.php:625, 215` | Nested hidden blocks still leak into alt/title/heading ids (non-nesting pattern), and a reference definition inside `<inst>` is used outside it (`title="SECRET"`). Residual of L-56/L-58. Confirmed by the reviewer. | Use the stack-based `block()`; reference definitions inside hidden blocks are not definitions. |
+| L-63 | 11 | `lib/Endpoint/AuthEndpoint.php:138` | Login timing tells which usernames exist when account hashes cost more than the default (cost 12: 0.21 s vs 0.06 s for an unknown name). Residual of L-7. Confirmed by the reviewer. | Verify unknown names against the costliest existing hash. |
+| L-64 | 11 | `tests/deploy/nginx-site.conf` | nginx serves `x.INI` (case-sensitive `\.ini$`); Apache refuses it. Confirmed by the reviewer. | `~*`; smoke check. |
+| L-65 | 11 | `lib/Access/Target.php` | File-name rules shaped like `name_NN` fail open since M-35: `report_01 = never` becomes `report_1`; `solution_1.2 = never` is dropped. Confirmed by the reviewer. | Normalise only targets whose prefix is a configured type; keep others literally. |
+| L-66 | 11 | `lib/Render/Markdown.php:600-633` | A bracket span of about 10 KB makes the page answer 500 (the links pattern hits the PCRE limit, then a TypeError). Confirmed by the reviewer. | Fall back to no links for that text; check `preg_*` results. |
+| L-67 | 11 | `lib/Render/PageRenderer.php` (`block`) | Deeply nested blocks that are kept take quadratic time (40k nested `<student>`: 12 s). Residual of L-37. Confirmed by the reviewer. | Build the output without copying inner buffers repeatedly, or cap the depth. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-18 | 11 | `DESIGN.md` (Tags) | Say that `<url>` in `src`/`href` accepts any `http(s)://` value, so `<script src="<url ...>">` or `<iframe src>` would load another site's content and `href` is an open redirect. | Warn page authors; recommend `<url>` only in text or after a fixed path. |
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-16 | 11 | `tests/` | No tests for raw-text elements, comments formed after processing, nested blocks in Markdown attributes and references, login timing, `.INI` on nginx, `name_NN` file rules, long bracket spans, deep kept nesting. | Tests with each fix. |
 
 ## Enhancements
 
@@ -205,6 +222,7 @@ None open.
 | 8 | 2026-11-09 | `a21ac98` | an **independent** review again, after fixing every M, L, DOC and T item of review 7; probes on `php -S`, Apache + FPM and nginx (every direct-access probe refused); H-5, M-27, M-28 and M-29 reproduced again before recording | H-5, M-27..M-31, L-42..L-49, DOC-17, T-13 |
 | 9 | 2026-11-10 | `f0e61b3` | an **independent** review again, after fixing every H, M, L, DOC and T item of review 8 (`9270e6f`..`f0e61b3`); probes on Apache + FPM and nginx (about 25 direct-access probes each, all refused); fuzzed `.ini` files and request input (no 500s); M-32, L-52 and L-54 reproduced again and M-33 confirmed by reading before recording. Nothing found that reads hidden material, raw page source, `config/` or code through `get.php` or the web servers | M-32, M-33, L-50..L-57, T-14 |
 | 10 | 2026-11-10 | `7d33bdb` | an **independent** review again, after fixing every M, L and T item of review 9 (`bd9e2a5`..`7d33bdb`); `php -S` and headless Chrome (DOM checks); deployments not probed this time (read only); H-6, M-34 and M-35 reproduced again before recording. Nothing found that reads raw page source, `config/`, `auth/`, code or files outside the course | H-6, M-34, M-35, L-58..L-60, T-15 |
+| 11 | 2026-11-10 | `f30ba74` | an **independent** review again, after fixing every H, M, L and T item of review 10 (`83e058c`); probes on Apache + FPM and nginx; Chromium for markup checks; M-37, M-38 and L-61 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source through `get.php` | M-36..M-38, L-61..L-67, DOC-18, T-16 |
 
 ## CI notes
 
