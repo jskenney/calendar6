@@ -81,7 +81,8 @@ final class PageRenderer
         $html = $this->replace($html, $place);
         $html = $this->url($html);
         $html = self::block($html, 'ace', static fn (string $inner): string => '<pre class="cal6-ace"><code>' . $inner . '</code></pre>');
-        $html = preg_replace('/<\/?(keyword|search)\b[^>]*>/i', '', $html) ?? self::failed();
+        // removed (v4 search links), as real tags only: script text stays as written (L-54)
+        $html = self::replaceTags($html, ['keyword', 'search'], static fn (): string => '', ['keyword', 'search']);
         $html = $this->showlinks($html, $dir, $place);
         $html = $this->links($html, $dir, $place);
         $html = $this->anchors($html);
@@ -690,9 +691,18 @@ final class PageRenderer
     /** <a name="X"> gets id="X", so the front end can build the page's menu. */
     private function anchors(string $html): string
     {
-        return preg_replace_callback('/<a\b[^>]*\bname\s*=\s*"([^"]*)"[^>]*>/i', static function (array $m): string {
-            return preg_match('/\sid\s*=/i', $m[0]) ? $m[0] : substr($m[0], 0, 2) . ' id="' . $m[1] . '"' . substr($m[0], 2);
-        }, $html) ?? self::failed();
+        // real <a> tags only, read by the lexer (L-54)
+        return self::replaceTags($html, ['a'], static function (string $name, string $tag): string {
+            $attributes = [];
+            foreach (HtmlLexer::attributes($tag) as [$attribute, $start, $end]) {
+                $attributes[$attribute] ??= $start < 0 ? '' : substr($tag, $start, $end - $start);
+            }
+            if (!isset($attributes['name']) || isset($attributes['id'])) {
+                return $tag;
+            }
+            $id = htmlspecialchars(html_entity_decode($attributes['name'], ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            return '<a id="' . $id . '"' . substr($tag, 2);
+        });
     }
 
     /**

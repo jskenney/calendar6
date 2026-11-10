@@ -420,6 +420,18 @@ final class RendererTest extends TestCase
         $this->assertContains('END', $page);
     }
 
+    public function testScriptsAreNotEditedByKeywordOrAnchorRemoval(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => "<a name=\"top\">T</a><keyword x>K</keyword> <search>S\n<script>var s = \"<a name='x'>\"; var t = '<keyword x>'; if (a<search.length) { b(); } // > end\n</script>",
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $page = $this->render($course, 'class_1/index.html');
+        $this->assertContains("var s = \"<a name='x'>\"; var t = '<keyword x>'; if (a<search.length) { b(); } // > end", $page, 'script text is left as written (L-54)');
+        $this->assertContains('<a id="top" name="top">', $page, 'real anchors get ids');
+        $this->assertContains('</a>K S', $page, 'real <keyword>/<search> tags are removed');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([
