@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 13 is in progress; its findings will be added here.
+1. **M-40, M-41**, then **L-77..L-83**, **T-18**.
 2. **M-36, M-38, L-75** need the owner's decision (see their suggestions).
 3. **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -31,12 +31,21 @@ None open.
 |---|---|---|---|---|
 | M-36 | 11 | `lib/Course/Course.php:183-270` (`addPageAssets`, `addLinkedAssets`, `injectedFiles`) | **A file linked only from inside a hidden block gets a key anonymous viewers may use**: asset links are collected from the raw source, also inside `<inst>`, `<lock>`, `<postmeeting>`, `<host>`, and the asset follows the linking page's rule; any visible page with the v4 idiom `<a href="<url value=next>">` then hands out that key (`next=../../pages/answers/exam-key.pdf`). Confirmed by the reviewer. | **Needs a decision:** (a) ignore links inside hidden blocks when giving keys (instructors' links inside `<inst>` then go dead), or (b) give such files a stricter rule (instructor-only for `<inst>`; for `<lock>`: never, or only after the code; for `<postmeeting>`: after the meeting). |
 | M-38 | 11 | `lib/Schedule/CalendarBuilder.php:243` | **A numbered copy takes the next free number, not the slot written in `duplicate.ini`**: after `class_4 = class_1 same`, `class_6 = class_2` gives `class_5` = the copy and `class_6` = directory 05, so rules written for `class_6` apply to another folder. No problem listed. Confirmed. | **Needs a decision:** the copy takes the slot number written (later events shift), or a line whose slot and number differ is a problem. |
+| M-40 | 13 | `lib/Render/Markdown.php:592-594` | **Markdown math shows hidden blocks to everyone**: math (`\( \)`, `\[ \]`, `$$ $$`) is held and escaped before raw HTML is recognised, so `\( x = <inst>42</inst> \)` is sent as visible `&lt;inst&gt;42&lt;/inst&gt;`. Confirmed (also on Apache). | Remove hidden blocks before math is held (or keep their tags raw). |
+| M-41 | 13 | `template/config/config.ini` `[boxes]`, `DESIGN.md` | **`instructor.md` or `lab-solution.md` on its own fills no box**, so `class/instructor = never` does not apply and it is released with the event. Confirmed by the reviewer. | Add the `.md` names to the template's boxes; list a page whose stem is a box name but fills no box as a problem. |
 
 ## Low
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
 | L-75 | 12 | `PageRenderer::rewrite()` | Query strings are dropped from rewritten page links (`notes.html?week=3#q2` → `#/view/KEY#q2`), so the v4 idiom of passing a `<url>` value to the next page through a link does not work. Confirmed by the reviewer. | **Needs a decision** (front-end contract): keep the query (`#/view/KEY?week=3`) or document the change. |
+| L-77 | 13 | `lib/Render/HtmlLexer.php:242-254` | `<style>`/`<script>` inside `<svg>`/`<math>` are markup to a browser (they end at `</svg>` or a breakout tag), but raw text to the lexer up to the next `</style>`, so `<inst>` blocks between are sent. Foreign-content residual of M-27. Confirmed (Apache, Chromium). | In foreign content, treat script/style as never closed (fail closed). |
+| L-78 | 13 | `lib/Course/Boundary.php:112` | `index.html2`, `notes.mdold` are not backups (the suffix is a letter or digit), so they are served raw and shown by `<codeinject>` unhidden. Confirmed by the reviewer. | Digit suffixes and common backup words after a page extension are backups. |
+| L-79 | 13 | `PageRenderer::block()` | Hidden blocks inside attribute values are sent (`<abbr title="Hint: <inst>42</inst>">` shows as a tooltip); Markdown removes them from alt/title (L-56). Confirmed by the reviewer. | Remove hidden blocks from attribute values for viewers who may not see them (fail closed, as Markdown). |
+| L-80 | 13 | `lib/Course/Course.php:73` | An old-style tab-separated line with a space in its path (`class_1/Lecture Notes.pdf<TAB>99 99 9999`) hides `class_1/Lecture`, not the file. Residual of L-74. Confirmed by the reviewer. | With a tab, the target is everything before it. |
+| L-81 | 13 | `lib/Http/Context.php` (`isTrusted`) | IPv4-mapped addresses (`::ffff:10.0.0.5`) never match an IPv4 entry (and the reverse). Residual of L-76/M-26. Confirmed by the reviewer. | Normalise mapped addresses on both sides. |
+| L-82 | 13 | `PageRenderer::stripComments()` | Comments and doctypes are removed from inside `<textarea>`, `<xmp>`, `<title>`, which a browser shows as text (starter code in a textarea loses `<!DOCTYPE html>` and `<!-- your code here -->`). Rendering regression from M-37. Confirmed by the reviewer. | Keep comments in bounded bodies unless they contain a block tag. |
+| L-83 | 13 | `PageRenderer::mayInject()` | (suspected) "Inside an event directory" is decided from the first path segment, so if a type directory is a symbolic link elsewhere inside the course, its files without a key are injectable. | Compare with the scanned type directories' real paths. |
 
 ## Documentation
 
@@ -44,7 +53,9 @@ None open.
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-18 | 13 | `tests/` | No tests for math with hidden blocks, `.md` box pages, svg/math style, digit backups, hidden blocks in attributes, tab-separated old lines, mapped proxy addresses, comments in textareas. | Tests with each fix. |
 
 ## Enhancements
 
@@ -234,6 +245,7 @@ None open.
 | 10 | 2026-11-10 | `7d33bdb` | an **independent** review again, after fixing every M, L and T item of review 9 (`bd9e2a5`..`7d33bdb`); `php -S` and headless Chrome (DOM checks); deployments not probed this time (read only); H-6, M-34 and M-35 reproduced again before recording. Nothing found that reads raw page source, `config/`, `auth/`, code or files outside the course | H-6, M-34, M-35, L-58..L-60, T-15 |
 | 11 | 2026-11-10 | `f30ba74` | an **independent** review again, after fixing every H, M, L and T item of review 10 (`83e058c`); probes on Apache + FPM and nginx; Chromium for markup checks; M-37, M-38 and L-61 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source through `get.php` | M-36..M-38, L-61..L-67, DOC-18, T-16 |
 | 12 | 2026-11-10 | `6b6df97` | an **independent** review again, after fixing review 11's items except M-36 and M-38 (`4d84b3b`); about 30 direct-access probes per server (all refused); Chromium for markup checks; M-39, L-68 and L-73 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source through `get.php` | M-39, L-68..L-76, DOC-19, T-17 |
+| 13 | 2026-11-10 | `7908929` | an **independent** review again, after fixing review 12's items except L-75 (`5e1b1e1`); lexer compared with Chromium on 17,000 random snippets, Markdown fuzzed (4,000 samples), probes on Apache + FPM and nginx; M-40 reproduced again before recording. Nothing found that reads `config/`, `auth/` or code, and no anonymous input that causes a 500 | M-40, M-41, L-77..L-83, T-18 |
 
 ## CI notes
 
