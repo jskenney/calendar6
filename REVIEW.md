@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 16 (cleanup cycle 2) is in progress; its findings will be added here.
+1. **L-101..L-106**, **T-21** (cleanup cycle 2).
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -31,7 +31,14 @@ None open.
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-101 | 16 | `lib/Render/HtmlLexer.php` (`scanRange()` namespace stack) | The namespace stack still differs from the browser: a nested `<svg>`/`<math>` outside an integration point keeps the parent's namespace in a browser (`<math><svg><foreignObject>` is no integration point), the `annotation-xml` test is a loose regex (`data-encoding="text/html"`), `<svg width=10/>` is not self-closing (the `/` belongs to the value), `mglyph`/`malignmark` stay MathML, and an end tag pops only a matching top entry; in each case a `<style>` is raw to the lexer but markup to the browser, so an `<inst>` after it is shown. Gap after L-95. Confirmed by the reviewer in Chromium. | Read `<style>`/`<script>` both ways whenever any svg/math is open; self-closing only for a separate `/`; an end tag pops to the nearest matching entry. |
+| L-102 | 16 | `Markdown::maskCode()`, `PageRenderer::hideForSource()` | `<codeinject>` of a Markdown page shows `<inst>` content that the page itself hides: `maskCode()` reads code differently from the converter (an indented continuation line in a list item, a backtick fence with a backtick in its info string, a code span starting inside a tag's attribute). Gap after L-69/L-85. Confirmed by the reviewer. | Hide blocks inside the set-aside code too (fail closed); keep a fenced or indented block as one piece. |
+| L-103 | 16 | `PageRenderer::urlTags()` | Regression: `<url>` stops working after an inline SVG `<style>`, a `<noscript><script>` or a `<textarea>` with a script sample, because such a tag counts as a script "never closed". Confirmed by the reviewer. | Skip tags inside bounded ranges; a script/style followed by its bounded body is closed. |
+| L-104 | 16 | `PageRenderer::urlFor()` | The filter for html.php's own names in a page link's query ignores PHP's name mangling: `file%00x=K2` arrives as `file=K2`, so a frame (or the front end) can be steered to another known page key (access is still checked; only M-36's restriction is bypassed). Confirmed by the reviewer. | Normalise names as PHP does (cut at NUL, `name[...]` is `name`, space and `.` are `_`) before comparing. |
+| L-105 | 16 | `lib/Access/Policy.php:142` (`eventTargets`) | An R2 file-name rule (`solution.pdf = never`) does not match the file in a subfolder (`class_1/img/solution.pdf` stays visible), though R2 says "a file name alone matches that file in every event". Confirmed by the reviewer. | Also match the base name (stricter, as R2 reads). |
+| L-106 | 16 | `lib/Render/Markdown.php:628` | A long Markdown paragraph with many `<x` (`if x <y ` 4000 times, 32 KB) answers 500: the inline tag pattern backtracks quadratically and hits the PCRE limit (fails closed, but on plain prose). Confirmed by the reviewer. | Possessive attribute loop; attribute names never take `<`. |
 
 ## Documentation
 
@@ -39,7 +46,9 @@ None open.
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-21 | 16 | `tests/` | No tests for the L-101 namespace cases, Markdown codeinject masking cases, `<url>` after svg style/noscript script, mangled query names, R2 in subfolders, long prose with `<`. | Tests with each fix. |
 
 ## Enhancements
 
@@ -267,6 +276,7 @@ None open.
 | 13 | 2026-11-10 | `7908929` | an **independent** review again, after fixing review 12's items except L-75 (`5e1b1e1`); lexer compared with Chromium on 17,000 random snippets, Markdown fuzzed (4,000 samples), probes on Apache + FPM and nginx; M-40 reproduced again before recording. Nothing found that reads `config/`, `auth/` or code, and no anonymous input that causes a 500 | M-40, M-41, L-77..L-83, T-18 |
 | 14 | 2026-11-10 | `c4ef039` | an **independent** review again, after fixing every review-13 item (`c3e4a49`); 12,000 fuzzed `<url>` contexts and about 30,000 `<inst>` cases parsed in Chromium, Markdown and `.ini` fuzzing, about 30 direct-access probes per server; M-42 and L-84 reproduced again before recording. No `<url>` injection found; nothing found that reads `config/`, `auth/` or code. (The last of four fix-and-review rounds; these items are recorded, not yet fixed.) | M-42, L-84..L-94, DOC-20, E-8, T-19 |
 | 15 | 2026-11-10 | `b603b16` | an **independent** review again, after the owner's decisions (M-36, M-38, L-75, L-92) and fixing every review-14 item (`57ea865`); 24,000 Markdown and about 30,000 HTML samples compared in Chromium, about 22 direct-access probes per server, odd-input probes; L-96 and L-98 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source; no 500s | L-95..L-100, T-20 |
+| 16 | 2026-11-10 | `5c74628` | an **independent** review again (cleanup cycle 2), after fixing every review-15 item (`af873f5`); Chromium namespace checks, about 25 extra direct-access probes per server, speed inputs up to 0.8 MB; L-103 and L-104 confirmed by reading and the reviewer's runs before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | L-101..L-106, T-21 |
 
 ## CI notes
 
