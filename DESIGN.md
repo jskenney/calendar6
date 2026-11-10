@@ -651,7 +651,8 @@ processed:
 - links to files are rewritten to keys, as Calendar 4 does: `<img src="pic.png">` becomes
   `/<course>/calendar/php/get.php?file=KEY`, `<a href="notes.html">` becomes the front end's
   route `#/view/KEY`, `<a href="data.zip">`, `<script src>`, `<link href>`, `<source src>`,
-  `<video poster>` and each `srcset` candidate become `get.php` URLs; `<iframe>`, `<embed>` and
+  `<video poster>`, `<area href>`, `<input type=image src>`, svg `<image href>`/`xlink:href`,
+  `background=` and each `srcset` candidate become `get.php` URLs (or page routes, L-122); `<iframe>`, `<embed>` and
   `<object>` pointing at a page get `html.php?file=KEY&full=1` (a page is never sent by
   `get.php`, and is never an image or script); links to files the viewer may not see keep their
   text but lose their target (`data-cal6-hidden="1"`). Links follow this table (Decided, M-36):
@@ -706,7 +707,8 @@ values. Hiding repeats until nothing changes, so removing a block or comment can
 text around it into a new comment or block that still carries hidden content. A closing block
 tag counts only where both readings see a closing tag (with and without these elements, since a
 `<title>` inside `<svg>` is markup), so a `</inst>` written inside a `<textarea>` never closes an
-`<inst>` opened outside it. End tags are read as a browser reads them (quoted attributes, and
+`<inst>` opened outside it. (The second reading still bounds a `<textarea>`, `<title>` or `<xmp>` in HTML,
+where every browser does, so a `<script>` written in one does not swallow the page, L-117.) End tags are read as a browser reads them (quoted attributes, and
 `</` followed by a non-letter is a comment). A comment ends at `-->` or `--!>` (M-42); a bogus
 comment (`<!DOCTYPE ...>`, `<![CDATA[ ...` outside `<svg>`/`<math>`, `<? ...>`) ends at the first
 `>` as in a browser, but before an opening block tag written in it, so that tag still counts (L-84, L-96).
@@ -716,11 +718,16 @@ like is HTML again (L-88); this follows the namespace an element is in (`<desc>`
 `<svg>` inside `<foreignObject>` is foreign again, L-95), and while any `<svg>` or `<math>` is
 open, `<script>` and `<style>` are read both ways whatever the lexer makes of integration points
 (L-101). A block tag typed where a tag's attributes are (a missing `>`:
-`<div class="x"<inst>S</inst>`), in a tag's name (`<p<inst>`) or in an end tag (`</p <inst>`)
-opens a block all the same, as Calendar 4's patterns did (L-110, L-111). **Once any `<svg>` or
+`<div class="x"<inst>S</inst>`), in a tag's name (`<p<inst>`) or in an end tag (`</p <inst>`,
+also `</inst <inst>`) opens a block all the same, each one counted, as Calendar 4's patterns did
+(L-110, L-111, M-46). **Once any `<svg>` or
 `<math>` has opened, `<script>` and `<style>` are read both ways for the rest of that page**, so a
 block tag inside a later script is hidden too (L-112). `srcdoc` is hidden in as the browser reads
-it (decoded, L-113), and a `<url>`'s `default` is the author's text, hidden in like any other (L-114). In an injected file, hidden blocks in attribute values follow that
+it: decoded (numeric references with or without `;` too) and processed as a whole page, its
+comments and attributes included (L-113, M-47, M-48); other attribute values are plain text to a
+browser, so block tags in them are found by a plain scan, and `<!--` or a quote in a value
+shields nothing (M-48). A `<url>`'s `default` is the author's text, hidden in like any other
+(L-114). In an injected file, hidden blocks in attribute values follow that
 file's own place, and its `<replace>` values are filled in before its links are made relative
 to the page (L-87, L-90); its `<url>` values are filled in with the whole page, so the page's
 context counts (L-97), and a `<url>` in the path of its link is relative to the page; `<codeinject>` hides blocks in attribute values too (L-86), and in a Markdown page's code as well
@@ -759,7 +766,7 @@ pattern fails on a page, the request fails rather than sending the page half pro
 | `<inst>` ... `</inst>` | only for instructors (`instructor = true`) |
 | `<student>` ... `</student>` | answers behind a "reveal" icon (sent to everyone, hidden only visually, as v4) |
 | `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times). In an injected or codeinjected page, that page's own event decides (a file without an event, such as `shared/`, follows the page that injects it). A page with no event at all (a `paths.ini` page) has no meeting to wait for: its `<postmeeting>` is always shown (DOC-19), so do not use it there to hide anything |
-| `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it). Only codes of `<lock>`s this viewer can reach count: one inside a hidden block (`<inst>`, an unmet `<postmeeting>`, another `<host>`) is not accepted (L-91) |
+| `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it). Only codes of `<lock>`s this viewer can reach count: one inside a hidden block (`<inst>`, an unmet `<postmeeting>`, another `<host>`) or inside a `<lock>` not yet opened is not accepted (L-91, L-120) |
 | `<host server="name">` ... `</host>` | shown only when served by that server |
 | `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`; compared by real path, so a type directory that is a link still counts, L-83) |
 | `<codeinject src="file">` | another file, escaped so it shows as source code |
@@ -850,7 +857,8 @@ The order, from strongest to weakest (v4's `get_file_security()`, kept, with two
 (`class/quiz.html`: that file in every class) is Calendar 6's (M-45); a file in a subfolder is
 also matched by its bare name, after the box targets for a box's own files (L-105, M-43). A rule
 or grant whose target matches no file, event, box or page the course has does nothing, and is
-listed as a problem (a typo such as `labs = never` must not pass silently, M-45).
+listed as a problem (a typo such as `labs = never` must not pass silently, M-45); so is a grant for
+an event that does not exist (L-119).
 
 **Format (Decided):** one rule per line, `target = when`, read by our own parser (not
 `parse_ini_file`), so every line keeps its number for messages, `#` and `;` comments both work,

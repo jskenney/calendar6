@@ -44,6 +44,7 @@ INI;
             'lab/02.Two/lab-solution.html' => '<p>lab two solution</p>',
             'exam/01.Midterm/index.html' => '<p>exam</p>',
             'exam/01.Midterm/solution.html' => '<p>exam solution</p>',
+            'config/auth/ta.ini' => "password_hash = " . password_hash(Fixture::PASSWORD, PASSWORD_DEFAULT) . "\nvalid = always\n[grants]\nlab_1 = always\nexam_1/solution.html = always\n",
             'exam/02.Final/index.html' => '<p>final</p>',
         ];
     }
@@ -264,6 +265,13 @@ INI;
         $this->assertContains('labs matches no file', $messages, 'a rule that matches nothing is a problem');
         $this->assertContains('lab_1/lab-soluton matches no file', $messages);
         $this->assertNotContains('class/quiz.html matches no file', $messages);
+    }
+
+    public function testGrantsForMissingEventsAreProblems(): void
+    {
+        $course = $this->load(['config/auth/late.ini' => "password_hash = \$2y\$x\nvalid = always\n[grants]\nlab_40 = always\n"]);
+        $messages = implode("\n", array_map(static fn ($p): string => $p->message, $course->problems));
+        $this->assertContains('lab_40: there is no lab 40, so this grant does nothing', $messages, 'L-119');
     }
 
     public function testOpensAndNextChange(): void

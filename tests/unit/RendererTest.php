@@ -803,6 +803,46 @@ final class RendererTest extends TestCase
         }
     }
 
+    public function testReview19Leftovers(): void
+    {
+        $cases = [
+            'endtag' => "<inst>A</inst\n<inst>Z1</inst>END",
+            'starttag' => "<inst\n<inst>A</inst>Z2</inst>END",
+            'two' => '<div a=<inst b=<inst>X</inst>Z3</inst>END',
+            'num' => '<iframe srcdoc="&#60;inst&#62;Z4&#60;/inst&#62;"></iframe><iframe srcdoc="&#60inst&#62Z5&#60/inst&#62"></iframe>',
+            'comment' => '<b title="<!--<inst>Z6</inst>">x</b><b title="<a x=\'<inst>Z7</inst>\'>">y</b>',
+            'docattr' => '<iframe srcdoc="&lt;p title=&quot;Hint: &lt;inst&gt;Z8&lt;/inst&gt;&quot;&gt;q&lt;/p&gt;"></iframe>',
+            'skipped' => str_repeat('<inst>', 257) . '<p<inst>x' . str_repeat('</inst>', 257) . 'Z9</inst>',
+        ];
+        $files = [
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/ta.html' => '<textarea><script src="app.js"></textarea><inst>H</inst><p>VISIBLE-AFTER</p><script>var a=1;</script>',
+            'class/01.Introduction/svgs.html' => str_repeat('<svg><desc>', 8000) . str_repeat('</desc></svg>', 8000),
+            'class/01.Introduction/links.html' => '<map><area href="notes.html"></map><input type="image" src="pic.png"><svg><image href="pic.png"/></svg><table background="pic.png"></table>',
+            'class/01.Introduction/notes.html' => 'N',
+            'class/01.Introduction/pic.png' => 'P',
+            'class/01.Introduction/locks.html' => '<lock code="outer">A <lock code="inner">B</lock></lock>',
+        ];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html;
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $this->assertSame(0, preg_match('/Z[1-9]\b/', $this->render($course, "class_1/$name.html")), "hidden (M-46, M-47, M-48, L-121): $name");
+        }
+        $page = $this->render($course, 'class_1/ta.html');
+        $this->assertContains('VISIBLE-AFTER', $page, 'a script inside a textarea does not hide the rest of the page (L-117)');
+        $this->assertNotContains('>H<', $page);
+        $start = microtime(true);
+        $this->render($course, 'class_1/svgs.html');
+        $this->assertTrue(microtime(true) - $start < 3.0, 'deep svg end tags stay fast (L-118)');
+        $page = $this->render($course, 'class_1/links.html');
+        $this->assertSame(0, preg_match('/(?:href|src|background)="(?:notes\.html|pic\.png)"/', $page), 'area, input, svg image and background are rewritten (L-122): ' . $page);
+        $place = $course->places[$course->keysByEvent['class_1']['locks.html']];
+        $codes = PageRenderer::lockCodes((new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/'))->visibleSource($place));
+        $this->assertSame(['outer'], $codes, 'a code inside a lock not opened is not accepted (L-120)');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

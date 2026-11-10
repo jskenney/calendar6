@@ -298,8 +298,8 @@ final class HtmlLexer
                 // to the nearest open element of that name, as a browser walks up (L-101), but
                 // never through HTML content of an integration point: a browser ignores </svg>
                 // inside a <foreignObject>'s HTML (L-109); per-name positions keep this O(1) (L-116)
-                $k = $positions[$name] ?? [];
-                $k = $k === [] ? -1 : end($k);
+                // (read in place: copying the array per end tag would be quadratic, L-118)
+                $k = empty($positions[$name]) ? -1 : $positions[$name][array_key_last($positions[$name])];
                 if ($k >= 0 && ($htmlAt === [] || end($htmlAt) <= $k)) {
                     while (count($stack) > $k) {
                         [$kind, $popped] = array_pop($stack);
@@ -341,7 +341,10 @@ final class HtmlLexer
             // (L-101, L-112)
             $everForeign = $everForeign || $foreignCount > 0;
             $anyForeign = $everForeign;
-            $asBounded = !$closing && !$plain && (in_array($name, self::BOUNDED, true) || (($inForeign || $anyForeign) && ($name === 'script' || $name === 'style')));
+            // (the plain reading still bounds a textarea, title or xmp in HTML, where every
+            // browser bounds it; only inside svg/math is it read without bounds, L-117)
+            $asBounded = !$closing && !$body && ((in_array($name, self::BOUNDED, true) && (!$plain || !$inForeign))
+                || (!$plain && ($inForeign || $anyForeign) && ($name === 'script' || $name === 'style')));
             if ($asBounded) {
                 $close = $name === 'plaintext' || ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);
                 if ($close === false) {

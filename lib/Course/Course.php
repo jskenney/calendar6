@@ -143,7 +143,10 @@ final class Course
                 }
                 if (preg_match('/^([a-z][a-z0-9-]*)_(\d+)(?:\/|$)/i', $rule->target, $m) && ($type = $course->config->typeName($m[1])) !== null
                     && !isset($course->events[$type . '_' . (int) $m[2]])) {
-                    continue; // listed above: there is no such event
+                    if ($label !== 'default.ini') { // default.ini's are listed above; a grant's here (L-119)
+                        $course->problems[] = new Problem("$rule->target: there is no {$m[1]} {$m[2]}, so this grant does nothing", $label, $rule->line);
+                    }
+                    continue;
                 }
                 if (preg_match('/^([a-z][a-z0-9-]*)_0\d*(?:\/|$)/i', $rule->target, $m) && $course->config->typeName($m[1]) !== null) {
                     continue; // class_01: the name as written, kept beside class_1 (L-65), which is checked

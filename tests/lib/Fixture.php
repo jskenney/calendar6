@@ -23,7 +23,7 @@ final class Fixture
         symlink($repo, "$dir/calendar");
         $hash = password_hash(self::PASSWORD, PASSWORD_DEFAULT);
         file_put_contents("$dir/config/auth/prof.ini", "password_hash = $hash\ninstructor = true\nvalid = always\n");
-        file_put_contents("$dir/config/auth/ta.ini", "password_hash = $hash\nvalid = always\n[grants]\nlab_1 = always\nexam_1/solution.html = always\n");
+        file_put_contents("$dir/config/auth/ta.ini", "password_hash = $hash\nvalid = always\n[grants]\nlab_1 = always\n");
         foreach ($files as $path => $content) {
             $full = "$dir/$path";
             if ($content === null) {
