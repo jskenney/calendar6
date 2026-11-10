@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 18 (cleanup cycle 4) is in progress; its findings will be added here.
+1. **M-44** first (a regression), **M-45**, then **L-111..L-116**, **T-23** (cleanup cycle 4).
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -27,11 +27,21 @@ None open.
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-44 | 18 | `PageRenderer::block()` (L-110 branch) | **Regression from L-110: a hidden block inside a `<textarea>` hides the rest of the page**: in starter code such as `i<n; ... <inst>sum += a[i];</inst>`, the lexer's markup reading puts `<inst>` in attribute position of a tag `n;`; the new branch opens a block with no bounded element, so the `</inst>` in the same textarea is skipped (M-39) and everything after it is removed. Confirmed by the reviewer. | Record the bounded element the token sits in, as for real tags; this page as a test. |
+| M-45 | 18 | `Policy::eventTargets()`, `lib/Course/Course.php:98-105` | **A rule whose target matches nothing is ignored silently**, also DESIGN's own example `class/quiz.html = start until end` (no `type/file` target exists) and typos (`labs = never`, `lab-1 = never`, `lab_1/lab-soluton = never`): the material stays visible, against H-2's principle. Grants the same. Confirmed by the reviewer. | Support `type/file` (after `type_N/file` and the file name); list rule and grant targets that match no place's candidate targets as problems. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-111 | 18 | `PageRenderer::blockInAttributes()` | Gap after L-110: a block tag in the tag-name position (`<p<inst>S</inst>`) or inside an end tag (`</p<inst>`, `</p <inst>`) is sent (and shown by a browser); Calendar 4 hid it. Confirmed by the reviewer. | Also look in the tag-name span and in end tags. |
+| L-112 | 18 | `lib/Render/HtmlLexer.php:283-317` | The namespace stack still loses sync with the browser: an end tag of an integration point (or `</svg>`) is popped while an HTML element is open inside it (the browser ignores it), and `annotation-xml encoding="text&#x2F;html"` is not recognised (the browser decodes it); a later `<style>` then leaks a block. Confirmed by the reviewer in Chromium. | Once any svg/math has opened, read script and style both ways for the rest of the page (fail closed); read `encoding` decoded and exact. |
+| L-113 | 18 | `PageRenderer::hideInAttributes()` | Entity-encoded blocks in `srcdoc` are shown: the browser decodes `srcdoc` and parses it (`srcdoc="&lt;inst&gt;S&lt;/inst&gt;"`). Confirmed by the reviewer in Chromium. | Hide on the decoded `srcdoc` value and re-encode it. |
+| L-114 | 18 | `PageRenderer::url()` | An `<inst>` in a `<url default="...">` inside another tag's quoted attribute is shown (attribute hiding goes one level deep and `default` is used as it stands). Confirmed by the reviewer. | Hide blocks in `default` before using it. |
+| L-115 | 18 | `PageRenderer::block()` (L-110 branch) | Block tags in attribute position bypass the depth cap, so processing is quadratic (`<b a<student>` 20,000 times: 43 s). Confirmed by the reviewer. | The same depth cap in that branch. |
+| L-116 | 18 | `HtmlLexer.php:287-300` | The bounded end-tag walk costs up to 256 steps per end tag (80,000 `</math>` in deep foreign content: 18 s per render). Confirmed by the reviewer. | Per-name position stacks and the index of the topmost HTML entry: O(1) per end tag. |
 
 ## Documentation
 
@@ -39,7 +49,9 @@ None open.
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-23 | 18 | `tests/` | No tests for the textarea starter-code page, unmatched rule targets and `type/file`, block tags in tag names and end tags, the namespace sync cases, encoded `srcdoc`, `<url default>` in attributes, depth in attribute position, many end tags in foreign content. | Tests with each fix. |
 
 ## Enhancements
 
@@ -282,6 +294,7 @@ None open.
 | 15 | 2026-11-10 | `b603b16` | an **independent** review again, after the owner's decisions (M-36, M-38, L-75, L-92) and fixing every review-14 item (`57ea865`); 24,000 Markdown and about 30,000 HTML samples compared in Chromium, about 22 direct-access probes per server, odd-input probes; L-96 and L-98 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source; no 500s | L-95..L-100, T-20 |
 | 16 | 2026-11-10 | `5c74628` | an **independent** review again (cleanup cycle 2), after fixing every review-15 item (`af873f5`); Chromium namespace checks, about 25 extra direct-access probes per server, speed inputs up to 0.8 MB; L-103 and L-104 confirmed by reading and the reviewer's runs before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | L-101..L-106, T-21 |
 | 17 | 2026-11-10 | `f1084cd` | an **independent** review again (cleanup cycle 3), after fixing every review-16 item (`3ceded2`); Chromium tree checks, 1500-round `.ini` fuzz, 30 Markdown speed patterns, direct-access probes on both servers; M-43 confirmed by the reviewer against the previous Policy before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | M-43, L-107..L-110, T-22 |
+| 18 | 2026-11-10 | `b7b9b4c` | an **independent** review again (cleanup cycle 4), after fixing every review-17 item (`2d76311`); Chromium checks, policy probes, direct-access probes on both servers, odd-input and speed probes; M-44 and M-45 confirmed by the reviewer (M-44 against the code before L-110) before recording. Nothing found that reads `config/`, `auth/`, code or raw page source | M-44, M-45, L-111..L-116, T-23 |
 
 ## CI notes
 
