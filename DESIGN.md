@@ -706,7 +706,10 @@ end of the file: `416`. Methods other than `GET` and `HEAD`: `405`. `.php` files
 ### `html.php` (Decided: one HTML page by key, processed inline)
 
 **html.php returns only the contents of an HTML or Markdown file, processed by the rules**
-(hidden blocks removed for viewers who may not see them, links rewritten, the other tags handled).
+(hidden blocks removed for viewers who may not see them, **HTML comments removed**, links
+rewritten, the other tags handled). Everything else comes back exactly as written: a
+`<!DOCTYPE ...>`, `<html>`, `<head>`, `<title>`, `<meta>`, `<style>`, `<script>`, `<body>` and
+their attributes are not stripped or added.
 **It never does anything else** (Decided, hard rule): no surrounding document, no site CSS or
 JavaScript, no other file types. Style sheets, scripts and every other file come from the front
 end itself or through `get.php`.
@@ -723,8 +726,8 @@ end itself or through `get.php`.
 token: `403`; too many wrong codes: `429` with `Retry-After` (`503` when the limiter can not keep
 count).
 
-**Output:** `text/html; charset=utf-8` with `Cache-Control: private, no-store`, by default an
-HTML **fragment** (the page's body). The
+**Output:** `text/html; charset=utf-8` with `Cache-Control: private, no-store`: the file's
+whole content after processing (for Markdown, the HTML it converts to). The
 same key lookup and access check as `get.php`; unknown or not allowed: `404`. Then the page is
 processed:
 
@@ -751,6 +754,11 @@ processed:
   place with a `virtual.ini` line (`class_1/style.css = shared/style.css`, or a range for every
   event) and link it by that name (DOC-21);
 - every Calendar 4 tag except `<ace>` is processed on the server (see "Tags");
+- **HTML comments are removed, for everyone** (Decided): `<!-- ... -->` never reaches the
+  browser, so an author's private remarks stay private and a commented-out `<inst>`, `<lock>` or
+  `<inject>` can not leak. Inside a `<textarea>`, `<xmp>` or `<title>` a comment is text the
+  reader sees (starter code) and stays, unless it holds a block tag. A `<!DOCTYPE ...>` is not
+  a comment: it is kept exactly as written;
 - `<a name>` anchors (and `##` headings in Markdown) get ids; the front end builds the page's menu
   from them, as v4 did on the server;
 - **JavaScript is passed through unchanged** (Decided): `<script>` elements and inline handlers
@@ -764,7 +772,7 @@ All are handled in `html.php`, so hidden content never reaches the browser. Bloc
 lexer, not regular expressions, that reads markup the way a browser does: tags inside quoted
 attribute values and `<script>`/`<style>` bodies are not tags; tag names are not case-sensitive;
 nested blocks of the same tag are matched with a stack; and **a block that is never closed hides
-the rest of the page** (fail closed). **HTML comments are removed** from pages and injected files
+the rest of the page** (fail closed). **HTML comments are removed** (not a `<!DOCTYPE ...>`) from pages and injected files
 before anything else (outside `<script>`/`<style>` bodies), abrupt comments (`<!-->`) end where a
 browser ends them, and a CDATA section is removed whole. `<inject>`, `<codeinject>`, `<calphp>`,
 `<showlink>`, `<lock>` codes and the links that are rewritten are found by the same lexer, so

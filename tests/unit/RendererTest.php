@@ -38,6 +38,15 @@ final class RendererTest extends TestCase
         throw new \RuntimeException("no place $place");
     }
 
+    public function testAWholeDocumentComesBackAsWrittenButComments(): void
+    {
+        $page = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>My Page Title</title>\n<style>body { color: red; }</style>\n<script>var x = 1 < 2;</script>\n</head>\n<body class=\"main\">\n<!-- PRIVATE REMARK -->\n<h1 id=\"top\">Heading</h1>\n<inst>INSTRUCTOR-ONLY</inst>\n</body>\n</html>\n";
+        $course = $this->course(['class/01.Introduction/index.html' => $page, 'class/01.Introduction/old.html' => "<!doctype HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\">\n<p>x</p>", 'class/01.Introduction/odd.html' => "<!DOCTYPE html <inst>SECRET</inst>>\n<p>y</p>", 'config/default.ini' => "class = always\n"]);
+        $this->assertSame(str_replace(["<!-- PRIVATE REMARK -->", "<inst>INSTRUCTOR-ONLY</inst>"], '', $page), $this->render($course, 'class_1/index.html'), 'the doctype, html, head, title, style, script and body exactly as written; only the comment and the hidden block go');
+        $this->assertSame("<!doctype HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\">\n<p>x</p>", $this->render($course, 'class_1/old.html'), 'any doctype, as written');
+        $this->assertNotContains('SECRET', $this->render($course, 'class_1/odd.html'), 'a "doctype" holding a block tag is not kept');
+    }
+
     public function testHostMatchesOnlyServerNamesAndAddresses(): void
     {
         $course = $this->course(['class/01.Introduction/index.html' => '<host server="other, intranet">ONLY-INTRANET</host><host server="10.0.0.5">BY-ADDRESS</host>']);

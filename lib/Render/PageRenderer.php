@@ -144,7 +144,8 @@ final class PageRenderer
 
     /**
      * HTML comments are removed before anything else (outside <script>/<style> bodies),
-     * so a commented-out <inst>, <lock> or <inject> never reaches the browser (M-23).
+     * so a commented-out <inst>, <lock> or <inject> never reaches the browser (M-23), and
+     * neither does an author's private remark (Decided). A <!DOCTYPE ...> is kept as written.
      */
     public static function stripComments(string $html): string
     {
@@ -158,6 +159,11 @@ final class PageRenderer
                 continue;
             }
             if ($token[0] === 'comment') {
+                // a doctype is kept exactly as written (Decided): a complete <!DOCTYPE ...> with
+                // no "<" or ">" inside can not carry a block or hide anything
+                if (preg_match('/^<!doctype(?:[\s][^<>]*)?>$/i', substr($html, $token[1], $token[2] - $token[1]))) {
+                    continue;
+                }
                 // inside a textarea, xmp, title, ... a comment is text the reader sees (starter
                 // code): it stays, unless it holds a block tag (L-82)
                 if ($token[1] >= $range[0] && $token[2] <= $range[1]
