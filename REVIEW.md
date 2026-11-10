@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **L-95..L-100**, **T-20** (cleanup cycle 1).
+1. Review 16 (cleanup cycle 2) is in progress; its findings will be added here.
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -31,14 +31,7 @@ None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-95 | 15 | `lib/Render/HtmlLexer.php:160, 256-265` | Foreign content is tracked without namespaces: SVG-only integration points count inside `<math>` and MathML-only ones inside `<svg>` (`<svg><mi>`), `annotation-xml` counts without `encoding="text/html"`, and an `<svg>`/`<math>` nested in an integration point is not counted, so a `<style>` there is raw to the lexer but markup to the browser and an `<inst>` in it is rendered. Gap after L-77/L-88. Confirmed by the reviewer in Chromium. | A namespace stack: svg integration points only under svg, MathML ones only under math, `annotation-xml` only with an HTML encoding; push nested svg/math. |
-| L-96 | 15 | `HtmlLexer::bogusEnd()` | Ending a bogus comment before an opening tag can let that tag swallow the block tag the browser sees: `<!x <img alt=">" <inst>S</inst>` sends `S` (the browser ends the comment inside `alt`). Gap after L-84. Confirmed. | Read both ways: if the stretch up to the browser's `>` holds an opening block tag, it counts as one; otherwise end at `>`. |
-| L-97 | 15 | `PageRenderer::injects()` | `<url>` values in an injected file from another directory are filled in that file's own context (L-90), so after a page's `<script>` that is never closed the value lands in live script, while the page's own `<url>` there is left alone. Needs contrived markup. Confirmed by the reviewer. | Fill `<url>` once in the whole page after injecting; rebase keeps the marker. |
-| L-98 | 15 | `HtmlLexer::commentEnd()` | Comment scanning is quadratic since M-42 (a `strpos` for `--!>` to the end of the page per comment): 20,000 comments take 5 s per scan. Confirmed. | One search for `--!?>` from the offset. |
-| L-99 | 15 | `CalendarBuilder::place()` | A `duplicate.ini` line whose number is never reached (after the folders run out: `lab_5 = lab_1` with 3 lab folders) is dropped without a problem. Confirmed by the reviewer. | List every copy line that is never placed as a problem. (**Owner may decide** whether empty meetings carry numbers.) |
-| L-100 | 15 | `lib/Http/Context.php:96-115` | Changing an account's password does not end its existing sessions (the session only stores the user name); after a leaked password is reset, the attacker stays logged in for up to `[users] session`. Confirmed by the reviewer on Apache. | Store a hash of `password_hash` in the session at login and compare it on each request. |
+None open.
 
 ## Documentation
 
@@ -46,9 +39,7 @@ None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-20 | 15 | `tests/` | No tests for namespaced foreign content, bogus comments before tags, injected `<url>` after an unclosed script, comment-scan speed, unplaced copies, sessions after a password change. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -208,6 +199,12 @@ None open.
 | L-92 | 14 | `c7b6e5e` | `notes.md1`, `notes.md2` are not backups (only `html\d+` is), so get.php serves the raw Markdown. Gap after L-78. Confirmed by the reviewer. | Decided: `notes.md2` (not `.md5`) is a plain file, never a page, never listed by `calendar.php`, not reachable through `<url>`; a page's own link to it works. |
 | L-93 | 14 | `57ea865` | Behind a trusted proxy that writes ports or `unknown` in `X-Forwarded-For`, a non-IP hop is skipped and the client-chosen entry to its left is used, dodging rate limits. Confirmed by the reviewer. | Ports are dropped; a hop that is not an address ends the walk (the proxy's own address is used). |
 | L-94 | 14 | `57ea865` | Math whose hidden-block tag has `>` inside a quoted attribute (`$$ <inst title="a>b">S</inst> $$`) hides the rest of the page (fails closed: a rendering bug). Gap after M-40. Confirmed by the reviewer. | The math split reads tags with quotes. |
+| L-95 | 15 | `af873f5` | Foreign content is tracked without namespaces: SVG-only integration points count inside `<math>` and MathML-only ones inside `<svg>` (`<svg><mi>`), `annotation-xml` counts without `encoding="text/html"`, and an `<svg>`/`<math>` nested in an integration point is not counted, so a `<style>` there is raw to the lexer but markup to the browser and an `<inst>` in it is rendered. Gap after L-77/L-88. Confirmed by the reviewer in Chromium. | A namespace stack: integration points only in their own namespace, `annotation-xml` only with an HTML encoding, nested svg/math pushed. |
+| L-96 | 15 | `af873f5` | Ending a bogus comment before an opening tag can let that tag swallow the block tag the browser sees: `<!x <img alt=">" <inst>S</inst>` sends `S` (the browser ends the comment inside `alt`). Gap after L-84. Confirmed. | A bogus comment ends early only before an opening block tag; otherwise at the browser's `>`. |
+| L-97 | 15 | `af873f5` | `<url>` values in an injected file from another directory are filled in that file's own context (L-90), so after a page's `<script>` that is never closed the value lands in live script, while the page's own `<url>` there is left alone. Needs contrived markup. Confirmed by the reviewer. | Injected files get only `<replace>` before rebasing; `<url>` is filled in with the whole page (rebase keeps url tags in the author's values). |
+| L-98 | 15 | `af873f5` | Comment scanning is quadratic since M-42 (a `strpos` for `--!>` to the end of the page per comment): 20,000 comments take 5 s per scan. Confirmed. | `commentEnd()` uses one search for `--!?>`. |
+| L-99 | 15 | `af873f5` | A `duplicate.ini` line whose number is never reached (after the folders run out: `lab_5 = lab_1` with 3 lab folders) is dropped without a problem. Confirmed by the reviewer. | Copy lines no meeting reaches are listed as problems. |
+| L-100 | 15 | `af873f5` | Changing an account's password does not end its existing sessions (the session only stores the user name); after a leaked password is reset, the attacker stays logged in for up to `[users] session`. Confirmed by the reviewer on Apache. | The session keeps a hash of the password hash it logged in with; a changed password ends it. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -247,6 +244,7 @@ None open.
 | T-17 | 12 | `5e1b1e1` | `testLeadingZerosAndRulesForMissingEvents` loads two courses and leaves the first in `/tmp` on every run; no tests for M-39, L-68..L-74, L-76. | `PolicyTest::load()` removes the previous course; tests with the fixes. |
 | T-18 | 13 | `c3e4a49` | No tests for math with hidden blocks, `.md` box pages, svg/math style, digit backups, hidden blocks in attributes, tab-separated old lines, mapped proxy addresses, comments in textareas. | Tests with the fixes (and the trusted-proxy test meant for `5e1b1e1`). |
 | T-19 | 14 | `57ea865` | No tests for `--!>`, CDATA with `>`, backticks in Markdown attributes, codeinject attribute hiding, injected postmeeting in attributes, svg integration points, comments in noscript/svg, rebased value tags, lock codes inside hidden blocks, `.mdN`, ports in X-Forwarded-For, math tags with `>`. | Tests with the fixes. |
+| T-20 | 15 | `af873f5` | No tests for namespaced foreign content, bogus comments before tags, injected `<url>` after an unclosed script, comment-scan speed, unplaced copies, sessions after a password change. | Tests with the fixes. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
