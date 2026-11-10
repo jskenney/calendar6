@@ -13,6 +13,9 @@ final class Context
 {
     private ?Course $course = null;
     private ?Viewer $viewer = null;
+
+    /** When the current login ends by itself (its window or the session lifetime), or null. */
+    public ?int $loginEnds = null;
     private ?string $fingerprint = null;
 
     /**
@@ -119,6 +122,9 @@ final class Context
                     && hash_equals(self::secretMark($account->passwordHash), (string) Session::get('secret'));
                 if ($account !== null && $sameSecret && $login + $this->config->sessionSeconds > $this->now && $account->isValidAt($this->now, $this->config->zone)) {
                     $viewer = $account;
+                    $accountEnd = $account->validUntil($this->now, $this->config->zone);
+                    $sessionEnd = $login + $this->config->sessionSeconds;
+                    $this->loginEnds = $accountEnd === null ? $sessionEnd : min($accountEnd, $sessionEnd);
                 } else {
                     Session::forget('user');
                     Session::forget('login');

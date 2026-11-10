@@ -33,7 +33,7 @@ final class ConfigEndpoint
         $csrf = Session::isOpen() ? Session::csrf() : null;
         Session::close();
         Response::json(self::data($c->config, $c) + [
-            'viewer' => ['user' => $viewer->user, 'instructor' => $viewer->instructor],
+            'viewer' => ['user' => $viewer->user, 'instructor' => $viewer->instructor, 'valid_until' => $c->iso($c->loginEnds)],
             'csrf' => $csrf,
         ]);
     }

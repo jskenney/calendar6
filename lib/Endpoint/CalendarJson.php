@@ -177,7 +177,8 @@ final class CalendarJson
         $out = [
             // no next_change: the answer may change before it (an instructor edits a file), E-10
             'generated' => $this->c->iso($now),
-            'viewer' => ['user' => $viewer->user, 'instructor' => $instructor],
+            // valid_until belongs to the session, not to the cached answer: calendar.php fills it in
+            'viewer' => ['user' => $viewer->user, 'instructor' => $instructor, 'valid_until' => null],
         ];
         if ($section !== null) {
             $out['section'] = $section;

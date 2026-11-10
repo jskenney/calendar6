@@ -109,8 +109,8 @@ for example `https://www.example.edu/~jdoe/AB123/calendar/php/calendar.php`. A f
 `calendar/php/config.php` and so on.
 
 How the endpoints find the course: from the path the script was requested under
-(`SCRIPT_FILENAME`), the course directory is two levels above `php/`. In the current code that
-directory must be named `calendar` and must resolve to the running code, and
+(`SCRIPT_FILENAME`), the course directory is two levels above `php/`. That
+directory must be named `calendar` (Decided: kept for simplicity) and must resolve to the running code, and
 `<course>/config/config.ini` must exist with a real `secret`; otherwise every endpoint answers
 `500` with a short JSON error and reads nothing. (With PHP-FPM, `SCRIPT_FILENAME` must keep the
 linked path: `$document_root$fastcgi_script_name`, not `$realpath_root`.)
@@ -269,7 +269,7 @@ the calendar), and when the server software is updated (`version.software`).
                  {"event": "lab_6@2026-10-07", "copy_of": "lab_6", "mode": "same"}],
   "session_seconds": 28800,
   "version":  {"format": 1, "software": "9afc69441175"},
-  "viewer":   {"user": null, "instructor": false},
+  "viewer":   {"user": null, "instructor": false, "valid_until": null},
   "csrf":     null
 }
 ```
@@ -294,6 +294,7 @@ the calendar), and when the server software is updated (`version.software`).
 | `version.software` | string | changes with every update of the server code; a front end that cached anything can reload when it changes |
 | `viewer.user` | string\|null | the logged-in username, or `null` |
 | `viewer.instructor` | bool | whether the viewer is an instructor |
+| `viewer.valid_until` | moment\|null | when the current login ends by itself (the account's window or `session_seconds`, whichever is first); `null` for anonymous viewers |
 | `csrf` | string\|null | the session's CSRF token (see `csrf=1`) |
 
 **`days` entries** (each has `date`; the rest only when they apply):
@@ -336,7 +337,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
 ```json
 {
   "generated": "2026-11-09T14:05:00-05:00",
-  "viewer":    {"user": null, "instructor": false},
+  "viewer":    {"user": null, "instructor": false, "valid_until": null},
   "section":   "1121",
   "pages": {
     "home":      {"title": "Home", "key": "IfPCJDMatGX2jBxNZx2Lyc", "filename": "home.html", "kind": "html"},
@@ -379,7 +380,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
 | Field | Type | Meaning |
 |---|---|---|
 | `generated` | moment | when the answer was built (it may come from the server's cache) |
-| `viewer` | object | `user` (string\|null) and `instructor` (bool); for an instructor's `as` preview, the previewed viewer |
+| `viewer` | object | `user` (string\|null), `instructor` (bool) and `valid_until` (moment\|null, when the login ends by itself, as in `config.php`); for an instructor's `as` preview, the previewed viewer, with `valid_until` `null` |
 | `section` | string | only when a section was requested |
 | `pages` | object | page name → page (see below), in `paths.ini` order |
 | `days` | object | **every** date from `semester.start` to `semester.end` → list of items (see below), in date order; `[]` for a day with nothing on it |
@@ -496,8 +497,8 @@ Failed logins are limited per address and username, and per address; a browser t
 in as that user before gets a signed device cookie that keeps the real user from being locked
 out by others' guesses. After any change of login, fetch `calendar.php` again.
 
-`valid_until` is only in `auth.php`'s answers: keep it (e.g. in `sessionStorage`) if you want to
-show it later; after the login ends, `config.php`/`calendar.php` report an anonymous `viewer`.
+The same `valid_until` is in `config.php` and `calendar.php` → `viewer` on every request, so the
+front end can show it after a reload; after the login ends, they report an anonymous `viewer`.
 
 ---
 

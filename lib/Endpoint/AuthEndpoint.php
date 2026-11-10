@@ -105,12 +105,7 @@ final class AuthEndpoint
     private static function fail(Context $c, Viewer $current, string $error, int $status, array $headers = []): void
     {
         $csrf = Session::isOpen() ? Session::csrf() : null;
-        $until = null;
-        if ($current->user !== null) {
-            $sessionEnd = (int) Session::get('login', 0) + $c->config->sessionSeconds;
-            $accountEnd = $current->validUntil($c->now, $c->config->zone);
-            $until = $c->iso($accountEnd === null ? $sessionEnd : min($accountEnd, $sessionEnd));
-        }
+        $until = $current->user !== null ? $c->iso($c->loginEnds) : null;
         Session::close();
         self::answer(['user' => $current->user, 'instructor' => $current->instructor, 'valid_until' => $until, 'csrf' => $csrf, 'error' => $error], $status, $headers);
     }

@@ -15,8 +15,7 @@ A running list of code and security findings for the whole project, and their hi
 
 1. No critical, high, medium, low, documentation or testing items are open. Review 23's fixes
    (L-138..L-141, a rework of L-136) would benefit from another independent review.
-2. **Owner questions:** E-11 (the `calendar` directory name), E-12 (`valid_until` after a reload).
-3. Other **E** items; E-1 (the front end) is the next big piece of work.
+2. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -52,8 +51,6 @@ None open.
 | E-5 | 1 | `bin/` | `DESIGN.md` mentions `bin/cal6 check`; there is no command-line tool (problems, overridden lines, a check that material can not be fetched directly, `user add`). | Add `bin/cal6` with `check` and `user add`. |
 | E-7 | 1 | `calendar.php` | Instructors get `problems` in JSON but nothing shows them yet. | A status view in the front end. |
 | E-10 | owner | `calendar.php` | `next_change` was removed from the answer (owner): a browser that trusted it would keep an old answer when the instructor edits material before then (say, notes students should not have seen). The server's own cache is safe (the fingerprint changes with any edit), but the front end has no way to know when to reload. | A cheap change signal for the front end: an `ETag`/`If-None-Match` poll (already answered with 304), a short polling interval, or a version number in `config.php`. |
-| E-11 | owner | `lib/Http/Locator.php:23` | The owner wants calendar6 to be reachable as `<course>/calendar` by convention ("should, not must"); the code requires that exact name (any other name is a 500), which API.md documents as current behaviour. | Owner to decide: accept any directory name two levels above `php/` whose parent holds `config/config.ini` (still checking that it resolves to the running code), or keep the fixed name. |
-| E-12 | 22 | `config.php`, `auth.php` | `valid_until` is only in the login answer: after a reload the front end can not know when the login ends (GET auth.php logs out, so it can not be asked). | Owner to decide: add `valid_until` to `viewer` in config.php/calendar.php. |
 | E-9 | 19 | `PageRenderer` links | Relative URLs in CSS (`style="background:url(x.png)"`, `url()` in `<style>`) are not rewritten. | Rewrite them, or say so in DESIGN. |
 
 ## Fixed items
@@ -329,6 +326,8 @@ None open.
 | DOC-38 | 23 | `44998f4` | Events come only from material folders, numbered onto the type's days: a class day after the last folder is `[]`, and `date: null` means more folders than days; "one meeting on a calendar day" suggests every meeting is an event. | API.md 3: events come from the material folders, numbered onto the type's days; empty type days and `date: null` explained. |
 | DOC-39 | 23 | `44998f4` | Nothing says the JSON strings (titles, labels, file names, rooms, problem messages) are plain text to insert with `textContent`. | API.md 3: every JSON string is plain text, insert with `textContent`. |
 | DOC-40 | 23 | `44998f4` | A page used as `<img src>`, `<script src>` or `<link href>` loses its target (`data-cal6-hidden`); the link table does not say so. | Row added to the link table. |
+| E-11 | owner | decided | The owner wants calendar6 to be reachable as `<course>/calendar` by convention ("should, not must"); the code requires that exact name (any other name is a 500), which API.md documents as current behaviour. | Decided (owner): keep the fixed name `calendar` for simplicity; API.md says so. |
+| E-12 | 22 | (this commit) | `valid_until` is only in the login answer: after a reload the front end can not know when the login ends (GET auth.php logs out, so it can not be asked). | Decided (owner): `viewer` in config.php and calendar.php carries `valid_until` (null for anonymous viewers and previews); calendar.php fills it in after the cache, since it belongs to the session. API.md and tests updated. |
 
 ## Reviews
 

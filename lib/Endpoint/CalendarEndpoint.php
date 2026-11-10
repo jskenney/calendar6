@@ -88,6 +88,13 @@ final class CalendarEndpoint
                 $cache->put($cacheName, $fingerprint, $json->nextChange, $body);
             }
         }
+        if (!$preview && $c->loginEnds !== null) {
+            // the login's own end (E-12): per session, so never part of the cached answer
+            // decoded as objects, so empty objects ({}) stay objects
+            $data = json_decode($body, false, 512, JSON_THROW_ON_ERROR);
+            $data->viewer->valid_until = $c->iso($c->loginEnds);
+            $body = Response::encode((array) $data);
+        }
         Response::jsonWithEtag($body, $c->server);
     }
 }

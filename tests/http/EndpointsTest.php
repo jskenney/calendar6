@@ -619,7 +619,23 @@ HTML;
         $client->get('calendar/php/auth.php');
         $replay = new HttpClient($this->server);
         $replay->cookies = $old;
-        $this->assertSame(['user' => null, 'instructor' => false], $replay->get('calendar/php/config.php')->json()['viewer'] ?? [], 'the old session id is dead after a GET logout');
+        $this->assertSame(['user' => null, 'instructor' => false, 'valid_until' => null], $replay->get('calendar/php/config.php')->json()['viewer'] ?? [], 'the old session id is dead after a GET logout');
+    }
+
+    public function testViewerCarriesValidUntil(): void
+    {
+        $client = $this->start();
+        $this->assertSame(['user' => null, 'instructor' => false, 'valid_until' => null], $client->get('calendar/php/calendar.php')->json()['viewer'] ?? null, 'anonymous: no end');
+        $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
+        $login = $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf])->json();
+        $until = $login['valid_until'] ?? 'x';
+        $this->assertTrue(is_string($until));
+        $this->assertSame($until, $client->get('calendar/php/config.php')->json()['viewer']['valid_until'] ?? null, 'config.php says when the login ends (E-12)');
+        $this->assertSame($until, $client->get('calendar/php/calendar.php')->json()['viewer']['valid_until'] ?? null, 'and calendar.php');
+        $this->assertSame($until, $client->get('calendar/php/calendar.php')->json()['viewer']['valid_until'] ?? null, 'also from the cache');
+        $preview = $client->get('calendar/php/calendar.php?as=anonymous')->json();
+        $this->assertSame(['user' => null, 'instructor' => false, 'valid_until' => null], $preview['viewer'] ?? null, 'a preview is the previewed viewer');
+        $this->assertTrue(is_array($client->get('calendar/php/calendar.php')->json()['pages'] ?? null));
     }
 
     public function testDayMarkers(): void
@@ -677,7 +693,7 @@ HTML;
         $this->login($client);
         $csrf = (string) ($client->get('calendar/php/config.php?csrf=1')->json()['csrf'] ?? '');
         $posted = $client->post('calendar/php/calendar.php', ['as' => 'anonymous', 'at' => '1999-06-01 10:00', 'csrf' => $csrf])->json();
-        $this->assertSame(['user' => null, 'instructor' => false], $posted['viewer'] ?? null, 'as and at by POST too');
+        $this->assertSame(['user' => null, 'instructor' => false, 'valid_until' => null], $posted['viewer'] ?? null, 'as and at by POST too');
         $this->assertFalse(isset($this->keys($posted)['lab_1/index.html']), 'at a moment before lab = 2000-01-01');
     }
 
