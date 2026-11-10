@@ -13,11 +13,8 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **H-7** first: raw notes reach anonymous viewers (`<inst>` text, lock codes) when the notes
-   file is, or points at, a page. A one-file fix plus a template change.
-2. L-129 and L-130 (calendar.php's section times and day markers), with DOC-22 and T-27.
-3. L-128 and L-131 (notes length; the warning E-8 removed).
-4. Other **E** items; E-1 (the front end) is the next big piece of work.
+1. L-129 (section times on cancelled meetings) with DOC-22.
+2. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -25,9 +22,7 @@ None open.
 
 ## High
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| H-7 | 21 | `lib/Endpoint/CalendarJson.php:23-30`, `:93`; `DESIGN.md:192`, `:603-607`; template `config.ini` | `notes` sends the notes file's raw bytes to everyone who may see the note. `notes.html`/`notes.md` (the template lists both), a `notes.txt` symlink or a `virtual.ini` name whose real file is a page all carry `<inst>` text and `<lock>` codes to anonymous viewers, against the rule that a page's raw source never leaves the server. Reproduced by the reviewer over HTTP (and again before recording: `<inst>SECRET-INST</inst><lock code="LOCKCODE-1">` in `lab/01.Setup/notes.html` came back in an anonymous answer). A `[notes]` key equal to a `[boxes]` key also makes that box's file notes, silently. | Take as notes only files whose name and real file are not pages (and not never-served); list a page among the notes candidates as a problem (or render it with the viewer's hiding and strip tags). List a `[notes]`/`[boxes]` name clash as a problem. Template: `notes = notes.txt`; update DESIGN. |
+None open.
 
 ## Medium
 
@@ -37,22 +32,17 @@ None open.
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| L-128 | 21 | `lib/Endpoint/CalendarJson.php:25-27` | The 2000-byte notes limit is not kept: the cut adds a 3-byte `…` (2003 bytes back), and only 2004 bytes are read before `trim()`, so leading whitespace hides a cut (tail missing, no `…`). | Read more (say 8 KB), trim, then cut to 1997 bytes plus `…`. |
-| L-129 | 21 | `lib/Endpoint/CalendarJson.php:179-199` (`sectionTimes`) | Section times on cancelled meetings: a `dates.ini` window with times cancels only meetings whose first section starts inside it, yet later sections still get times inside the window (`2026-09-18 10:00 until 12:00 = holiday` with `?section=4345`: class at 10:45-11:35); on a period schedule where the section's period is `cancelled`, the event comes back with `start`/`end` null and a period, room and instructor, meaning undocumented. | Leave out the section fields, or add `"cancelled": true`, when the section's meeting is cancelled by the period schedule or starts inside a cancel window; document it. |
-| L-130 | 21 | `lib/Schedule/CalendarBuilder.php:164`; `lib/Endpoint/CalendarJson.php:124-140` | The day marker misses days dates.ini changes: `none` days get no `kind`, so `2026-09-22 = none` is `[]` like an ordinary empty day (and has no `as` in config.php); a type-only line without a label (`2026-09-03 = lab`) gets no marker, though DESIGN says it gets one with `title: ""`. | Keep `none` as the day's kind; emit the marker whenever the day is explicit in dates.ini or its period or label differs. |
-| L-131 | 21 | `lib/Course/Course.php:89`, `:203`, `:385`; `lib/Render/PageRenderer.php:1065` | E-8 removed the M-41 warning with box assets: `lab-solution.pdf` or `instructor.htm` next to the box files now follows the event's rule, served at once if a visible page links to it, and instructors are no longer told. `boxesOf()` still returns an always-empty `$assets`; `Place::asset` and the `!$target->asset` check are dead. | An informational problem ("named like box lab-solution's file but follows the event's rule"), guessing nothing about access; remove the dead assets code. |
+| L-129 | 21 | `lib/Endpoint/CalendarJson.php:179-199` (`sectionTimes`) | Section times on cancelled meetings: a `dates.ini` window with times cancels only meetings whose first section starts inside it, yet later sections still get times inside the window (`2026-09-18 10:00 until 12:00 = holiday` with `?section=4345`: class at 10:45-11:35); on a period schedule where the section's period is `cancelled`, the event comes back with `start`/`end` null and a period, room and instructor, meaning undocumented. | Leave out the section fields, or add `"cancelled": true`, when the section's meeting is cancelled by the period schedule or starts inside a cancel window; document it; tests for both (left from T-27). |
 
 ## Documentation
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| DOC-22 | 21 | `DESIGN.md:540-545`; `lib/Endpoint/CalendarEndpoint.php:28`, `:39`, `:49` | DESIGN lists `as`/`at` under "GET or POST" but they are read only from the query; an empty `?section=` hides a POSTed `section`, and `section[]=` is silently ignored; no meaning given for null `start`/`end` (L-129); the notes text still says `.html`/`.md` notes are fine "as written" (H-7). | Say `as`/`at` are query-only (or accept both); use the first non-empty `section`; document the rest with L-129 and H-7. |
+| DOC-22 | 21 | `DESIGN.md:540-545`; `lib/Endpoint/CalendarEndpoint.php:28`, `:39`, `:49` | DESIGN lists `as`/`at` under "GET or POST" but they are read only from the query; an empty `?section=` hides a POSTed `section`, and `section[]=` is silently ignored; no meaning given for null `start`/`end` (L-129). | Say `as`/`at` are query-only (or accept both); use the first non-empty `section`; document null times with L-129. |
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-27 | 21 | `tests/http/EndpointsTest.php` | No tests for notes from a page or a symlinked page, notes truncation and leading whitespace, a `[notes]`/`[boxes]` clash; a `none` day or a type-only day without a label; section times on cancelled-period days and inside cancel windows; `?section=` first and the plain answer second (only one order of cache separation is tested); a logged-on user without grants getting no hints. | Tests with the fixes. |
+None open.
 
 ## Enhancements
 
@@ -303,6 +293,11 @@ None open.
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 | E-8 | 14 | `75aa172` | The M-41 warning covers only pages: when a box's file is missing, `lab-solution.pdf` follows the event's rule with no problem listed (as DESIGN says, but the realistic case). | Decided: names are never guessed. A box holds exactly the files config.ini names for it; box assets and the named-like-a-box problem (M-41) are gone; calendar.php lists box files and notes only (no files list). |
+| H-7 | 21 | (this commit) | `notes` sends the notes file's raw bytes to everyone who may see the note. `notes.html`/`notes.md` (the template lists both), a `notes.txt` symlink or a `virtual.ini` name whose real file is a page all carry `<inst>` text and `<lock>` codes to anonymous viewers, against the rule that a page's raw source never leaves the server. Reproduced by the reviewer over HTTP (and again before recording: `<inst>SECRET-INST</inst><lock code="LOCKCODE-1">` in `lab/01.Setup/notes.html` came back in an anonymous answer). A `[notes]` key equal to a `[boxes]` key also makes that box's file notes, silently. | Decided (owner): notes may be any file `[notes]` names, HTML included, and are sent as written with no processing (no security required); they are released by any rule naming them (`lab/notes = -0`). Fixed: `notes` or a `[notes]` name in `[boxes]` is ignored, with a problem listed; DESIGN says notes are not processed. |
+| L-128 | 21 | (this commit) | The 2000-byte notes limit is not kept: the cut adds a 3-byte `…` (2003 bytes back), and only 2004 bytes are read before `trim()`, so leading whitespace hides a cut (tail missing, no `…`). | Reads up to 8 KB, trims, then cuts to 1997 bytes plus `…` (2000 at most). |
+| L-130 | 21 | (this commit) | The day marker misses days dates.ini changes: `none` days get no `kind`, so `2026-09-22 = none` is `[]` like an ordinary empty day (and has no `as` in config.php); a type-only line without a label (`2026-09-03 = lab`) gets no marker, though DESIGN says it gets one with `title: ""`. | A whole-day `none` keeps `none` as the day's kind (`title`/`as`: `none`); every day `dates.ini` changes gets a marker, a type-only line without a label too. |
+| L-131 | 21 | (this commit) | E-8 removed the M-41 warning with box assets: `lab-solution.pdf` or `instructor.htm` next to the box files now follows the event's rule, served at once if a visible page links to it, and instructors are no longer told. `boxesOf()` still returns an always-empty `$assets`; `Place::asset` and the `!$target->asset` check are dead. | Files named like a box's file (same stem as the box or one of its names) but not the one config.ini lists are listed as problems ("follows the event's rule"); access is unchanged. The empty box-assets code is gone. |
+| T-27 | 21 | (this commit) | No tests for notes from a page or a symlinked page, notes truncation and leading whitespace, a `[notes]`/`[boxes]` clash; a `none` day or a type-only day without a label; section times on cancelled-period days and inside cancel windows; `?section=` first and the plain answer second (only one order of cache separation is tested); a logged-on user without grants getting no hints. | Tests for notes as written (HTML), truncation and leading whitespace, `notes` in `[boxes]`, `lab/notes = -0`, the L-131 problem, `none` and type-only day markers, section-then-plain caching, a logged-on user without grants. Cancelled-meeting times move to L-129. |
 
 ## Reviews
 

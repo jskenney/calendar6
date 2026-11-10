@@ -1062,7 +1062,7 @@ final class PageRenderer
         if ($target->event !== null) {
             // a box's own file, as calendar.php lists it (not notes, not any other file)
             $notes = array_column(array_filter($this->course->config->boxes, static fn (array $b): bool => $b['notes'] ?? false), 'box');
-            return $target->box !== null && !$target->asset && $target->assetOf === null
+            return $target->box !== null && $target->assetOf === null
                 && !in_array($target->box, $notes, true);
         }
         return $target->page !== null && !$target->asset && $target->assetOf === null

@@ -161,7 +161,7 @@ final class CalendarBuilder
                     break;
                 }
                 $day->types = [];
-                $day->kind = $change['events'] === 'holiday' ? 'holiday' : null;
+                $day->kind = $change['events']; // holiday or none (L-130)
                 $day->explicit = true;
                 break;
             case 'types':

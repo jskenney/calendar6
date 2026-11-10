@@ -19,14 +19,17 @@ final class CalendarJson
     {
     }
 
-    /** A notes file's text, as written (trimmed; at most 2000 bytes, cut on a character boundary). */
+    /**
+     * A notes file's text, as written (Decided, H-7: any file [notes] names, HTML too): trimmed,
+     * at most 2000 bytes, a longer text cut on a character boundary and ending in "…" (L-128).
+     */
     private static function noteText(string $path): string
     {
-        $text = trim((string) @file_get_contents($path, false, null, 0, 2004));
+        $text = mb_convert_encoding(trim((string) @file_get_contents($path, false, null, 0, 8192)), 'UTF-8', 'UTF-8');
         if (strlen($text) > 2000) {
-            $text = mb_strcut($text, 0, 2000, 'UTF-8') . '…';
+            $text = rtrim(mb_strcut($text, 0, 2000 - strlen('…'), 'UTF-8')) . '…';
         }
-        return mb_convert_encoding($text, 'UTF-8', 'UTF-8');
+        return $text;
     }
 
     /**
@@ -135,7 +138,8 @@ final class CalendarJson
             if ($day->period !== $this->course->config->defaultPeriod) {
                 $marker['schedule'] = $day->period;
             }
-            if ($marker !== []) {
+            if ($marker !== [] || $day->explicit) {
+                // every day dates.ini changes is marked, a type-only line without a label too (L-130)
                 $items[] = ['event' => '', 'title' => $marker['title'] ?? ''] + $marker;
             }
             foreach ($day->events as $id) {

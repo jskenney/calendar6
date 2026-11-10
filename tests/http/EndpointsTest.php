@@ -510,6 +510,76 @@ HTML;
         $this->assertSame(false, in_array('notes', $boxes, true), 'notes are not a box in config.php');
     }
 
+    public function testNotesAsWrittenAndNotABox(): void
+    {
+        $config = str_replace("[boxes]\n", "[boxes]\nnotes = notes.md | Lecture notes\n", (string) file_get_contents(__DIR__ . '/../../template/config/config.ini'));
+        $long = "\n\n\n" . str_repeat('é', 1500) . "\n";
+        $client = $this->start([
+            'config/config.ini' => $config,
+            'config/default.ini' => "class = always\nlab = always\nlab/notes = -0\n",
+            'class/01.Introduction/notes.txt' => null,
+            'class/01.Introduction/notes.html' => '<p>Bring a <b>laptop</b>.</p>',
+            'class/02.Second/notes.md' => $long,
+            'lab/01.Setup/notes.txt' => 'Lab remark',
+        ]);
+        $events = $client->get('calendar/php/calendar.php')->json()['events'];
+        $this->assertSame([['filename' => 'notes.html', 'text' => '<p>Bring a <b>laptop</b>.</p>']], $events['class_1']['notes'] ?? null, 'any file [notes] names, as written, HTML too (Decided, H-7)');
+        $text = $events['class_2']['notes'][0]['text'] ?? '';
+        $this->assertTrue(strlen($text) <= 2000 && str_ends_with($text, '…') && str_starts_with($text, 'é'), 'at most 2000 bytes, cut with "…", leading whitespace trimmed (L-128)');
+        $this->assertSame([], array_filter($events['class_2']['boxes'], static fn (array $b): bool => $b['box'] === 'notes'), '"notes" in [boxes] is ignored (H-7)');
+
+        $this->login($client);
+        $data = $client->get('calendar/php/calendar.php')->json();
+        $problems = implode("\n", array_column($data['problems'] ?? [], 'message'));
+        $this->assertContains('[boxes] notes', $problems, 'and listed as a problem');
+        $before = $client->get('calendar/php/calendar.php?as=anonymous&at=' . rawurlencode('2026-08-25 23:59'))->json();
+        $after = $client->get('calendar/php/calendar.php?as=anonymous&at=' . rawurlencode('2026-08-26 00:00'))->json();
+        $this->assertFalse(isset($before['events']['lab_1']['notes']), 'lab/notes = -0: not before the lab\'s day');
+        $this->assertSame('Lab remark', $after['events']['lab_1']['notes'][0]['text'] ?? null, 'and from its start');
+    }
+
+    public function testFilesNamedLikeABoxAreReported(): void
+    {
+        $client = $this->start(['lab/02.Two/lab-solution.pdf' => 'PDF', 'class/01.Introduction/index.md' => '# also']);
+        $this->login($client);
+        $problems = implode("\n", array_column($client->get('calendar/php/calendar.php')->json()['problems'] ?? [], 'message'));
+        $this->assertContains("lab_2/lab-solution.pdf is named like box lab-solution", $problems, 'L-131');
+        $this->assertContains("class_1/index.md is named like box title", $problems, 'a second candidate when the first is there');
+        $this->assertNotContains('lab_2/lab-solution.html is named', $problems, 'not the box file itself');
+    }
+
+    public function testDayMarkers(): void
+    {
+        $client = $this->start(['config/dates.ini' => "2026-08-27 = lab\n2026-08-31 = none\n"]);
+        $days = $client->get('calendar/php/calendar.php')->json()['days'];
+        $this->assertSame([['event' => '', 'title' => 'none']], $days['2026-08-31'] ?? null, 'a "none" day is marked (L-130)');
+        $this->assertSame(['event' => '', 'title' => ''], $days['2026-08-27'][0] ?? null, 'a type-only line without a label is marked');
+        $this->assertSame('lab', $days['2026-08-27'][1]['type'] ?? null);
+        $config = $client->get('calendar/php/config.php')->json()['days'];
+        $this->assertSame(['date' => '2026-08-31', 'events' => [], 'as' => 'none'], array_values(array_filter($config, static fn (array $d): bool => $d['date'] === '2026-08-31'))[0] ?? null, 'config.php too');
+    }
+
+    public function testSectionAndPlainAnswersAreCachedApart(): void
+    {
+        $client = $this->start();
+        $this->assertSame('07:45', $client->get('calendar/php/calendar.php?section=1121')->json()['events']['class_1']['start'] ?? null);
+        $plain = $client->get('calendar/php/calendar.php')->json();
+        $this->assertFalse(isset($plain['section']) || isset($plain['events']['class_1']['start']) || isset($plain['days']['2026-08-24'][0]['start']), 'section first, then the plain answer: no times');
+        $this->assertSame('10:45', $client->get('calendar/php/calendar.php?section=4345')->json()['events']['class_1']['start'] ?? null, 'nor another section\'s');
+    }
+
+    public function testLoggedOnUserWithoutGrantsGetsNoHints(): void
+    {
+        $hash = password_hash(Fixture::PASSWORD, PASSWORD_DEFAULT);
+        $client = $this->start(['config/auth/student.ini' => "password_hash = $hash\nvalid = always\n", 'config/default.ini' => "class = always\nclass/slides = 2099-01-01 08:00\n", 'class/01.Introduction/slides.pdf' => 'PDF']);
+        $this->login($client, 'student');
+        $data = $client->get('calendar/php/calendar.php');
+        $this->assertSame('student', $data->json()['viewer']['user'] ?? null);
+        $this->assertNotContains('slides.pdf', $data->body, 'what students may not see is left out');
+        $this->assertNotContains('"opens"', $data->body, 'with no hint: a hint is only on what this viewer may see');
+        $this->assertNotContains('"visible"', $data->body);
+    }
+
     public function testRateLimitsAndProxies(): void
     {
         $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');

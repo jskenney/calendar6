@@ -133,7 +133,15 @@ final class CourseConfig
                 $config->schedule[$day] = ['type' => $type, 'start' => null, 'end' => null];
             }
         }
+        // [notes] names are notes, never boxes: "notes", or a name [notes] uses, is ignored in
+        // [boxes] (Decided, H-7)
+        $notesNames = array_map(static fn ($line): string => mb_strtolower($line->key, 'UTF-8'), $ini->section('notes'));
+        $notesNames[] = 'notes';
         foreach ($ini->section('boxes') as $line) {
+            if (in_array(mb_strtolower($line->key, 'UTF-8'), $notesNames, true)) {
+                $config->problems[] = new Problem("[boxes] $line->key: \"$line->key\" is a [notes] name, not a box (the line is ignored)", 'config.ini', $line->line);
+                continue;
+            }
             [$files, $label] = array_pad(explode('|', $line->value, 2), 2, '');
             $names = array_values(array_filter(array_map('trim', explode(',', $files)), static fn (string $f): bool => $f !== ''));
             $config->boxes[] = ['box' => $line->key, 'files' => $names, 'label' => trim($label) !== '' ? trim($label) : $line->key, 'notes' => false];

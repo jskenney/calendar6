@@ -189,7 +189,8 @@ slides            = slides.pdf, slides.pptx     | Slides
 instructor        = instructor.html, instructor.md | Instructor
 
 [notes]
-; short remarks ("the class meets in the auditorium today"): calendar.php returns the text itself
+; short remarks ("the class meets in the auditorium today"): calendar.php returns the text itself,
+; as written. "notes" (or any name used here) can not be a box: in [boxes] it is ignored
 notes             = notes.txt, notes.html, notes.md
 
 [access]
@@ -599,10 +600,13 @@ There is no `next_change` (E-10): an instructor's edit can change the answer at 
   script serves it: `html` → `html.php`, `get` → `get.php`. **There is no list of an event's
   other files** (Decided, E-8): `calendar.php` lists only the files `config.ini` names for boxes,
   plus notes; any other file is reached through a link in a page.
-- `notes`: the text of the event's notes file (`config.ini` `[notes]`), as written, at most 2000
-  bytes: short remarks such as "the assignment is due Tuesday". It is released like a box
-  (`lab/notes = always`) and comes back as text, not as a key; a notes file is never in `boxes`.
-  The front end shows it as plain text.
+- `notes`: the text of the event's notes file (`config.ini` `[notes]`: any file named there,
+  HTML included), as written, trimmed, at most 2000 bytes (a longer text is cut and ends in `…`):
+  short remarks such as "the assignment is due Tuesday". **Notes are not processed** (Decided,
+  H-7): no `<inst>` hiding, no lock codes; whoever may see the note gets the file's text. It is
+  released like a box, by any rule that names it (`lab/notes = always`, `lab/notes = -0`,
+  `class_25/notes = never`), and comes back as text, not as a key; a notes file is never in
+  `boxes`, and a `[notes]` name (or `notes`) in `[boxes]` is ignored, with a problem listed.
 - **No hints for anonymous viewers** (Decided): they get only what they may see, with no
   `visible` or `opens`. A **logged-on viewer** (an instructor, or a user with grants) sees, on
   each file it may see that anonymous viewers may not yet, `"visible": false` and, when a moment
@@ -615,7 +619,8 @@ There is no `next_change` (E-10): an instructor's edit can change the answer at 
   relative rules can give each showing a different window. Events on no calendar day are left out.
 - **Instructors** get every file, events on no calendar day (with `"date": null`), each event's
   `directory`, and `problems` (bad lines in the `.ini` files, overridden lines, names that are
-  not UTF-8 or differ only in case, copies that can not be made). Whether material can be
+  not UTF-8 or differ only in case, copies that can not be made, files named like a box's file
+  but not the one `config.ini` lists, such as `lab-solution.pdf`, which follow the event's rule). Whether material can be
   fetched directly is checked from outside, by `tests/deploy/smoke.php` (and later
   `bin/cal6 check`, E-5), not by `calendar.php`.
 

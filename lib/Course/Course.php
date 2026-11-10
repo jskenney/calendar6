@@ -196,11 +196,10 @@ final class Course
         $secret = $this->config->secret;
         foreach ($this->events as $event) {
             ksort($event->files, SORT_STRING);
-            [$boxes, $assets] = $this->boxesOf($event);
+            $boxes = $this->boxesOf($event);
             foreach ($event->files as $name => $file) {
                 $name = (string) $name; // names made of digits come back from array keys as integers (M-17)
-                $place = new Place(Keys::make($secret, $event->id . '/' . $name), $file, $event, null,
-                    $boxes[$name] ?? $assets[$name] ?? null, isset($assets[$name]));
+                $place = new Place(Keys::make($secret, $event->id . '/' . $name), $file, $event, null, $boxes[$name] ?? null);
                 $this->places[$place->key] = $place;
                 $this->keysByEvent[$event->id][$name] = $place->key;
             }
@@ -360,8 +359,8 @@ final class Course
     /**
      * Which files fill which box: the first of the names config.ini lists for a box that is
      * there. A box holds exactly those files (Decided: names are never guessed; a file with a
-     * similar name, lab-solution.pdf, is not part of the box). The second array stays empty.
-     * @return array{0: array<string, string>, 1: array<string, string>} file => box, asset => box
+     * similar name, lab-solution.pdf, is not part of the box; it is listed as a problem).
+     * @return array<string, string> file => box
      */
     public function boxesOf(ScheduledEvent $event): array
     {
@@ -381,9 +380,24 @@ final class Course
             }
         }
         // a box holds exactly the files config.ini names for it, never a file with a similar name
-        // (lab-solution.pdf is not a lab-solution): names are never guessed (Decided, E-8)
-        $assets = [];
-        return [$boxes, $assets];
+        // (lab-solution.pdf is not a lab-solution): names are never guessed (Decided, E-8). Such a
+        // file follows the event's rule, so instructors are told (information only, L-131)
+        foreach ($event->files as $name => $file) {
+            $name = (string) $name;
+            if ($event->copyOf !== null || isset($boxes[$name]) || !$file->topLevel || Boundary::isUnlisted($name)) {
+                continue;
+            }
+            $stem = mb_strtolower(explode('.', $name, 2)[0], 'UTF-8');
+            foreach ($this->config->boxes as $box) {
+                $stems = array_map(static fn (string $f): string => mb_strtolower(explode('.', $f, 2)[0], 'UTF-8'), $box['files']);
+                if ($stem !== '' && ($stem === mb_strtolower($box['box'], 'UTF-8') || in_array($stem, $stems, true))) {
+                    $what = $box['notes'] ? 'notes' : "box $box[box]";
+                    $this->problems[] = new Problem("$event->id/$name is named like $what but is not the file config.ini lists for it (" . implode(', ', $box['files']) . "): it follows the event's rule", $event->type . '/' . ($event->folder->dirName ?? ''));
+                    break;
+                }
+            }
+        }
+        return $boxes;
     }
 
     public function place(string $key): ?Place
