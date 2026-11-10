@@ -13,8 +13,8 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 12 is in progress; its findings will be added here.
-2. **M-36, M-38** need the owner's decision (see their suggestions).
+1. **M-39**, then **L-68..L-74, L-76**, **DOC-19**, **T-17**.
+2. **M-36, M-38, L-75** need the owner's decision (see their suggestions).
 3. **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
@@ -31,18 +31,33 @@ None open.
 |---|---|---|---|---|
 | M-36 | 11 | `lib/Course/Course.php:183-270` (`addPageAssets`, `addLinkedAssets`, `injectedFiles`) | **A file linked only from inside a hidden block gets a key anonymous viewers may use**: asset links are collected from the raw source, also inside `<inst>`, `<lock>`, `<postmeeting>`, `<host>`, and the asset follows the linking page's rule; any visible page with the v4 idiom `<a href="<url value=next>">` then hands out that key (`next=../../pages/answers/exam-key.pdf`). Confirmed by the reviewer. | **Needs a decision:** (a) ignore links inside hidden blocks when giving keys (instructors' links inside `<inst>` then go dead), or (b) give such files a stricter rule (instructor-only for `<inst>`; for `<lock>`: never, or only after the code; for `<postmeeting>`: after the meeting). |
 | M-38 | 11 | `lib/Schedule/CalendarBuilder.php:243` | **A numbered copy takes the next free number, not the slot written in `duplicate.ini`**: after `class_4 = class_1 same`, `class_6 = class_2` gives `class_5` = the copy and `class_6` = directory 05, so rules written for `class_6` apply to another folder. No problem listed. Confirmed. | **Needs a decision:** the copy takes the slot number written (later events shift), or a line whose slot and number differ is a problem. |
+| M-39 | 12 | `lib/Render/HtmlLexer.php:213-227`, `PageRenderer::block()` | **A closing block tag inside a bounded element closes a block opened outside it** (residual of M-37): `<inst>Answer: write <textarea>the closing tag </inst> here</textarea> SECRET</inst>` sends `SECRET`; a browser reads that `</inst>` as text. Confirmed. | In `block()`, a closing tag inside a bounded range closes only a block opened in the same range. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-68 | 12 | `lib/Render/HtmlLexer.php:55, 203` | End tags: a browser respects quotes in end-tag attributes, and reads `</` + a non-letter as a bogus comment up to `>`; the lexer does neither, so `<inst>A </1 </inst> > S </inst>` and `<inst>A</x y="></inst>">S</inst>` send `S`. Confirmed. | Read end-tag attributes like opening ones; `</` + non-letter is a comment token. |
+| L-69 | 12 | `PageRenderer::hideForSource()` | `<codeinject>` of a Markdown page runs the HTML lexer over raw Markdown: a code span such as `` `<a href="` `` swallows the rest, so later `<inst>` blocks are shown; it also hides in a single pass (not to a fixed point). Confirmed by the reviewer. | Mask Markdown code before hiding; repeat until nothing changes. |
+| L-70 | 12 | `lib/Render/Markdown.php:668` (`destination`), `collectReferences()` | Hidden blocks in Markdown link destinations and reference URLs are sent (`[f](https://x/?k=<inst>S</inst>)`). Residual of L-56/L-62. Confirmed by the reviewer. | Apply `withoutHiddenBlocks()` to destinations. |
+| L-71 | 12 | `lib/Render/Markdown.php:591-603` | `orUnchanged()` for code spans and math is not fail-safe: when the pattern gives up, code text becomes raw HTML and a `</inst>` written in a code span closes the block early. Residual of L-66. Confirmed by the reviewer (1 MB of backtick runs). | `orFail()` for code spans and math. |
+| L-72 | 12 | `lib/Http/Session.php:32-50` | Session files are never removed (Debian ships `session.gc_probability = 0`, and the system cron cleans only php.ini's path), `config.php?csrf=1` creates one per request, and any read-only endpoint creates one for an unknown cookie (strict mode issues a new id): contradicts "opened only when the browser already has it". Confirmed by the reviewer on Apache. | Read-only endpoints start a session only for an id that exists; sweep the session directory (age, and a cap). |
+| L-73 | 12 | `PageRenderer::valueTags()`, `urlTags()` | `<replace>`/`<url>` are found by `<name\b[^>]*>`, which ends at a `>` inside a quoted value, after hiding: `<replace value="><inst>S</inst>">` sends `<inst>S</inst>`. Author-contrived. Confirmed. | Find their end with the lexer's quote rules. |
+| L-74 | 12 | `lib/Ini/IniFile.php:68`, `Course.php` | An old-style `default.ini` line without `=` (`lab\t99 99 9999`, `exam never`) is only a problem, and its target stays visible. Confirmed by the reviewer. | As H-2/M-33: in `default.ini`, a line whose first word reads as a target is `never` for that target, and a problem. |
+| L-75 | 12 | `PageRenderer::rewrite()` | Query strings are dropped from rewritten page links (`notes.html?week=3#q2` → `#/view/KEY#q2`), so the v4 idiom of passing a `<url>` value to the next page through a link does not work. Confirmed by the reviewer. | **Needs a decision** (front-end contract): keep the query (`#/view/KEY?week=3`) or document the change. |
+| L-76 | 12 | `lib/Http/Context.php:146-148`, `CourseConfig` | `[server] trusted_proxies` entries must equal `REMOTE_ADDR` exactly: a CIDR range, host name or other IPv6 spelling silently never matches, and every client shares the proxy's address (the M-7 lockout again). Suspected (read). | Validate entries (list problems), normalise with `inet_pton`, support CIDR. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-19 | 12 | `DESIGN.md`, `PageRenderer.php:367` | `<postmeeting>` in a page without an event (a `paths.ini` page, its assets) is always shown; DESIGN covers only injected files. | State it. |
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-17 | 12 | `tests/unit/PolicyTest.php:198-212`, `tests/` | `testLeadingZerosAndRulesForMissingEvents` loads two courses and leaves the first in `/tmp` on every run; no tests for M-39, L-68..L-74, L-76. | Remove each course; tests with each fix. |
 
 ## Enhancements
 
@@ -220,6 +235,7 @@ None open.
 | 9 | 2026-11-10 | `f0e61b3` | an **independent** review again, after fixing every H, M, L, DOC and T item of review 8 (`9270e6f`..`f0e61b3`); probes on Apache + FPM and nginx (about 25 direct-access probes each, all refused); fuzzed `.ini` files and request input (no 500s); M-32, L-52 and L-54 reproduced again and M-33 confirmed by reading before recording. Nothing found that reads hidden material, raw page source, `config/` or code through `get.php` or the web servers | M-32, M-33, L-50..L-57, T-14 |
 | 10 | 2026-11-10 | `7d33bdb` | an **independent** review again, after fixing every M, L and T item of review 9 (`bd9e2a5`..`7d33bdb`); `php -S` and headless Chrome (DOM checks); deployments not probed this time (read only); H-6, M-34 and M-35 reproduced again before recording. Nothing found that reads raw page source, `config/`, `auth/`, code or files outside the course | H-6, M-34, M-35, L-58..L-60, T-15 |
 | 11 | 2026-11-10 | `f30ba74` | an **independent** review again, after fixing every H, M, L and T item of review 10 (`83e058c`); probes on Apache + FPM and nginx; Chromium for markup checks; M-37, M-38 and L-61 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source through `get.php` | M-36..M-38, L-61..L-67, DOC-18, T-16 |
+| 12 | 2026-11-10 | `6b6df97` | an **independent** review again, after fixing review 11's items except M-36 and M-38 (`4d84b3b`); about 30 direct-access probes per server (all refused); Chromium for markup checks; M-39, L-68 and L-73 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source through `get.php` | M-39, L-68..L-76, DOC-19, T-17 |
 
 ## CI notes
 
