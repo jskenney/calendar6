@@ -14,9 +14,9 @@ use Cal6\Http\Session;
 use Cal6\Render\PageRenderer;
 
 /**
- * html.php?file=KEY: one page, processed (DESIGN.md, `html.php`).  By default an
- * HTML fragment: the page's processed contents and nothing else.  POST lock=CODE
- * (with csrf) unlocks <lock> sections; other parameters fill <url> tags.
+ * html.php?file=KEY: one page, processed (API.md, `html.php`): the page file's contents
+ * after processing, and nothing else.  POST lock=CODE (with csrf) unlocks <lock>
+ * sections; other query parameters fill <url> tags.
  */
 final class HtmlEndpoint
 {
@@ -50,6 +50,25 @@ final class HtmlEndpoint
         }
         $host = strtolower((string) parse_url($origin, PHP_URL_HOST)) . (($port = parse_url($origin, PHP_URL_PORT)) !== null ? ":$port" : '');
         return $origin === 'null' || $host !== strtolower((string) ($c->server['HTTP_HOST'] ?? ''));
+    }
+
+    /**
+     * The page's own query: values for its <url> tags (names of letters, digits, "_" and "-",
+     * not the reserved ones; values cut to 200 characters). The lock form and its redirect
+     * keep them, so unlocking does not lose them (L-132).
+     *
+     * @return array<string, string>
+     */
+    private static function pageQuery(Context $c): array
+    {
+        $values = [];
+        foreach ($c->query as $name => $value) {
+            $name = (string) $name; // numeric names come back from $_GET as integers (L-40)
+            if (is_string($value) && !in_array($name, self::RESERVED, true) && preg_match('/^[A-Za-z0-9_-]{1,64}$/', $name)) {
+                $values[$name] = mb_substr($value, 0, 200);
+            }
+        }
+        return $values;
     }
 
     public static function handle(Context $c): void
@@ -121,17 +140,14 @@ final class HtmlEndpoint
             Session::close();
             Response::common();
             http_response_code(303);
-            header('Location: ' . Locator::coursePath($c->server) . 'calendar/php/html.php?file=' . rawurlencode($place->key));
+            header('Location: ' . Locator::coursePath($c->server) . 'calendar/php/html.php?file=' . rawurlencode($place->key) . (($query = http_build_query(self::pageQuery($c), '', '&', PHP_QUERY_RFC3986)) !== '' ? '&' . $query : ''));
             header('Cache-Control: no-store');
             return;
         }
 
         $urlValues = (array) Session::get('url', []);
-        foreach ($c->query as $name => $value) {
-            $name = (string) $name; // numeric names come back from $_GET as integers (L-40)
-            if (is_string($value) && !in_array($name, self::RESERVED, true) && preg_match('/^[A-Za-z0-9_-]{1,64}$/', $name)) {
-                $urlValues[$name] = mb_substr($value, 0, 200);
-            }
+        foreach (self::pageQuery($c) as $name => $value) {
+            $urlValues[$name] = $value;
         }
         // the lock form carries a token made from the page and the hour, so showing a page
         // with <lock> creates no session: a cross-site link can not replace a logged-in
@@ -139,7 +155,8 @@ final class HtmlEndpoint
         $hasLock = PageRenderer::lockCodes($source) !== [];
         $renderer = new PageRenderer($course, $policy, $viewer, $c->now, Locator::coursePath($c->server),
             array_map('strval', (array) Session::get('unlocked', [])), array_map('strval', $urlValues),
-            $place->key, $hasLock ? self::lockToken($c, $place->key, intdiv($c->now, 3600)) : '', PageRenderer::serverNames($c->server));
+            $place->key, $hasLock ? self::lockToken($c, $place->key, intdiv($c->now, 3600)) : '', PageRenderer::serverNames($c->server),
+            http_build_query(self::pageQuery($c), '', '&', PHP_QUERY_RFC3986));
         $html = $renderer->render($place);
         if ($renderer->usedUrlValues !== [] && Session::isOpen()) { // remembered only in an existing session (L-41)
             $remember = (array) Session::get('url', []);

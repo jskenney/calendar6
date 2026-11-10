@@ -50,6 +50,8 @@ final class PageRenderer
         private readonly string $csrf = '',
         /** names and addresses <host server="..."> matches: never anything the client chooses */
         private readonly array $hostNames = [],
+        /** the page's own query (its <url> values), kept by the lock form (L-132) */
+        private readonly string $lockQuery = '',
     ) {
     }
 
@@ -161,7 +163,7 @@ final class PageRenderer
             if ($token[0] === 'comment') {
                 // a doctype is kept exactly as written (Decided): a complete <!DOCTYPE ...> with
                 // no "<" or ">" inside can not carry a block or hide anything
-                if (preg_match('/^<!doctype(?:[\s][^<>]*)?>$/i', substr($html, $token[1], $token[2] - $token[1]))) {
+                if (preg_match('/^<!doctype[^<>]*>$/i', substr($html, $token[1], $token[2] - $token[1]))) {
                     continue;
                 }
                 // inside a textarea, xmp, title, ... a comment is text the reader sees (starter
@@ -488,11 +490,13 @@ final class PageRenderer
             }
             $new = '';
             $at = 0;
+            $open = null;
             foreach (HtmlLexer::attributes($tag) as [$name, $start, $end]) {
                 if ($start < 0) {
                     continue;
                 }
                 $value = substr($tag, $start, $end - $start);
+                $open ??= $name === 'srcdoc' ? null : self::unclosedBlock($value);
                 if ($name === 'srcdoc') {
                     // a browser decodes srcdoc (numeric references with or without ";" too) and
                     // reads it as a page: hide in that page, its comments and attributes as well
@@ -508,8 +512,45 @@ final class PageRenderer
             }
             $out .= substr($html, $pos, $token[1] - $pos) . $new . substr($tag, $at);
             $pos = $token[2];
+            if ($open !== null) {
+                // a block opened in a value and not closed there (a quoted ">" ended the tag early:
+                // <p title="<inst title=">">S</inst>) goes on in the page up to its own end, as a
+                // plain scan reads it, or to the end of the page: fail closed (L-136)
+                [$opening, $blockName] = $open;
+                $close = preg_match('/<\/' . $blockName . '(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', $html, $m, PREG_OFFSET_CAPTURE, $pos) ? $m[0][1] + strlen($m[0][0]) : strlen($html);
+                $out .= $this->hideValue($opening . '>' . substr($html, $pos, $close - $pos), $place);
+                $pos = $close;
+            }
         }
         return $out . substr($html, $pos);
+    }
+
+    /**
+     * The last block tag opened in a value and not closed there, as a plain scan reads it:
+     * [its opening tag without ">", its lower-case name], or null.
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    private static function unclosedBlock(string $value): ?array
+    {
+        if (!preg_match_all('/<(\/?)(inst|lock|postmeeting|host)(?=[\t\n\f\r \/>]|$)([^>]*)(>|$)/i', $value, $matches, PREG_SET_ORDER)) {
+            return null;
+        }
+        $stack = [];
+        foreach ($matches as $m) {
+            $name = strtolower($m[2]);
+            if ($m[1] === '') {
+                $stack[] = [rtrim('<' . $m[2] . $m[3]), $name];
+            } else {
+                for ($i = count($stack) - 1; $i >= 0; $i--) {
+                    if ($stack[$i][1] === $name) {
+                        array_splice($stack, $i);
+                        break;
+                    }
+                }
+            }
+        }
+        return $stack === [] ? null : end($stack);
     }
 
     /** An attribute value decoded as a browser decodes it, numeric references without ";" too. */
@@ -669,7 +710,7 @@ final class PageRenderer
             if ($this->viewer->instructor) {
                 return $inner;
             }
-            return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($this->lockKey)) . '">'
+            return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($this->lockKey) . ($this->lockQuery !== '' ? '&' . $this->lockQuery : '')) . '">'
                 . '<input type="hidden" name="csrf" value="' . htmlspecialchars($this->csrf) . '">'
                 . '<label>Enter the code to see this section <input type="password" name="lock" autocomplete="off"></label>'
                 . '<button type="submit">Unlock</button></form>';

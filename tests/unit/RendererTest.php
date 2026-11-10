@@ -47,6 +47,27 @@ final class RendererTest extends TestCase
         $this->assertNotContains('SECRET', $this->render($course, 'class_1/odd.html'), 'a "doctype" holding a block tag is not kept');
     }
 
+    public function testBlocksOpenedInAValueAndDoctypeVariants(): void
+    {
+        $course = $this->course([
+            'config/default.ini' => "class = always\n",
+            'class/01.Introduction/a.html' => '<p title="<inst title=">">SECRET1</inst> tail',
+            'class/01.Introduction/b.html' => '<p title="<inst>">SECRET2 to the end',
+            'class/01.Introduction/c.html' => '<textarea><!DOCTYPE html <inst>SECRET3</inst>></textarea><!doctypehtml><p>x</p>',
+            'class/01.Introduction/d.html' => "<!DOCTYPE\vhtml <inst>SECRET4</inst>>\n<p title='<!DOCTYPE html>'>y</p>",
+            'class/01.Introduction/e.md' => "<!DOCTYPE html>\n\n# Title\n\n<inst>SECRET5</inst>\n",
+        ]);
+        foreach (['a' => ['SECRET1', ' tail'], 'b' => ['SECRET2', null], 'c' => ['SECRET3', '<!doctypehtml>'], 'd' => ['SECRET4', '<p title='], 'e' => ['SECRET5', '<!DOCTYPE html>']] as $name => [$secret, $kept]) {
+            $page = $this->render($course, "class_1/$name." . ($name === 'e' ? 'md' : 'html'));
+            $this->assertNotContains($secret, $page, "hidden (L-136, doctype variants): $name");
+            if ($kept !== null) {
+                $this->assertContains($kept, $page, "and the rest kept: $name");
+            }
+        }
+        $this->assertContains('SECRET1', $this->render($course, 'class_1/a.html', viewer: Viewer::account($course->config, 'prof')), 'instructors still see it');
+        $this->assertNotContains('&lt;!DOCTYPE', $this->render($course, 'class_1/e.md'), 'a Markdown doctype is raw HTML, not text (L-137)');
+    }
+
     public function testHostMatchesOnlyServerNamesAndAddresses(): void
     {
         $course = $this->course(['class/01.Introduction/index.html' => '<host server="other, intranet">ONLY-INTRANET</host><host server="10.0.0.5">BY-ADDRESS</host>']);

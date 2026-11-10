@@ -554,8 +554,69 @@ HTML;
         $this->login($client);
         $problems = implode("\n", array_column($client->get('calendar/php/calendar.php')->json()['problems'] ?? [], 'message'));
         $this->assertContains("lab_2/lab-solution.pdf is named like box lab-solution", $problems, 'L-131');
-        $this->assertContains("class_1/index.md is named like box title", $problems, 'a second candidate when the first is there');
+        $this->assertContains("class_1/index.md is listed for box title, but an earlier name fills it", $problems, 'a second choice when the first is there (L-134)');
         $this->assertNotContains('lab_2/lab-solution.html is named', $problems, 'not the box file itself');
+    }
+
+    public function testFilesNamedLikeABoxButAssetsAreNot(): void
+    {
+        $client = $this->start(['class/01.Introduction/index.css' => 'x', 'class/01.Introduction/index.js' => 'x', 'class/01.Introduction/title.png' => 'x', 'class/01.Introduction/instructor.pdf' => 'x']);
+        $this->login($client);
+        $problems = implode("\n", array_column($client->get('calendar/php/calendar.php')->json()['problems'] ?? [], 'message'));
+        foreach (['index.css', 'index.js', 'title.png'] as $asset) {
+            $this->assertNotContains("class_1/$asset", $problems, "a page's asset is not named like a box (L-134): $asset");
+        }
+        $this->assertContains('class_1/instructor.pdf is named like box instructor', $problems);
+    }
+
+    public function testUnlockKeepsTheUrlValuesAndOtherLeftovers(): void
+    {
+        $client = $this->start([
+            'class/01.Introduction/index.html' => '<p>Week <url value="week" default="1"></p><lock code="open">LOCKED-PART</lock>',
+            'class/01.Introduction/notes.txt' => str_repeat(" \n", 6000) . 'Late remark',
+            'config/paths.ini' => "[pages]\nhome = pages/home.html | Home\ngone = pages/missing.html | Gone\n",
+        ]);
+        $data = $client->get('calendar/php/calendar.php')->json();
+        $this->assertSame('Late remark', $data['events']['class_1']['notes'][0]['text'] ?? null, 'over 8 KB of leading whitespace does not hide a note (L-137)');
+        $this->assertFalse(isset($data['pages']['gone']), 'a page whose file is missing is left out (DOC-33)');
+        $key = $data['events']['class_1']['boxes'][0]['key'];
+        $page = $client->get("calendar/php/html.php?file=$key&week=5")->body;
+        $this->assertContains('Week 5', $page);
+        $this->assertSame(1, preg_match('/<form class="cal6-lock" method="post" action="([^"]+)">.*?name="csrf" value="([^"]+)"/s', $page, $m));
+        $action = html_entity_decode($m[1] ?? '');
+        $this->assertContains('&week=5', $action, 'the lock form keeps the page\'s query (L-132)');
+        $unlocked = $client->post(ltrim($action, '/'), ['lock' => 'open', 'csrf' => $m[2] ?? '']);
+        $this->assertSame(303, $unlocked->status);
+        $this->assertContains('&week=5', (string) $unlocked->header('location'), 'and so does the redirect');
+        $after = $client->get(ltrim((string) $unlocked->header('location'), '/'))->body;
+        $this->assertContains('Week 5', $after);
+        $this->assertContains('LOCKED-PART', $after);
+
+        $this->assertSame(200, $client->get('calendar/php/calendar.php?at=2026-13-01')->status, 'at is ignored for anyone but instructors');
+        $this->login($client);
+        $this->assertSame(400, $client->get('calendar/php/calendar.php?at=2026-13-01')->status, 'an impossible date is a 400 (L-135)');
+        $this->assertSame(400, $client->get('calendar/php/calendar.php?at=' . rawurlencode('2026-02-30 10:00'))->status);
+        $this->assertSame(200, $client->get('calendar/php/calendar.php?at=' . rawurlencode('2026-02-28 10:00'))->status);
+        $json = $client->request('POST', 'calendar/php/calendar.php', (string) json_encode(['section' => ['1121']]), ['Content-Type' => 'application/json']);
+        $this->assertSame(400, $json->status, 'a JSON list is a 400 too (DOC-33)');
+    }
+
+    public function testAuthErrorsTellTheTruthAndLogoutEndsTheSession(): void
+    {
+        $client = $this->start();
+        $this->login($client);
+        $csrf = (string) $client->get('calendar/php/config.php')->json()['csrf'];
+        $wrong = $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => 'nope', 'csrf' => $csrf])->json();
+        $this->assertSame(['prof', true, $csrf, 'Wrong username or password.'], [$wrong['user'], $wrong['instructor'], $wrong['csrf'], $wrong['error']], 'a failed login leaves the login and the token as they were, and says so (L-133)');
+        $this->assertTrue(is_string($wrong['valid_until']));
+        $bad = $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => 'nope', 'csrf' => 'bogus']);
+        $this->assertSame([403, 'prof'], [$bad->status, $bad->json()['user']]);
+        $this->assertSame('prof', $client->get('calendar/php/config.php')->json()['viewer']['user'] ?? null);
+        $old = $client->cookies;
+        $client->get('calendar/php/auth.php');
+        $replay = new HttpClient($this->server);
+        $replay->cookies = $old;
+        $this->assertSame(['user' => null, 'instructor' => false], $replay->get('calendar/php/config.php')->json()['viewer'] ?? [], 'the old session id is dead after a GET logout');
     }
 
     public function testDayMarkers(): void
@@ -594,6 +655,14 @@ HTML;
         $this->assertSame(['date' => '2026-09-18', 'cancel' => [['from' => '10:00', 'until' => '12:00', 'as' => 'holiday']], 'label' => 'assembly'], $days['2026-09-18'] ?? null, 'a window with times');
         $this->assertSame([['from' => '13:00', 'until' => '24:00', 'as' => 'none']], $days['2026-09-21']['cancel'] ?? null, 'a window over two days, per day');
         $this->assertSame([['from' => '00:00', 'until' => '09:00', 'as' => 'none']], $days['2026-09-22']['cancel'] ?? null);
+    }
+
+    public function testAWindowOverTheFirstMeetingMovesTheCalendar(): void
+    {
+        $client = $this->start(['config/dates.ini' => "2026-08-24 07:00 until 2026-08-24 08:00 = none\n"]);
+        $data = $client->get('calendar/php/calendar.php?section=4345')->json();
+        $this->assertSame([], $data['days']['2026-08-24'] ?? null, 'the first section starts inside the window: the meeting is gone for every section, unlabelled days have no marker (DOC-30)');
+        $this->assertSame('class_1', $data['days']['2026-08-25'][0]['event'] ?? null, 'and the events after it move up a day');
     }
 
     public function testParametersByGetOrPost(): void

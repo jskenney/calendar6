@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Cal6\Http;
 
-/** Headers and bodies every endpoint sends (DESIGN.md, "The PHP endpoints"). */
+/** Headers and bodies every endpoint sends (API.md, "Conventions for every endpoint"). */
 final class Response
 {
     public static function common(): void

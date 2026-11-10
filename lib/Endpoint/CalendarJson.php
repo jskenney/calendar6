@@ -10,7 +10,7 @@ use Cal6\Course\Course;
 use Cal6\Course\Place;
 use Cal6\Http\Context;
 
-/** The body of calendar.php for one viewer at one moment (DESIGN.md, `calendar.php`). */
+/** The body of calendar.php for one viewer at one moment (API.md, `calendar.php`). */
 final class CalendarJson
 {
     public ?int $nextChange = null;
@@ -25,7 +25,22 @@ final class CalendarJson
      */
     private static function noteText(string $path): string
     {
-        $text = mb_convert_encoding(trim((string) @file_get_contents($path, false, null, 0, 8192)), 'UTF-8', 'UTF-8');
+        // leading whitespace does not count against the limit (L-137): skip it, then read enough
+        $handle = @fopen($path, 'rb');
+        $text = '';
+        if ($handle !== false) {
+            $skipped = 0;
+            while (!feof($handle) && $skipped < 1048576 && ($chunk = fread($handle, 8192)) !== false && $chunk !== '') {
+                $trimmed = ltrim($chunk);
+                if ($trimmed !== '') {
+                    $text = $trimmed . (string) fread($handle, 8192);
+                    break;
+                }
+                $skipped += strlen($chunk);
+            }
+            fclose($handle);
+        }
+        $text = mb_convert_encoding(trim($text), 'UTF-8', 'UTF-8');
         if (strlen($text) > 2000) {
             $text = rtrim(mb_strcut($text, 0, 2000 - strlen('…'), 'UTF-8')) . '…';
         }

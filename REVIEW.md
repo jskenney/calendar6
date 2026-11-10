@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 22's L, DOC and T items (being fixed).
+1. Review 22's items are fixed; review 23 checks them.
 2. **Owner questions:** E-11 (the `calendar` directory name), E-12 (`valid_until` after a reload).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -31,32 +31,15 @@ None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-132 | 22 | `lib/Endpoint/HtmlEndpoint.php:124` | Unlocking a page loses its `<url>` values: the lock form posts to, and the 303 returns to, `html.php?file=KEY` only, so a page opened with `&week=5` shows week 1 after the unlock (no session existed to remember the value). Reproduced in Chromium. | Carry the page's query (without reserved names) in the form's `action` and in `Location`. |
-| L-133 | 22 | `lib/Endpoint/AuthEndpoint.php:91`, `:129`, `:195` | auth.php error answers say `user: null`, `csrf: null` while the session is still logged in and its token still valid; API 10.6's "keep a.csrf" then makes the next try a 403. | Fill in the current viewer and token on errors (or document that they mean nothing). |
-| L-134 | 22 | `lib/Course/Course.php:390` | L-131 over-reports: `index.css`, `index.js`, `title.png` (ordinary page assets) are listed, and `index.md`/`notes.md` (listed in config.ini as second choices) are said to be "not the file config.ini lists". | Skip web-asset types; word the second-choice case separately. |
-| L-135 | 22 | `lib/Endpoint/CalendarEndpoint.php:68` | `at=2026-13-01` is accepted (overflows to 2027-01-01) where API.md promises 400. | Reject a date that does not format back to the input. |
-| L-136 | 22 | `lib/Render/PageRenderer.php:472` | A block opened inside an attribute value leaks when its tag has a quoted `>`: `<p title="<inst title=">">SECRET</inst> tail` gives `<p title="">">SECRET</inst>`, and Chromium shows SECRET. Malformed markup only; same family as L-79/L-114. Reproduced by the reviewer in Chromium. | When an attribute value opens a block, hide up to the block's real end (fail closed). |
-| L-137 | 22 | `lib/Endpoint/CalendarJson.php:28`; `lib/Render/Markdown.php` | Leftovers: a notes file with more than 8 KB of leading whitespace comes back as `""`; a `.md` page's `<!DOCTYPE html>` is shown as escaped text (CommonMark reads it as raw HTML). | Skip leading whitespace before the 2000-byte cut; pass a doctype line through as HTML in Markdown. |
+None open.
 
 ## Documentation
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| DOC-30 | 22 | `DESIGN.md:272`; `API.md` 5, 6 | A cancel window that contains the type's first section start drops the event from that day for every section and renumbers the later ones (keys change); DESIGN says only whole-day cancellations move the calendar, API says only that meetings are cancelled. | Document it in API.md and DESIGN. |
-| DOC-31 | 22 | `API.md` 10.4 | The advice for whole-document pages does not work as written: the answer may start with a newline or BOM or lower-case doctype; in `<iframe srcdoc>` links resolve against the app (a `#/view/` click loads the app inside the frame); a blob frame can not resolve the absolute `get.php` paths. Checked in Chromium. | Recommend DOMParser into the app; trim and compare without case; drop the blob option. |
-| DOC-32 | 22 | `API.md` 10.4 | Script traps not mentioned: `DOMContentLoaded`/`load` handlers never fire, top-level `let`/`const` fail on a second visit, a page's `<style>`/`<base>`/`<title>` affect the whole app, `#/view/` links inside an `<iframe src=html.php>` do nothing. | Document them. |
-| DOC-33 | 22 | `API.md` 4, 6, 7, 9 | Undocumented: calendar.php leaves out a page whose file is missing; a JSON-body list is silently dropped (a query list is 400); a repeated query parameter's last value wins; get.php sends files without an extension as `text/plain`; a malformed or multi-range `Range` is 416 with no body; auth.php's 500s carry only `error`; config.php also changes when material folders change and when the software is updated. | Document (and make a JSON list a 400). |
-| DOC-34 | 22 | `API.md` | Missing for a front end: section meetings on weekdays without events never show up; the `<url>`-filled link rule and DOC-21 (an event page's link outside its event loses its target) are only in DESIGN; no row for `<showlink>`; "log out with a plain link" leaves the browser on JSON; comments inside textarea/xmp/title are kept. | Add them. |
-| DOC-35 | 22 | `API.md` 6 | The example shows `class_35` (period 1) cancelled on a `2_hour_delay` day whose period 1 is 09:45-10:35. | Use `4_hour_delay`. |
-| DOC-36 | 22 | `php/*.php`, `lib/Http/Response.php`, `lib/Endpoint/HtmlEndpoint.php:17` | Comments still point to DESIGN.md "The PHP endpoints" for what is now in API.md; HtmlEndpoint's comment still says "by default an HTML fragment". | Point to API.md; fix the comment. |
+None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-28 | 22 | `tests/` | No tests for: a cancel window over the first section's start; auth error answers while logged in; the old session id after a GET logout; `<url>` values surviving an unlock; doctype variants (textarea/xmp/title, attributes, `<!doctypehtml>`, Markdown); the L-131 false positives; calendar.php pages with a missing file; `at` overflow dates. | Tests with the fixes. |
+None open.
 
 ## Enhancements
 
@@ -323,6 +306,20 @@ None open.
 | DOC-27 | owner | `655b298` | auth.php's answers had different shapes: a login gave four fields, a logout three, an error only `error`. | Decided (owner): every auth.php answer carries `user`, `instructor`, `valid_until`, `csrf` and `error` in that order, `null` (or `false`) when they do not apply, errors (401, 403, 405, 429, 503) included. DESIGN and tests updated. |
 | DOC-28 | owner | `97b3fde` | config.php lacked what the front end needs from duplicate.ini, dates.ini windows with times, paths.ini pages, the session length and a version; it sent `[replace]` values it does not need. | Decided (owner): config.php adds `duplicates` (as applied), `cancel` windows on days, `pages` (name and label, in order), `session_seconds` and `version` (`format`, `software`); `replace` is gone. DESIGN and tests updated. |
 | DOC-29 | owner | `562b5ad` | The endpoints' inputs and outputs lived inside DESIGN.md, mixed with design notes, with no guide for building a front end. | `API.md`: the contract for every endpoint (inputs, outputs, field types, status codes, the HTML `html.php` produces), the file-system and URL expectations, and a front-end guide; DESIGN.md keeps the design decisions and points to it. API.md is updated with any endpoint change. |
+| L-132 | 22 | (this commit) | Unlocking a page loses its `<url>` values: the lock form posts to, and the 303 returns to, `html.php?file=KEY` only, so a page opened with `&week=5` shows week 1 after the unlock (no session existed to remember the value). Reproduced in Chromium. | The page's own query (its `<url>` values, reserved names left out) goes into the lock form's `action` and the 303's `Location`. Test. |
+| L-133 | 22 | (this commit) | auth.php error answers say `user: null`, `csrf: null` while the session is still logged in and its token still valid; API 10.6's "keep a.csrf" then makes the next try a 403. | auth.php errors report the session as it still is: the logged-in user, `instructor`, `valid_until` and the still-valid token (`null` only without a session). API.md says so. Test. |
+| L-134 | 22 | (this commit) | L-131 over-reports: `index.css`, `index.js`, `title.png` (ordinary page assets) are listed, and `index.md`/`notes.md` (listed in config.ini as second choices) are said to be "not the file config.ini lists". | Page assets (css, js, images, fonts) are not reported; a later choice listed in config.ini is reported as "listed for box X, but an earlier name fills it". Test. |
+| L-135 | 22 | (this commit) | `at=2026-13-01` is accepted (overflows to 2027-01-01) where API.md promises 400. | `at` must read back as written (`2026-13-01`, `2026-02-30 10:00` are 400). Test. |
+| L-136 | 22 | (this commit) | A block opened inside an attribute value leaks when its tag has a quoted `>`: `<p title="<inst title=">">SECRET</inst> tail` gives `<p title="">">SECRET</inst>`, and Chromium shows SECRET. Malformed markup only; same family as L-79/L-114. Reproduced by the reviewer in Chromium. | A block left open in an attribute value goes on in the page to its own closing tag (a plain scan), or to the end of the page: hidden for viewers who may not see it. Test (with `<inst>` and `<lock>`). |
+| L-137 | 22 | (this commit) | Leftovers: a notes file with more than 8 KB of leading whitespace comes back as `""`; a `.md` page's `<!DOCTYPE html>` is shown as escaped text (CommonMark reads it as raw HTML). | Notes skip leading whitespace (up to 1 MB) before the cut; in Markdown a doctype on a line of its own is raw HTML. Tests. |
+| DOC-30 | 22 | (this commit) | A cancel window that contains the type's first section start drops the event from that day for every section and renumbers the later ones (keys change); DESIGN says only whole-day cancellations move the calendar, API says only that meetings are cancelled. | DESIGN (Sections and Implementation notes) and API.md (config.php `cancel`) say a window over the first section's start takes the meeting off the calendar and moves the later events; test. |
+| DOC-31 | 22 | (this commit) | The advice for whole-document pages does not work as written: the answer may start with a newline or BOM or lower-case doctype; in `<iframe srcdoc>` links resolve against the app (a `#/view/` click loads the app inside the frame); a blob frame can not resolve the absolute `get.php` paths. Checked in Chromium. | API 10.4: parse with DOMParser, move body and head styles/scripts, ignore title/base; why not srcdoc or blob frames. |
+| DOC-32 | 22 | (this commit) | Script traps not mentioned: `DOMContentLoaded`/`load` handlers never fire, top-level `let`/`const` fail on a second visit, a page's `<style>`/`<base>`/`<title>` affect the whole app, `#/view/` links inside an `<iframe src=html.php>` do nothing. | API 10.4 lists the script traps (DOMContentLoaded, re-declared globals, page styles); API 8 says `#/view/` links do nothing inside frames. |
+| DOC-33 | 22 | (this commit) | Undocumented: calendar.php leaves out a page whose file is missing; a JSON-body list is silently dropped (a query list is 400); a repeated query parameter's last value wins; get.php sends files without an extension as `text/plain`; a malformed or multi-range `Range` is 416 with no body; auth.php's 500s carry only `error`; config.php also changes when material folders change and when the software is updated. | API.md documents missing pages, repeated query parameters, `text/plain` for files without an extension, 416 without a body, auth.php's plain 500, what changes config.php; a JSON list is now a 400 (Context keeps lists). Test. |
+| DOC-34 | 22 | (this commit) | Missing for a front end: section meetings on weekdays without events never show up; the `<url>`-filled link rule and DOC-21 (an event page's link outside its event loses its target) are only in DESIGN; no row for `<showlink>`; "log out with a plain link" leaves the browser on JSON; comments inside textarea/xmp/title are kept. | API.md: sections meeting on weekdays without events, the `<url>` and DOC-21 link rules and `<showlink>` in the link table, the plain-link logout caveat, comments kept in textarea/xmp/title, where to keep `valid_until` (E-12 open). |
+| DOC-35 | 22 | (this commit) | The example shows `class_35` (period 1) cancelled on a `2_hour_delay` day whose period 1 is 09:45-10:35. | The example uses `4_hour_delay`. |
+| DOC-36 | 22 | (this commit) | Comments still point to DESIGN.md "The PHP endpoints" for what is now in API.md; HtmlEndpoint's comment still says "by default an HTML fragment". | The php/ scripts, Response, AuthEndpoint, CalendarJson, ConfigEndpoint and HtmlEndpoint point to API.md; HtmlEndpoint's comment is corrected. |
+| T-28 | 22 | (this commit) | No tests for: a cancel window over the first section's start; auth error answers while logged in; the old session id after a GET logout; `<url>` values surviving an unlock; doctype variants (textarea/xmp/title, attributes, `<!doctypehtml>`, Markdown); the L-131 false positives; calendar.php pages with a missing file; `at` overflow dates. | Tests for all of the above (cancel window moving the calendar, auth errors while logged in, the old session after a GET logout, `<url>` values through an unlock, doctype variants, L-134, a missing page, `at` overflow, JSON lists). |
 
 ## Reviews
 

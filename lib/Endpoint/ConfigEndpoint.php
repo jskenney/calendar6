@@ -10,7 +10,7 @@ use Cal6\Http\Response;
 use Cal6\Http\Session;
 
 /**
- * config.php (DESIGN.md): what the front end needs to draw the site, without
+ * config.php (API.md): what the front end needs to draw the site, without
  * secrets.  With ?csrf=1 (or an existing session) it also hands out the session's
  * CSRF token.
  */

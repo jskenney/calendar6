@@ -445,6 +445,13 @@ final class Markdown
                 continue;
             }
 
+            # a doctype on a line of its own is raw HTML, kept as written (as CommonMark; L-137)
+            if (preg_match('/^ {0,3}<!doctype(?:\s[^<>]*)?>\s*$/i', $line)) {
+                $out[] = $this->hold(trim($line));
+                $i++;
+                continue;
+            }
+
             # HTML block (also Cal4 tags such as <inst>, <inject>, <lock>)
             if ($this->htmlBlockStart($line)) {
                 $block = array();

@@ -67,7 +67,8 @@ final class CalendarEndpoint
             if ($at !== null) {
                 $moment = \DateTimeImmutable::createFromFormat('!Y-m-d H:i', $at, $c->config->zone)
                     ?: \DateTimeImmutable::createFromFormat('!Y-m-d', $at, $c->config->zone);
-                if ($moment === false) {
+                // an impossible date (2026-13-01) would roll over: it must read back as written (L-135)
+                if ($moment === false || !in_array($at, [$moment->format('Y-m-d H:i'), $moment->format('Y-m-d')], true)) {
                     Response::error(400, 'at: expected YYYY-MM-DD HH:MM');
                     return;
                 }

@@ -37,7 +37,9 @@ final class Context
         $type = (string) ($_SERVER['CONTENT_TYPE'] ?? '');
         if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && str_starts_with(strtolower($type), 'application/json')) {
             $decoded = json_decode((string) file_get_contents('php://input', false, null, 0, 65536), true);
-            $post = is_array($decoded) ? array_filter($decoded, 'is_scalar') : [];
+            // lists are kept, so an endpoint can refuse them (a list is a 400 in calendar.php,
+            // DOC-33); post() reads only single values
+            $post = is_array($decoded) ? array_filter($decoded, static fn ($v): bool => is_scalar($v) || is_array($v)) : [];
         }
         return new self($dir, CourseConfig::load($dir), $_SERVER, $_GET, $post, self::clock());
     }

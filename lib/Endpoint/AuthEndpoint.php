@@ -11,7 +11,7 @@ use Cal6\Http\Response;
 use Cal6\Http\Session;
 
 /**
- * auth.php (DESIGN.md): POST username + password + csrf logs in; a GET, or a POST
+ * auth.php (API.md): POST username + password + csrf logs in; a GET, or a POST
  * without username and password, logs out (no token needed).  The same answer for a wrong password, an unknown user and an
  * account outside its window.
  */
@@ -96,6 +96,25 @@ final class AuthEndpoint
         Response::json(array_replace(['user' => null, 'instructor' => false, 'valid_until' => null, 'csrf' => null, 'error' => null], $fields), $status);
     }
 
+    /**
+     * An error answer that tells the truth about the session (L-133): who is still logged in,
+     * until when, and the token that is still valid (a failed login changes neither).
+     *
+     * @param list<string> $headers
+     */
+    private static function fail(Context $c, Viewer $current, string $error, int $status, array $headers = []): void
+    {
+        $csrf = Session::isOpen() ? Session::csrf() : null;
+        $until = null;
+        if ($current->user !== null) {
+            $sessionEnd = (int) Session::get('login', 0) + $c->config->sessionSeconds;
+            $accountEnd = $current->validUntil($c->now, $c->config->zone);
+            $until = $c->iso($accountEnd === null ? $sessionEnd : min($accountEnd, $sessionEnd));
+        }
+        Session::close();
+        self::answer(['user' => $current->user, 'instructor' => $current->instructor, 'valid_until' => $until, 'csrf' => $csrf, 'error' => $error], $status, $headers);
+    }
+
     public static function handle(Context $c): void
     {
         $method = $c->method();
@@ -123,10 +142,10 @@ final class AuthEndpoint
 
         // logging in needs the token: only an existing session (made by config.php?csrf=1) can
         // carry a valid one, so a cross-site POST creates none (L-43)
+        $current = $c->viewer(); // who is logged in now: an error answer says so (L-133)
         Session::start($c, false);
         if (!Session::isOpen() || !Session::checkCsrf($c->post('csrf'))) {
-            Session::close();
-            self::answer(['error' => 'the form has expired: reload the page'], 403);
+            self::fail($c, $current, 'the form has expired: reload the page', 403);
             return;
         }
 
@@ -141,8 +160,7 @@ final class AuthEndpoint
         $limiter = RateLimiter::forCourse($c->courseDir, $seconds);
         if (!$limiter->available()) {
             error_log('calendar6: logins are refused: the private temporary directory can not be used (' . sys_get_temp_dir() . ')');
-            Session::close();
-            self::answer(['error' => 'Logging in is not possible right now: the server can not keep track of failed attempts.'], 503);
+            self::fail($c, $current, 'Logging in is not possible right now: the server can not keep track of failed attempts.', 503);
             return;
         }
         $user = strtolower($username);
@@ -156,8 +174,7 @@ final class AuthEndpoint
                 foreach ($recorded as $done) {
                     $limiter->forgive($done);
                 }
-                Session::close();
-                self::answer(['error' => 'too many failed logins: try again later'], 429, ['Retry-After: ' . $wait]);
+                self::fail($c, $current, 'too many failed logins: try again later', 429, ['Retry-After: ' . $wait]);
                 return;
             }
             $recorded[] = $key;
@@ -172,8 +189,7 @@ final class AuthEndpoint
                 foreach ($recorded as $done) {
                     $limiter->forgive($done);
                 }
-                Session::close();
-                self::answer(['error' => 'too many failed logins for this user: try again in a moment'], 429, ['Retry-After: ' . $wait]);
+                self::fail($c, $current, 'too many failed logins for this user: try again in a moment', 429, ['Retry-After: ' . $wait]);
                 return;
             }
         }
@@ -191,8 +207,7 @@ final class AuthEndpoint
             $ok = false;
         }
         if (!$ok) {
-            Session::close();
-            self::answer(['error' => 'Wrong username or password.'], 401);
+            self::fail($c, $current, 'Wrong username or password.', 401);
             return;
         }
         foreach ($recorded as $done) {

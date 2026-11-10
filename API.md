@@ -183,7 +183,10 @@ timezone is `config.php` → `course.timezone`.
 - **Methods.** Each endpoint lists its methods; anything else is `405` with an `Allow` header.
   `HEAD` is accepted wherever `GET` is (except `auth.php`).
 - **Request bodies.** POST bodies may be `application/x-www-form-urlencoded`,
-  `multipart/form-data`, or `application/json` (an object of scalar values).
+  `multipart/form-data`, or `application/json` (an object of single values).
+- **Repeated parameters.** In a query string, a parameter given twice (`section=1&section=2`)
+  counts once, with its **last** value (PHP's rule); a list (`section[]=1`, or a JSON array) is
+  `400` in `calendar.php` and ignored elsewhere.
 - **Credentials.** Use `fetch(url, {credentials: 'same-origin'})` (the default) so the session
   cookie goes along.
 - **Headers on every answer:** `X-Content-Type-Options: nosniff`, `Referrer-Policy:
@@ -193,8 +196,9 @@ timezone is `config.php` → `course.timezone`.
   `If-None-Match` and you get `304 Not Modified` when nothing changed (browsers do this for you).
 - **JSON** is `application/json; charset=utf-8`, UTF-8, with slashes and Unicode unescaped.
 - **Errors** are JSON `{"error": "message"}` with the status code, from every endpoint
-  (`html.php` and `get.php` included). `auth.php` errors carry its full shape (see 7). The
-  message is for people; branch on the status code.
+  (`html.php` and `get.php` included). `auth.php` errors carry its full shape (see 7), except a
+  `500` (the course can not be found), which is the plain form for every endpoint. A `416` from
+  `get.php` has no body. The message is for people; branch on the status code.
 
 | Status | Meaning |
 |---|---|
@@ -212,8 +216,9 @@ timezone is `config.php` → `course.timezone`.
 
 ## 5. `config.php`
 
-The course's settings, the same for every viewer apart from `viewer` and `csrf`. It changes only
-when the configuration files change.
+The course's settings, the same for every viewer apart from `viewer` and `csrf`. It changes when
+the configuration files change, when material folders are added or removed (`duplicates` follows
+the calendar), and when the server software is updated (`version.software`).
 
 **Methods:** `GET`, `HEAD`.
 
@@ -269,7 +274,7 @@ when the configuration files change.
 | `days` | array | **only the days `dates.ini` changes**, one entry per date, in date order (see below) |
 | `period` | string | the default period schedule's name |
 | `periods` | object | schedule name → `label` and `times`: period name → `"HH:MM-HH:MM"`, or `"cancelled"` (the period exists but does not meet on that schedule). Period names are strings (`"1"`, `"X"`, `"10"`) |
-| `sections` | array | each section: `section` (its number, a string), `meetings` (`meets`: weekday letters `M T W R F S U` then period names, e.g. `MF1`, `R34`; `type`: the event type; `room`), and `instructor` (comma-separated names) |
+| `sections` | array | each section: `section` (its number, a string), `meetings` (`meets`: weekday letters `M T W R F S U` then period names, e.g. `MF1`, `R34`; `type`: the event type; `room`), and `instructor` (comma-separated names). Sections are information: a meeting on a weekday that has no event of its type in `schedule` (say `R34` when Thursday has no class) never shows up in `calendar.php` |
 | `types` | object | event type → `label`, in the course's order |
 | `boxes` | array | the boxes in display order, `box` (id) and `label` |
 | `pages` | array | the course's pages in menu order: `page` (name, the key into `calendar.php`'s `pages`) and `label` |
@@ -288,7 +293,7 @@ when the configuration files change.
 | `events` | the event types meeting that day (`[]` for a holiday or `none`); present when `dates.ini` chose them (a type list, a weekday swap, `holiday`, `none`) |
 | `as` | `holiday`, `none` (no meetings, not a holiday), or the weekday whose schedule the day follows (`mon`) |
 | `period` | a period schedule other than the default, for the whole day |
-| `cancel` | windows with times: `from`, `until` (`HH:MM`; `24:00` when the window runs past midnight, and the next day's entry then starts at `00:00`), `as` (`holiday` or `none`). Meetings whose start falls inside a window are cancelled |
+| `cancel` | windows with times: `from`, `until` (`HH:MM`; `24:00` when the window runs past midnight, and the next day's entry then starts at `00:00`), `as` (`holiday` or `none`). If the **first** section's start for a type falls inside the window, that meeting is taken off the calendar for every section and the events after it move up a day (their numbers and keys change); a meeting of a later section that starts inside it is only marked `"cancelled": true` in `calendar.php?section=` |
 | `label` | the text to show for the day |
 
 The day-by-day picture, with these changes applied, is in `calendar.php`; `config.php` is for
@@ -338,7 +343,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
                    {"event": "lab_11", "type": "lab", "number": 11, "title": "Forms"}],
     "2026-11-11": [{"event": "", "title": "holiday", "label": "Veterans Day"}],
     "2026-11-12": [],
-    "2026-12-03": [{"event": "", "title": "", "label": "2-hour delay (snow)", "schedule": "2_hour_delay"},
+    "2026-12-03": [{"event": "", "title": "", "label": "4-hour delay (snow)", "schedule": "4_hour_delay"},
                    {"event": "class_35", "type": "class", "number": 35, "title": "Review",
                     "period": "1", "instructor": "SMITH", "room": "HP111", "cancelled": true}]
   },
@@ -373,6 +378,8 @@ each name the first non-empty value counts, the query string first. A list (`sec
 
 **`pages` entries:** `title` always. When the viewer may open the page, also `key`, `filename`
 and `kind` (always `"html"`). Logged-on viewers may also see `visible` and `opens` (see "Hints").
+A page whose file is missing (or outside the course, or not a page) is left out here, although
+`config.php` → `pages` still lists it; instructors find it in `problems`.
 
 **`days` items.** A day's list starts with at most one **marker** (`"event": ""`) when
 `dates.ini` changed the day (a cancel window with times gets a marker only when it has a label;
@@ -460,12 +467,16 @@ never creates one.
 | `csrf` | string\|null | a **new** token (the session id changes at login and logout); use it for the next login |
 | `error` | string\|null | the error message, or `null` |
 
+On an error, `user`, `instructor`, `valid_until` and `csrf` describe the session **as it still
+is**: a failed login changes nothing, so a logged-in instructor who mistypes stays logged in, and
+the token in the answer (the same one as before) is the one to use next.
+
 | Situation | Status | Answer |
 |---|---|---|
 | logged in | 200 | `user`, `instructor`, `valid_until`, `csrf` set |
 | logged out | 200 | `csrf` set if the browser had a session, else `null` |
 | wrong password, unknown user, or account outside its valid window | 401 | `error`: the same message for all three |
-| missing/expired token, or no session (call `config.php?csrf=1` first) | 403 | `error` |
+| missing/expired token, or no session (call `config.php?csrf=1` first) | 403 | `error`; `csrf` is the session's current token, or `null` with no session |
 | too many attempts | 429 | `error`, header `Retry-After` (seconds) |
 | attempts can not be counted | 503 | `error` |
 | other methods | 405 | `error` |
@@ -473,6 +484,9 @@ never creates one.
 Failed logins are limited per address and username, and per address; a browser that has logged
 in as that user before gets a signed device cookie that keeps the real user from being locked
 out by others' guesses. After any change of login, fetch `calendar.php` again.
+
+`valid_until` is only in `auth.php`'s answers: keep it (e.g. in `sessionStorage`) if you want to
+show it later; after the login ends, `config.php`/`calendar.php` report an anonymous `viewer`.
 
 ---
 
@@ -507,7 +521,9 @@ is `404` here.
    `<postmeeting>…</postmeeting>` (until the event's meetings are over), `<host server="…">`
    (other servers), `<lock>` sections not yet unlocked (replaced by an unlock form). The tags
    themselves are always removed.
-2. **Removes HTML comments**, for everyone (`<!-- … -->`). A `<!DOCTYPE …>` is kept.
+2. **Removes HTML comments**, for everyone (`<!-- … -->`). A `<!DOCTYPE …>` is kept. Inside a
+   `<textarea>`, `<xmp>` or `<title>` a comment is text the reader sees (starter code) and is
+   kept, unless it holds a hidden-block tag.
 3. **Rewrites links to course files to keys**, as described in the table below.
 4. **Handles the other tags:** `<inject src>` (another file's processed content in place),
    `<codeinject src>` (another file's source, escaped, in place: wrap it in `<pre>` yourself in
@@ -522,8 +538,10 @@ is `404` here.
 |---|---|
 | `<a href="other.html">` (or `<area>`) to a course page the viewer may open | `href="#/view/KEY"` (the query string goes along: `#/view/KEY?week=3`; the fragment too) |
 | `<img src>`, `<script src>`, `<link href>`, `<source src>`, `<video poster>`, `<input type=image src>`, svg `<image href>`, `background=`, `srcset` candidates, and `<a href>` to a non-page file | `get.php` URLs, absolute paths: `/~jdoe/AB123/calendar/php/get.php?file=KEY` |
-| `<iframe>`, `<embed>`, `<object>` pointing at a page | `/~jdoe/AB123/calendar/php/html.php?file=KEY` (with the link's query string) |
-| any link to a course file the viewer may not open | the element keeps its text, loses its target, and gets `data-cal6-hidden="1"` |
+| `<iframe>`, `<embed>`, `<object>` pointing at a page | `/~jdoe/AB123/calendar/php/html.php?file=KEY` (with the link's query string). Inside such a frame, `#/view/KEY` links do nothing (there is no app there) |
+| any link to a course file the viewer may not open, and an event page's link to a file outside its own event directory (`../../shared/style.css`; give such files a place with `virtual.ini`) | the element keeps its text, loses its target, and gets `data-cal6-hidden="1"` |
+| a link whose target is filled in by `<url>` (the visitor chose it) | rewritten only to a file `calendar.php` lists (a box file or a page) that the viewer may open; anything else loses its target |
+| `<showlink src="file">` | `<a href="…">file</a>` to that event file (a route or `get.php` URL as above), or just the text when the viewer may not open it |
 | external links (`https://…`, `mailto:`, `/absolute/path`, `#anchor`, `?query`), and links to missing files or paths outside the course | unchanged |
 
 **HTML that processing inserts** (style these; the front end may enhance them):
@@ -543,7 +561,7 @@ Math (`\( \)`, `\[ \]`, `$$ $$`) is left as written for MathJax; code blocks for
 
 | Situation | Status |
 |---|---|
-| right or wrong code, valid token | `303 See Other`, `Location: …/calendar/php/html.php?file=KEY` (fetch it to get the page, now unlocked if the code was right) |
+| right or wrong code, valid token | `303 See Other`, `Location: …/calendar/php/html.php?file=KEY&…` (the page's own query, its `<url>` values, is kept in the form's `action` and in `Location`; fetch it to get the page, now unlocked if the code was right) |
 | missing or expired token (tokens last 1–2 hours), or a cross-site POST | 403 |
 | too many wrong codes | 429 with `Retry-After` (503 if attempts can not be counted) |
 
@@ -572,13 +590,13 @@ Any course file that is not a page, by key, **byte for byte**.
 `ETag`, `Last-Modified`, `Cache-Control: private, no-cache`, and `Content-Disposition` with the
 file's name: `inline` for types a browser shows (PDF, images, audio, video, text, CSS, JS, JSON,
 ...), `attachment` for everything else and always with `download=1`. HTML and SVG files are
-always attachments, so they can not run as pages of the site; unknown types are sent as
-`application/octet-stream`.
+always attachments, so they can not run as pages of the site; a file without an extension is
+sent as `text/plain` inline, other unknown types as `application/octet-stream` attachments.
 
 | Situation | Status |
 |---|---|
 | unknown key, not allowed, a page key, or a file that is never served | 404 (the same answer for all) |
-| `Range` past the end of the file | 416 |
+| `Range` past the end of the file, malformed, or several ranges | 416 (no body) |
 | other methods | 405 |
 
 Pages (`.html`, `.htm`, `.md`) are never sent by `get.php`, not even to instructors: their raw
@@ -620,15 +638,31 @@ Without one, show no times. A day's period schedule is in the day's marker (`sch
 
 1. Fetch `html.php?file=KEY[&query]`. A `404` means it does not exist or the viewer may not
    open it (they may need to log in, or it is not released yet).
-2. Insert the HTML. If it is a whole document (starts with `<!DOCTYPE` or `<html`), take its
-   `<body>` content and `<head>` styles and scripts, or show it in an `<iframe srcdoc>`/blob
-   frame; otherwise insert it as a fragment.
-3. **Run its scripts**: elements inserted with `innerHTML` do not run. Replace each `<script>`
-   with a new one (copy attributes and text), in document order, waiting for external ones to
-   load before the next, as a browser would.
+2. **Parse, don't paste.** Course pages are often whole documents. Parse the answer with
+   `new DOMParser().parseFromString(html, 'text/html')` (it handles a leading newline or BOM, a
+   lower-case doctype, a fragment or a whole document alike), then move the parsed `body`'s
+   children into your page container, and the `head`'s `<style>`, `<link rel=stylesheet>` and
+   `<script>` elements after them. Ignore the page's `<title>` and `<base>` (or use the title for
+   your own heading): left in, they would change the whole app.
+   - Avoid `<iframe srcdoc>`: links inside resolve against the app's URL, so a `#/view/KEY` or
+     `#anchor` click loads the whole app *inside* the frame, unless you intercept clicks inside
+     it. Avoid `blob:` frames: the absolute-path `get.php` URLs in the page can not be resolved
+     there.
+3. **Run its scripts.** Elements inserted from a parsed document do not run. Replace each
+   `<script>` with a new one (copy attributes and text), in document order, waiting for an
+   external one to load before the next, as a browser would. Know the traps:
+   - `DOMContentLoaded` and `load` have already fired, so handlers waiting for them never run;
+     after the scripts, you may dispatch a synthetic `DOMContentLoaded` on `document`, or ask
+     authors to run their code at once.
+   - Scripts run in the app's global scope: running a page's scripts again on a second visit
+     fails on top-level `let`/`const`/`class` ("already declared"). Reload the app for a revisit,
+     run each page's scripts once, or isolate pages that need it in an `<iframe src=html.php…>`
+     (no app links work inside, see 8).
+   - A page's `<style>` applies to the whole app while it is shown: remove it when you leave the
+     page, or scope it.
 4. Typeset math (MathJax) and highlight code (highlight.js) over the new content.
-5. Intercept clicks on links `#/view/KEY…` (they are routes already) and handle `#anchor` links
-   within the page. Show `[data-cal6-hidden]` elements as plain text.
+5. Links `#/view/KEY…` are routes already; handle `#anchor` links (scroll within the page)
+   yourself. Show `[data-cal6-hidden]` elements as plain text.
 
 Never insert `notes` text as HTML unless you sanitize it: it is the file as written.
 
@@ -646,12 +680,12 @@ const {csrf} = await (await fetch('calendar/php/config.php?csrf=1')).json();
 const r = await fetch('calendar/php/auth.php', {method: 'POST',
   headers: {'Content-Type': 'application/json'},
   body: JSON.stringify({username, password, csrf})});
-const a = await r.json();          // a.error is null on success
-// then: reload calendar.php (and config.php for the viewer), keep a.csrf for next time
+const a = await r.json();          // a.error is null on success; on 401 the session is unchanged
+// then: reload calendar.php (and config.php for the viewer); a.csrf is the token to use next
 ```
 
-Log out with `fetch('calendar/php/auth.php')` (a GET, or a plain link), then reload
-`calendar.php`. `valid_until` says when the login ends by itself; after that the viewer is
+Log out with `fetch('calendar/php/auth.php')` (a GET), then reload `calendar.php`. A plain link
+to `auth.php` also logs out, but leaves the browser showing the JSON answer. `valid_until` says when the login ends by itself; after that the viewer is
 anonymous again (a fresh `calendar.php` shows it in `viewer`).
 
 ### 10.7 Instructors

@@ -387,18 +387,31 @@ final class Course
             if ($event->copyOf !== null || isset($boxes[$name]) || !$file->topLevel || Boundary::isUnlisted($name)) {
                 continue;
             }
-            $stem = mb_strtolower(explode('.', $name, 2)[0], 'UTF-8');
+            $lower = mb_strtolower($name, 'UTF-8');
+            $stem = explode('.', $lower, 2)[0];
+            $extension = str_contains($lower, '.') ? substr($lower, strrpos($lower, '.') + 1) : '';
+            $where = $event->type . '/' . ($event->folder->dirName ?? '');
             foreach ($this->config->boxes as $box) {
-                $stems = array_map(static fn (string $f): string => mb_strtolower(explode('.', $f, 2)[0], 'UTF-8'), $box['files']);
-                if ($stem !== '' && ($stem === mb_strtolower($box['box'], 'UTF-8') || in_array($stem, $stems, true))) {
-                    $what = $box['notes'] ? 'notes' : "box $box[box]";
-                    $this->problems[] = new Problem("$event->id/$name is named like $what but is not the file config.ini lists for it (" . implode(', ', $box['files']) . "): it follows the event's rule", $event->type . '/' . ($event->folder->dirName ?? ''));
+                $what = $box['notes'] ? 'notes' : "box $box[box]";
+                $listed = array_map(static fn (string $f): string => mb_strtolower($f, 'UTF-8'), $box['files']);
+                if (in_array($lower, $listed, true)) {
+                    // a later choice of a box whose earlier choice is there (index.md next to index.html)
+                    $this->problems[] = new Problem("$event->id/$name is listed for $what, but an earlier name fills it (" . implode(', ', $box['files']) . "): it follows the event's rule", $where);
+                    break;
+                }
+                // a page's own assets (index.css, title.png) are not reported (L-134)
+                if ($stem !== '' && !in_array($extension, self::ASSET_EXTENSIONS, true)
+                    && ($stem === mb_strtolower($box['box'], 'UTF-8') || in_array($stem, array_map(static fn (string $f): string => explode('.', $f, 2)[0], $listed), true))) {
+                    $this->problems[] = new Problem("$event->id/$name is named like $what but is not the file config.ini lists for it (" . implode(', ', $box['files']) . "): it follows the event's rule", $where);
                     break;
                 }
             }
         }
         return $boxes;
     }
+
+    /** Files a page uses (style, script, image, font): never reported as named like a box (L-134). */
+    private const ASSET_EXTENSIONS = ['css', 'js', 'mjs', 'map', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'ico', 'bmp', 'woff', 'woff2', 'ttf', 'otf', 'eot'];
 
     public function place(string $key): ?Place
     {

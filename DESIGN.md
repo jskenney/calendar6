@@ -269,8 +269,12 @@ meet on different days and periods. Decided:
   day really needs the same material, `duplicate.ini` repeats it (`lab_7 = lab_6 same`).
 - **Students never log in.** Every student is an anonymous viewer; accounts in `config/auth/` are
   for instructors and staff.
-- **Only a whole-day cancellation moves the calendar** (a `holiday` / `none` line in `dates.ini`).
-  A delay or early schedule changes the times of the day, not the lessons.
+- **Only a cancellation moves the calendar**: a whole-day `holiday` / `none` line in `dates.ini`,
+  or a window with times that contains the **first** section's start for that type (that
+  meeting is then gone for every section, and the events after it move up, with new keys).
+  A window that only contains later sections' starts cancels those meetings without moving
+  anything (`calendar.php` marks them `"cancelled": true`). A delay or early schedule changes
+  the times of the day, not the lessons.
 
 So sections and periods are **information**, not scheduling: they say when and where each
 section meets, so the site can show it, and they give `start` / `end` a meaning.
@@ -1004,8 +1008,9 @@ Choices the code made where the design left room (change them here if they are w
   to others.
 - **Calendar:** event numbers follow the calendar slots; when a type runs out of directories its
   remaining slots stay empty; directories that do not fit are events on no day (instructors
-  only). A `dates.ini` line with one date means that day only; a window with times only cancels
-  meetings whose first section starts inside it.
+  only). A `dates.ini` line with one date means that day only; a window with times takes a
+  meeting off the calendar only when the type's first section starts inside it (the events
+  after it move up); later sections starting inside it are only marked cancelled.
 - **calendar.php:** titles are always shown, to everyone. Only the files `config.ini` names for boxes are listed (and notes, as
   text); every other file, in the event directory or below it (`img/pic.png`), gets a key so
   pages can link to it, and is never listed.
