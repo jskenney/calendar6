@@ -89,7 +89,8 @@ final class Boundary
      */
     public static function neverServed(string $name): bool
     {
-        $base = basename($name);
+        // an include fragment written as a page (menu.inc.html, part.inc.md) is a page (L-57)
+        $base = (string) preg_replace('/\.inc(?=\.(?:html?|md)$)/i', '', basename($name));
         return (bool) preg_match('/\.(' . self::SCRIPT . '|htaccess|htpasswd)$/i', $base)
             || (bool) preg_match('/\.(' . self::SCRIPT . ')[^a-z0-9]/i', $base)
             || self::isPageBackup($name);

@@ -109,6 +109,10 @@ final class Scanner
                 $this->problems[] = new Problem(basename($dir) . "/$prefix$name looks like an editor's backup of a page: it is never served; remove it");
             }
             if (!is_file($real) || Boundary::neverServed($name) || Boundary::neverServed($real)) {
+                if (is_file($real) && !Boundary::isPageBackup($name) && preg_match('/\.(html?|md)$/i', $name)) {
+                    // a page whose name also has a PHP extension (x.php.html): say why it is missing (L-57)
+                    $this->problems[] = new Problem(basename($dir) . "/$prefix$name has a server-side script extension in its name: it is never served; rename it");
+                }
                 continue;
             }
             $this->checkName(basename($dir) . "/$prefix$name");

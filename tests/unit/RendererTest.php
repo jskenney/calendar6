@@ -432,6 +432,21 @@ final class RendererTest extends TestCase
         $this->assertContains('</a>K S', $page, 'real <keyword>/<search> tags are removed');
     }
 
+    public function testIncludePagesAndMarkdownAttributes(): void
+    {
+        $course = $this->course([
+            'class/01.Introduction/index.html' => '<inject src="../../shared/menu.inc.html"><p>END</p>',
+            'class/01.Introduction/a.md' => "![diagram <inst>ALT-SECRET</inst>](pic.png)\n\n[link](x.html \"<inst>TITLE-SECRET</inst>\")\n",
+            'class/01.Introduction/x.php.html' => 'X',
+            'shared/menu.inc.html' => '<nav>MENU</nav>',
+            'config/default.ini' => "class_1 = always\n",
+        ]);
+        $this->assertContains('MENU', $this->render($course, 'class_1/index.html'), 'a .inc.html page can be injected (L-57)');
+        $this->assertSame(1, count(array_filter($course->problems, static fn ($p): bool => str_contains($p->message, 'x.php.html'))), 'a page with a PHP extension is a problem');
+        $page = $this->render($course, 'class_1/a.md');
+        $this->assertSame(0, preg_match('/ALT-SECRET|TITLE-SECRET/', $page), 'hidden blocks in Markdown alt text and titles are removed (L-56): ' . $page);
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

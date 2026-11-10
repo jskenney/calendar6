@@ -612,6 +612,17 @@ final class Markdown
         return $text;
     }
 
+    # Alt text and titles are plain text: hidden blocks (<inst>, <lock>, ...) are removed with
+    # their content for everyone (an attribute can not be hidden later, L-56), other tags dropped.
+    private function plainAttribute($text) {
+        $text = $this->restore($text);
+        $text = preg_replace('/<(inst|lock|postmeeting|host|student)\b[^>]*>.*?(?:<\/\1\s*>|$)/is', '', $text);
+        if ($text === null) {
+            throw new \RuntimeException('markdown: an attribute could not be processed');
+        }
+        return $this->esc(html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
     private function links($text) {
         $pattern = '/(!?)\[((?:[^\[\]]|\[[^\[\]]*\])*)\]'
              . '(?:\(\s*(<[^>]*>|(?:[^()\s]|\([^()\s]*\))*)(?:\s+(?:"([^"]*)"|\'([^\']*)\'))?\s*\)'
@@ -634,9 +645,9 @@ final class Markdown
             if ($url === null) {
                 return $m[0]; # not a link after all
             }
-            $titleAttr = ($title !== '') ? ' title="' . $this->esc($title) . '"' : '';
+            $titleAttr = ($title !== '') ? ' title="' . $this->plainAttribute($title) . '"' : '';
             if ($isImage) {
-                $alt = $this->esc(html_entity_decode(strip_tags($this->restore($label)), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                $alt = $this->plainAttribute($label);
                 return $this->hold('<img src="' . $this->esc($url) . '" alt="' . $alt . '"' . $titleAttr . '>');
             }
             $inner = $this->emphasis($this->escText($this->links($label)));

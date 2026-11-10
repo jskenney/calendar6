@@ -602,7 +602,9 @@ page type, processed like HTML. Editors' backups of pages (`index.html~`, `notes
 is served as such, like `report.html.pdf`) are raw page source too: they are never listed or
 served by either endpoint, and are listed as problems for instructors. PHP files are refused the
 same way under every spelling and as backups (`.php5`, `.phtml`, `.phtm`, `.phar`, `.pht`, `.phps`,
-`.inc`, `x.php~`, `x.phar_old`).
+`.inc`, `x.php~`, `x.phar_old`); a page named like an include fragment (`menu.inc.html`,
+`part.inc.md`) is still a page, but one with a PHP extension in its name (`x.php.html`) is never
+served and is listed as a problem.
 
 **Inputs:**
 
@@ -681,7 +683,8 @@ converter nests quotes and lists at most 16 deep and emphasis spans at most 1000
 and a block tag (`<inst>`, `<lock>`, `<postmeeting>`, `<host>`, `<student>`) on its own line is
 HTML however far it is indented, so an indented `<inst>` still hides. Code shows what is written:
 an `<inst>` inside a fenced code block (or a code span) is shown as code, so to hide a code
-block, put `<inst>` and `</inst>` on lines of their own around the fence.
+block, put `<inst>` and `</inst>` on lines of their own around the fence. Image alt text and link
+titles are plain text: a hidden block written there is removed, with its content, for everyone.
 `<codeinject>` of a page shows its source without what the viewer may not see. If any other
 pattern fails on a page, the request fails rather than sending the page half processed.
 
