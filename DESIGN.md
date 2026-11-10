@@ -444,20 +444,25 @@ course can not be found or its `config.ini` is unusable; 503 when the rate limit
 count).
 
 Every request is answered for **the current viewer**: anonymous, or the user stored in the PHP
-session by `auth.php`. Requests that change something (`auth.php`, a lock code sent to
-`html.php`) must carry the session's **CSRF token**, which `config.php` hands out.
+session by `auth.php`. Logging in must carry the session's **CSRF token**, which `config.php`
+hands out; a lock code sent to `html.php` carries the token of its own form. Logging out needs
+no token (Decided).
 
-### `auth.php` (Decided: POST only, session, JSON)
+### `auth.php` (Decided: POST to log in, GET or POST to log out, session, JSON)
 
-**Inputs** (`POST`, form-encoded or JSON):
+**Logging out is easy** (Decided): `GET auth.php`, or a `POST` without `username` and `password`,
+logs out, with no CSRF token. It touches only a session the browser already has (none is
+created) and clears all of it, unlocked `<lock>` codes and `<url>` values too.
+
+**Logging in** (`POST`, form-encoded or JSON):
 
 | Field | Required | Meaning |
 |---|---|---|
 | `username` | to log in | the name of a file in `config/auth/` (letters, digits, `.`, `_`, `-` only) |
 | `password` | to log in | checked with `password_verify` against `password_hash` |
-| `csrf` | always | the token from `config.php?csrf=1` |
+| `csrf` | to log in | the token from `config.php?csrf=1` |
 
-Both `username` and `password` empty (or missing): log out. Any method other than POST: `405`.
+Methods other than `GET` and `POST`: `405`.
 
 **Output:**
 
@@ -476,7 +481,8 @@ Both `username` and `password` empty (or missing): log out. Any method other tha
 - Logged in: `200`, the first form. `valid_until` is when this login ends by itself: the end of
   the account's `valid` window or of the session lifetime (`config.ini`), whichever comes
   first. The session id is replaced, so a **new CSRF token** comes back. Grants are not listed (they could name hidden files); `calendar.php` shows their effect.
-- Logged out: `200`, the second form (also a new token).
+- Logged out: `200`, the second form, with a new token for the next login (`null` when the
+  browser had no session).
 - Wrong password, unknown user, or outside the account's `valid` window: `401`, the same message
   for all three (an unknown user costs a check against the course's costliest password hash,
   so it takes as long). Too many attempts:

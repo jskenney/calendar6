@@ -331,7 +331,9 @@ HTML;
     public function testAuth(): void
     {
         $client = $this->start();
-        $this->assertSame(405, $client->get('calendar/php/auth.php')->status);
+        $this->assertSame(405, $client->request('PUT', 'calendar/php/auth.php', '')->status);
+        $anonymousOut = $client->get('calendar/php/auth.php');
+        $this->assertSame([200, ['user' => null, 'instructor' => false, 'csrf' => null], ''], [$anonymousOut->status, $anonymousOut->json(), $anonymousOut->header('set-cookie')], 'logging out with no session: nothing to do, and no session is created');
         $noToken = $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD]);
         $this->assertSame(403, $noToken->status, 'no token');
         $this->assertSame('', $noToken->header('set-cookie'), 'and no session is created (L-43)');
@@ -356,8 +358,14 @@ HTML;
         $this->assertTrue($cookieBefore !== $client->cookies, 'a new session id at login');
         $this->assertTrue(($ok->json()['csrf'] ?? $csrf) !== $csrf, 'a new token');
         $this->assertSame('prof', $client->get('calendar/php/config.php')->json()['viewer']['user'] ?? null);
-        $out = $client->post('calendar/php/auth.php', ['csrf' => (string) $ok->json()['csrf']]);
-        $this->assertSame(null, $out->json()['user'], 'logged out');
+        $out = $client->get('calendar/php/auth.php');
+        $this->assertSame(null, $out->json()['user'], 'logged out by a GET, with no token (Decided)');
+        $this->assertSame(null, $client->get('calendar/php/config.php')->json()['viewer']['user']);
+        $this->assertTrue(is_string($out->json()['csrf'] ?? null), 'the session goes on, with a new token for the next login');
+        $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => (string) $out->json()['csrf']]);
+        $this->assertSame('prof', $client->get('calendar/php/config.php')->json()['viewer']['user'] ?? null);
+        $out = $client->post('calendar/php/auth.php', []);
+        $this->assertSame(null, $out->json()['user'], 'a POST without name, password or token logs out too');
         $this->assertSame(null, $client->get('calendar/php/config.php')->json()['viewer']['user']);
 
         $json = $client->request('POST', 'calendar/php/auth.php', (string) json_encode(['username' => 'ta', 'password' => Fixture::PASSWORD, 'csrf' => (string) $out->json()['csrf']]), ['Content-Type' => 'application/json']);

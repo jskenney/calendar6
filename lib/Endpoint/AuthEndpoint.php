@@ -11,8 +11,8 @@ use Cal6\Http\Response;
 use Cal6\Http\Session;
 
 /**
- * auth.php (DESIGN.md): POST username + password + csrf logs in; POST with only
- * csrf logs out.  The same answer for a wrong password, an unknown user and an
+ * auth.php (DESIGN.md): POST username + password + csrf logs in; a GET, or a POST
+ * without username and password, logs out (no token needed).  The same answer for a wrong password, an unknown user and an
  * account outside its window.
  */
 final class AuthEndpoint
@@ -83,28 +83,35 @@ final class AuthEndpoint
 
     public static function handle(Context $c): void
     {
-        if ($c->method() !== 'POST') {
-            Response::error(405, 'POST only', ['Allow: POST']);
+        $method = $c->method();
+        if ($method !== 'GET' && $method !== 'POST') {
+            Response::error(405, 'GET (log out) or POST (log in or out) only', ['Allow: GET, POST']);
             return;
         }
-        // only an existing session (made by config.php?csrf=1) can carry a valid token, so a
-        // cross-site POST creates none (L-43)
+        $username = $method === 'POST' ? trim((string) $c->post('username')) : '';
+        $password = $method === 'POST' ? (string) $c->post('password') : '';
+
+        if ($username === '' && $password === '') {
+            // logging out is easy (Decided): a GET, or a POST without a name and password, and no
+            // token. It touches only a session the browser already has, and clears all of it:
+            // unlocked <lock> codes and <url> values too (L-17)
+            $csrf = null;
+            if (Session::start($c, false)) {
+                Session::clear();
+                Session::regenerate();
+                $csrf = Session::csrf();
+            }
+            Session::close();
+            Response::json(['user' => null, 'instructor' => false, 'csrf' => $csrf]);
+            return;
+        }
+
+        // logging in needs the token: only an existing session (made by config.php?csrf=1) can
+        // carry a valid one, so a cross-site POST creates none (L-43)
         Session::start($c, false);
         if (!Session::isOpen() || !Session::checkCsrf($c->post('csrf'))) {
             Session::close();
             Response::error(403, 'the form has expired: reload the page');
-            return;
-        }
-        $username = trim((string) $c->post('username'));
-        $password = (string) $c->post('password');
-
-        if ($username === '' && $password === '') {
-            // logging out clears the whole session: unlocked <lock> codes and <url> values too (L-17)
-            Session::clear();
-            Session::regenerate();
-            $csrf = Session::csrf();
-            Session::close();
-            Response::json(['user' => null, 'instructor' => false, 'csrf' => $csrf]);
             return;
         }
 
