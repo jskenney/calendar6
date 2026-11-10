@@ -66,7 +66,7 @@ final class HtmlLexer
     private static function rawEnd(string $html, int $start, string $name): int|false
     {
         // HTML whitespace only (not a vertical tab), L-59
-        $pattern = $name === 'script' ? '/<\/script(?=[\t\n\f\r \/>]|$)|<!--|<script(?=[\t\n\f\r \/>])|-->/i' : '/<\/style(?=[\t\n\f\r \/>]|$)/i';
+        $pattern = $name === 'script' ? '/<\/script(?=[\t\n\f\r \/>]|$)|<!--|<script(?=[\t\n\f\r \/>])|-->/i' : '/<\/' . $name . '(?=[\t\n\f\r \/>]|$)/i';
         $state = 'data';
         $pos = $start;
         while (preg_match($pattern, $html, $m, PREG_OFFSET_CAPTURE, $pos) === 1) {
@@ -141,8 +141,27 @@ final class HtmlLexer
         return $attributes;
     }
 
-    /** @return list<array{0: string, 1: int, 2: int, 3?: string, 4?: bool}> */
+    /**
+     * Elements whose content a browser reads as text up to their closing tag, even one inside
+     * what looks like a quoted attribute (RCDATA and RAWTEXT, M-37).
+     */
+    private const BOUNDED = ['textarea', 'title', 'noscript', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext'];
+
+    /**
+     * Tokens: ['tag', start, end, name, closing], ['comment', start, end], ['raw', start, end]
+     * (a script or style body) and ['bounded', start, end, name] (the body of an element in
+     * BOUNDED: it ends where a browser ends it, and its content is also lexed as markup, so a
+     * block tag inside is still hidden: fail closed under both readings, M-37).
+     *
+     * @return list<array{0: string, 1: int, 2: int, 3?: string, 4?: bool}>
+     */
     public static function scan(string $html): array
+    {
+        return self::scanRange($html, false);
+    }
+
+    /** @return list<array{0: string, 1: int, 2: int, 3?: string, 4?: bool}> */
+    private static function scanRange(string $html, bool $inBody): array
     {
         $tokens = [];
         $noClose = [];
@@ -191,7 +210,22 @@ final class HtmlLexer
             $end = $closing ? self::closingTagEnd($html, $nameEnd) : self::openingTagEnd($html, $nameEnd);
             $tokens[] = ['tag', $lt, $end, $name, $closing];
             $pos = $end;
-            if (!$closing && ($name === 'script' || $name === 'style')) {
+            if (!$closing && !$inBody && in_array($name, self::BOUNDED, true)) {
+                $close = $name === 'plaintext' || ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);
+                if ($close === false) {
+                    $noClose[$name] = min($noClose[$name] ?? PHP_INT_MAX, $end);
+                    $close = $length;
+                }
+                $tokens[] = ['bounded', $end, $close, $name];
+                foreach (self::scanRange(substr($html, $end, $close - $end), true) as $inner) {
+                    $inner[1] += $end;
+                    $inner[2] += $end;
+                    $tokens[] = $inner;
+                }
+                $pos = $close;
+                continue;
+            }
+            if (!$closing && !$inBody && ($name === 'script' || $name === 'style')) {
                 $close = ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);
                 if ($close !== false) {
                     $tokens[] = ['raw', $end, $close];

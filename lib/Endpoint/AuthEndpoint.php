@@ -53,6 +53,24 @@ final class AuthEndpoint
         }
     }
 
+    /** The most expensive password hash among the course's accounts, or null. */
+    private static function costliestHash(Context $c): ?string
+    {
+        $best = null;
+        $bestCost = -1;
+        foreach (glob($c->config->configDir() . '/auth/*.ini') ?: [] as $file) {
+            if (!preg_match('/^\s*password_hash\s*=\s*(\$\S+)/mi', (string) @file_get_contents($file), $m)) {
+                continue;
+            }
+            $options = password_get_info($m[1])['options'] ?? [];
+            $cost = isset($options['cost']) ? 2 ** (int) $options['cost'] : (int) ($options['memory_cost'] ?? 0) * (int) ($options['time_cost'] ?? 1);
+            if ($cost > $bestCost) {
+                [$best, $bestCost] = [$m[1], $cost];
+            }
+        }
+        return $best;
+    }
+
     public static function handle(Context $c): void
     {
         if ($c->method() !== 'POST') {
@@ -134,8 +152,10 @@ final class AuthEndpoint
         if ($usable) {
             $ok = password_verify($password, $hash) && $account->isValidAt($c->now, $c->config->zone);
         } else {
-            // no such account: spend the time a real check takes at today's default cost (L-7)
-            password_hash($password, PASSWORD_DEFAULT);
+            // no such account: spend the time the costliest real check takes (L-7, L-63), so the
+            // answer's timing does not tell which usernames exist
+            $dummy = self::costliestHash($c);
+            $dummy === null ? password_hash($password, PASSWORD_DEFAULT) : password_verify($password . "\0unknown", $dummy);
             $ok = false;
         }
         if (!$ok) {

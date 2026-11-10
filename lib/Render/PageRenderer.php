@@ -21,6 +21,8 @@ final class PageRenderer
 {
     private const MAX_INJECT_DEPTH = 5;
     private const MAX_INJECT_BYTES = 4_000_000;
+    /** Deeper blocks of one tag are dropped with their content, so kept nesting stays linear (L-67). */
+    private const MAX_BLOCK_DEPTH = 256;
 
     private int $injectedBytes = 0;
 
@@ -71,10 +73,22 @@ final class PageRenderer
         $dir = dirname($place->file->realPath);
         $html = $this->load($place->file->realPath);
         $html = $this->injects($html, $dir, 0, $place);
-        $html = $this->postmeeting($html, $place);
-        $html = self::block($html, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
-        $html = $this->host($html);
-        $html = $this->lock($html);
+        // hiding runs until nothing changes: removing a block or a comment can join the text
+        // around it into a new comment or block (A<<inst>x</inst>!-- ... -->), L-61
+        for ($round = 0; ; $round++) {
+            $before = $html;
+            $html = $this->postmeeting($html, $place);
+            $html = self::block($html, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
+            $html = $this->host($html);
+            $html = $this->lock($html);
+            $html = self::stripComments($html);
+            if ($html === $before) {
+                break;
+            }
+            if ($round >= 8) {
+                self::failed();
+            }
+        }
         // only scripts that are still in the page run; their output is passed through as-is
         $html = $this->calphp($html, $dir, $place);
         $html = self::block($html, 'student', static fn (string $inner): string =>
@@ -495,7 +509,17 @@ final class PageRenderer
         $marked = preg_replace('/<\/url\s*>/i', '', $marked) ?? self::failed();
         $allowed = [];
         $pos = 0;
-        $tokens = HtmlLexer::scan($marked);
+        // the body of a textarea, title, noscript, ... is text in one reading and markup in the
+        // other: no values there (M-37)
+        $bounded = [];
+        $tokens = [];
+        foreach (HtmlLexer::scan($marked) as $token) {
+            if ($token[0] === 'bounded') {
+                $bounded[] = [$token[1], $token[2]];
+            } else {
+                $tokens[] = $token;
+            }
+        }
         $count = count($tokens);
         foreach ($tokens as $t => $token) {
             if ($token[0] === 'tag' && !$token[4]) {
@@ -535,6 +559,13 @@ final class PageRenderer
         }
         if ($tokens === []) {
             self::allowMarkersIn($marked, $marker, $allowed);
+        }
+        foreach ($bounded as [$from, $to]) {
+            if (preg_match_all('/' . $marker . '(\d+)x/', substr($marked, $from, $to - $from), $inside) !== false) {
+                foreach ($inside[1] as $number) {
+                    unset($allowed[(int) $number]);
+                }
+            }
         }
         // a script or style that is never closed runs to the end in a browser: nothing after it
         foreach ($tokens as $t => $token) {
@@ -765,12 +796,23 @@ final class PageRenderer
         $buffers = [''];
         $openings = [];
         $pos = 0;
+        $skip = 0; // blocks nested deeper than MAX_BLOCK_DEPTH are dropped with their content (L-67)
         foreach (HtmlLexer::scan($html) as $token) {
             if ($token[0] !== 'tag' || $token[3] !== $tag) {
                 continue;
             }
             [, $start, $end, , $closing] = $token;
+            if ($skip > 0) {
+                $skip += $closing ? -1 : 1;
+                $pos = $end;
+                continue;
+            }
             $buffers[count($buffers) - 1] .= substr($html, $pos, $start - $pos);
+            if (!$closing && count($openings) >= self::MAX_BLOCK_DEPTH) {
+                $skip = 1;
+                $pos = $end;
+                continue;
+            }
             if (!$closing) {
                 $openings[] = substr($html, $start, $end - $start);
                 $buffers[] = '';
@@ -782,7 +824,9 @@ final class PageRenderer
             }
             $pos = $end;
         }
-        $buffers[count($buffers) - 1] .= substr($html, $pos);
+        if ($skip === 0) {
+            $buffers[count($buffers) - 1] .= substr($html, $pos);
+        }
         while ($openings !== []) { // never closed: to the end of the page
             $inner = array_pop($buffers);
             $buffers[count($buffers) - 1] .= $replace($inner, array_pop($openings));

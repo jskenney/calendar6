@@ -34,4 +34,5 @@ mkdir -p "$course/.git" && echo 'ref: refs/heads/main' > "$course/.git/HEAD"   #
 mkdir -p "$course/tools" && echo '<?php echo "RAN-DIRECTLY";' > "$course/tools/report.php"   # stray PHP
 for ext in PHP phtml php5 phar phtm phar_old php.save; do cp "$course/tools/report.php" "$course/tools/x.$ext"; done
 echo '<?php $db_password = "x";' > "$course/backup.php~" && cp "$course/backup.php~" "$course/db.inc"
+echo "secret = x" > "$course/tools/settings.INI"   # a stray settings file, upper case
 chmod -R a+rX "$software" "$course"

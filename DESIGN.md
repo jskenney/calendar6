@@ -463,7 +463,8 @@ No `username`/`password`: log out. Any method other than POST: `405`.
   back. Grants are not listed (they could name hidden files); `calendar.php` shows their effect.
 - Logged out: `200`, the second form (also a new token).
 - Wrong password, unknown user, or outside the account's `valid` window: `401`, the same message
-  for all three (an unknown user costs a password hash, so it takes as long). Too many attempts:
+  for all three (an unknown user costs a check against the course's costliest password hash,
+  so it takes as long). Too many attempts:
   `429` with `Retry-After`. Bad or missing token: `403`. The limiter can not keep count (its
   private directory is unusable): `503`, nobody can log in until it is fixed (fail closed).
 - Attempts are limited per address and username (`[users] login_attempts`, 5 per 15 minutes in
@@ -678,15 +679,28 @@ does not make a value from a link safe in JavaScript or CSS. **Block tags inside
 there is script text, not hidden, so keep hidden material out of scripts. A `<script>` or `<style>`
 that is never closed is not raw text for hiding: the rest of the page is read as markup, so the
 blocks after it are still hidden. A script ends where a browser ends it, also in its "escaped"
-states (`<!--` ... `<script>` ... `</script>` ... `-->`). Processing is linear in the size of the page;
+states (`<!--` ... `<script>` ... `</script>` ... `-->`). `<textarea>`, `<title>`, `<noscript>`,
+`<xmp>`, `<iframe>`, `<noembed>`, `<noframes>` and `<plaintext>` also end where a browser ends
+them (at their closing tag, even one that looks like part of an attribute); their content is
+hidden under both readings (a block tag inside is removed as in markup) and gets no `<url>`
+values. Hiding repeats until nothing changes, so removing a block or comment can not join the
+text around it into a new comment or block that still carries hidden content. Blocks of one tag
+nested more than 256 deep are removed with their content.
+
+**`<url>` and other sites (DOC-18):** in `href` and `src`, `<url>` accepts any relative or
+`http(s)://` value, so `<script src="<url ...>">`, `<iframe src="<url ...>">` or
+`<img src="<url ...>">` load whatever a link names, and `<a href="<url ...>">` sends readers
+wherever a link says. Use `<url>` in text, or after a fixed path (`href="notes.html#<url ...>"`). Processing is linear in the size of the page;
 `<inject>` does not follow cycles and stops after about 4 MB of injected text; the Markdown
 converter nests quotes and lists at most 16 deep and emphasis spans at most 1000 characters.
 **In Markdown**, HTML comments are removed from the source before it is converted (outside code),
 and a block tag (`<inst>`, `<lock>`, `<postmeeting>`, `<host>`, `<student>`) on its own line is
 HTML however far it is indented, so an indented `<inst>` still hides. Code shows what is written:
 an `<inst>` inside a fenced code block (or a code span) is shown as code, so to hide a code
-block, put `<inst>` and `</inst>` on lines of their own around the fence. Image alt text and link
-titles are plain text: a hidden block written there is removed, with its content, for everyone.
+block, put `<inst>` and `</inst>` on lines of their own around the fence. Image alt text, link
+titles and heading ids are plain text: a hidden block written there is removed, with its
+content, for everyone. A link reference definition inside a hidden block is part of the block,
+not a definition.
 `<codeinject>` of a page shows its source without what the viewer may not see. If any other
 pattern fails on a page, the request fails rather than sending the page half processed.
 
@@ -770,7 +784,9 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable or missing file** hides everything from anonymous viewers (fail closed, Calendar 6 also for a missing one). `default.ini` has no sections: a line under a header such as `[rules]` is still a rule, and the header is listed (M-33) | |
 | R16 | **Paths with spaces** | tab-separated lines |
 
-Event numbers are numbers: `class_01` is `class_1` (M-35). A rule for an event that does not
+Event numbers are numbers: `class_01` is `class_1` (M-35); the name as written is matched too,
+so a file rule such as `report_01 = never` still hides the file `report_01`, and `solution_1.2`
+is a file name, not a range. A rule for an event that does not
 exist (`class_40` in a course of 30 classes) does nothing and is listed as a problem.
 
 Targets are **not** case-sensitive (Decided, M-14): `Class_1/Notes.html`, `class_1/notes.html` and

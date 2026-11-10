@@ -203,6 +203,13 @@ INI;
         ]);
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/secret.pdf', self::now($course)), 'class_01 is class_1 (M-35)');
         $this->assertSame(1, count(array_filter($course->problems, static fn ($p): bool => str_contains($p->message, 'class_99'))), 'a rule for an event that does not exist is a problem');
+        $course = $this->load([
+            'config/default.ini' => "class_1 = always\nreport_01 = never\nsolution_1.2 = never\n",
+            'class/01.Introduction/report_01' => 'R',
+            'class/01.Introduction/solution_1.2' => 'S',
+        ]);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/report_01', self::now($course)), 'a file rule shaped like an event still matches its file (L-65)');
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/solution_1.2', self::now($course)));
     }
 
     public function testOpensAndNextChange(): void

@@ -215,9 +215,20 @@ final class Markdown
     private function collectReferences($lines) {
         $out = array();
         $infence = False;
+        $hidden = 0; # inside a hidden block, a definition is part of the block, not a link (L-62)
         foreach ($lines as $line) {
             if (preg_match('/^ {0,3}(```|~~~)/', $line)) {
                 $infence = !$infence;
+            }
+            if (!$infence) {
+                $opens = preg_match_all('/<(inst|lock|postmeeting|host|student)(?=[\s>\/])/i', $line);
+                $closes = preg_match_all('/<\/(inst|lock|postmeeting|host|student)\s*>/i', $line);
+                $wasHidden = $hidden > 0;
+                $hidden = max(0, $hidden + $opens - $closes);
+                if ($wasHidden || $hidden > 0) {
+                    $out[] = $line;
+                    continue;
+                }
             }
             if (!$infence && preg_match('/^ {0,3}\[([^\]]+)\]:\s*(<[^>]*>|\S+)(?:\s+(?:"([^"]*)"|\'([^\']*)\'|\(([^)]*)\)))?\s*$/', $line, $m)) {
                 $label = strtolower(preg_replace('/\s+/', ' ', trim($m[1])));
@@ -562,47 +573,61 @@ final class Markdown
 
     # ---------------------------------------------------------------- inline
 
+    # A pattern that gives up on a long text (PCRE limits) leaves that text as it was: safe for
+    # code spans, math, links and URLs (L-66) ...
+    private function orUnchanged($text, $result) {
+        return $result === null ? $text : $result;
+    }
+
+    # ... but not for raw HTML: escaping it instead would show a hidden block's tag and content
+    private function orFail($result) {
+        if ($result === null) {
+            throw new \RuntimeException('markdown: the page is too complex to convert safely');
+        }
+        return $result;
+    }
+
     private function inline($text) {
         # 1. Code spans
-        $text = preg_replace_callback('/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/s', function ($m) {
+        $text = $this->orUnchanged($text, preg_replace_callback('/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/s', function ($m) {
             $code = $m[2];
             if (strlen($code) > 2 && $code[0] === ' ' && substr($code, -1) === ' ' && trim($code) !== '') {
                 $code = substr($code, 1, -1);
             }
             return $this->hold('<code>' . $this->esc(str_replace("\n", ' ', $code)) . '</code>');
-        }, $text);
+        }, $text));
 
         # 2. Math for MathJax: keep exactly as written (only HTML-escape it)
-        $text = preg_replace_callback('/\$\$.+?\$\$|\\\\\(.+?\\\\\)|\\\\\[.+?\\\\\]/s', function ($m) {
+        $text = $this->orUnchanged($text, preg_replace_callback('/\$\$.+?\$\$|\\\\\(.+?\\\\\)|\\\\\[.+?\\\\\]/s', function ($m) {
             return $this->hold($this->escText($m[0]));
-        }, $text);
+        }, $text));
 
         # 3. Autolinks <https://...> and <user@example.com>
-        $text = preg_replace_callback('/<((?:https?|ftp):\/\/[^\s<>]+)>/i', function ($m) {
+        $text = $this->orUnchanged($text, preg_replace_callback('/<((?:https?|ftp):\/\/[^\s<>]+)>/i', function ($m) {
             return $this->hold('<a href="' . $this->esc($m[1]) . '">' . $this->esc($m[1]) . '</a>');
-        }, $text);
-        $text = preg_replace_callback('/<([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})>/', function ($m) {
+        }, $text));
+        $text = $this->orUnchanged($text, preg_replace_callback('/<([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})>/', function ($m) {
             return $this->hold('<a href="mailto:' . $this->esc($m[1]) . '">' . $this->esc($m[1]) . '</a>');
-        }, $text);
+        }, $text));
 
         # 4. Raw inline HTML (and Cal4 tags) pass through unchanged
         #    (a tag with quoted values first, so <!-- or > inside a value stays in the tag)
-        $text = preg_replace_callback('/<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"\'>\/=]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*\s*\/?>|<!--.*?-->|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*?)?\s*\/?>/s', function ($m) {
+        $text = $this->orFail(preg_replace_callback('/<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^\s"\'>\/=]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*\s*\/?>|<!--.*?-->|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*?)?\s*\/?>/s', function ($m) {
             return $this->hold($m[0]);
-        }, $text);
+        }, $text));
 
         # 5. Backslash escapes
-        $text = preg_replace_callback('/\\\\([!"#$%&\'()*+,.\/:;<=>?@\[\\\\\]^_`{|}~-])/', function ($m) {
+        $text = $this->orUnchanged($text, preg_replace_callback('/\\\\([!"#$%&\'()*+,.\/:;<=>?@\[\\\\\]^_`{|}~-])/', function ($m) {
             return $this->hold($this->esc($m[1]));
-        }, $text);
+        }, $text));
 
         # 6. Images and links
         $text = $this->links($text);
 
         # 7. Bare URLs
-        $text = preg_replace_callback('/(?<![\w\/="\'])(https?:\/\/[^\s<>\x1A]*[^\s<>\x1A.,:;!?\'")\]])/i', function ($m) {
+        $text = $this->orUnchanged($text, preg_replace_callback('/(?<![\w\/="\'])(https?:\/\/[^\s<>\x1A]*[^\s<>\x1A.,:;!?\'")\]])/i', function ($m) {
             return $this->hold('<a href="' . $this->esc($m[1]) . '">' . $this->esc($m[1]) . '</a>');
-        }, $text);
+        }, $text));
 
         # 8. Escape what is left, then emphasis
         $text = $this->escText($text);
@@ -623,9 +648,9 @@ final class Markdown
     # Hidden blocks (<inst>, <lock>, ...) removed with their content, for text that ends up in an
     # attribute (alt, title, a heading's id), where they could not be hidden later.
     private function withoutHiddenBlocks($text) {
-        $text = preg_replace('/<(inst|lock|postmeeting|host|student)\b[^>]*>.*?(?:<\/\1\s*>|$)/is', '', $text);
-        if ($text === null) {
-            throw new \RuntimeException('markdown: an attribute could not be processed');
+        # the stack-based block scanner, so nested blocks are removed whole (L-62)
+        foreach (array('inst', 'lock', 'postmeeting', 'host', 'student') as $tag) {
+            $text = PageRenderer::block($text, $tag, static function () { return ''; });
         }
         return $text;
     }
@@ -634,7 +659,7 @@ final class Markdown
         $pattern = '/(!?)\[((?:[^\[\]]|\[[^\[\]]*\])*)\]'
              . '(?:\(\s*(<[^>]*>|(?:[^()\s]|\([^()\s]*\))*)(?:\s+(?:"([^"]*)"|\'([^\']*)\'))?\s*\)'
              . '|\[([^\]]*)\])?/';
-        return preg_replace_callback($pattern, function ($m) {
+        return $this->orUnchanged($text, preg_replace_callback($pattern, function ($m) {
             $isImage = ($m[1] === '!');
             $label = $m[2];
             $url = null;
@@ -659,7 +684,7 @@ final class Markdown
             }
             $inner = $this->emphasis($this->escText($this->links($label)));
             return $this->hold('<a href="' . $this->esc($url) . '"' . $titleAttr . '>' . $inner . '</a>');
-        }, $text);
+        }, $text));
     }
 
     # Emphasis spans are at most 1000 characters, so long runs of markers stay fast (L-37)

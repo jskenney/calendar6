@@ -489,6 +489,42 @@ final class RendererTest extends TestCase
         $this->assertNotContains('EVIL', $page, '</script> followed by a vertical tab does not end the script (L-59)');
     }
 
+    public function testBoundedElementsFormedCommentsAndMarkdownLeftovers(): void
+    {
+        $cases = [
+            'textarea' => '<textarea><b title="</textarea><inst>S1</inst>"></b></textarea>',
+            'noscript' => '<noscript><b title="</noscript><inst>S2</inst>"></b></noscript>',
+            'inside' => '<textarea><inst>S3</inst></textarea>',
+            'formed' => 'A<<!-- x -->!-- <inst>S4</inst> -->B',
+            'formed2' => 'A<<inst>x</inst>!-- <lock code=abc>S5</lock> -->B',
+        ];
+        $files = [
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/n.md' => "## Intro <inst>a <inst>b</inst> S6</inst>\n\n![pic <inst>x <inst>y</inst> S7</inst>](a.png)\n\n<inst>\n[r]: x.html \"S8\"\n</inst>\n\n[solutions][r]\n\n[" . str_repeat('a ', 8000) . "]\n",
+            'class/01.Introduction/url.html' => '<textarea><b title=\'</textarea><img src=x title="<url value=n>">\'></b></textarea><textarea title="x"><url value=n></textarea>',
+            'class/01.Introduction/deep.html' => str_repeat('<student>', 40000) . 'X' . str_repeat('</student>', 40000) . 'END',
+        ];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html;
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $page = $this->render($course, "class_1/$name.html");
+            $this->assertSame(0, preg_match('/S[1-5]\b/', $page), "hidden (M-37, L-61): $name: $page");
+        }
+        $page = $this->render($course, 'class_1/n.md');
+        $this->assertSame(0, preg_match('/S[6-8]\b/', $page), 'nested blocks and references in Markdown (L-62): ' . $page);
+        $this->assertContains('a a a', $page, 'a long bracket span still converts (L-66)');
+        $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['n' => 'EVIL']))
+            ->render($course->places[$course->keysByEvent['class_1']['url.html']]);
+        $this->assertSame(1, substr_count($page, 'EVIL'), 'a <url> value goes where the browser sees an attribute, never into a textarea body (M-37): ' . $page);
+        $this->assertContains('title="EVIL"', $page);
+        $this->assertContains('<textarea title="x"><url value=n></textarea>', $page);
+        $start = microtime(true);
+        $this->assertContains('END', $this->render($course, 'class_1/deep.html'));
+        $this->assertTrue(microtime(true) - $start < 3.0, 'deep nesting that is kept stays fast (L-67)');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([

@@ -351,6 +351,21 @@ HTML;
         $this->assertTrue((int) $limited->header('retry-after') > 0);
     }
 
+    public function testUnknownUsersTakeAsLongAsTheCostliestAccount(): void
+    {
+        $hash = password_hash('slow-password', PASSWORD_BCRYPT, ['cost' => 12]);
+        $client = $this->start(['config/auth/slow.ini' => "password_hash = $hash\nvalid = always\n"]);
+        $time = function (string $user) use ($client): float {
+            $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
+            $start = microtime(true);
+            $client->post('calendar/php/auth.php', ['username' => $user, 'password' => 'wrong', 'csrf' => $csrf]);
+            return microtime(true) - $start;
+        };
+        $known = $time('slow');
+        $unknown = $time('nosuchuser');
+        $this->assertTrue($unknown > $known * 0.5, sprintf('an unknown user costs about as much as the costliest account (L-63): %.3f s vs %.3f s', $unknown, $known));
+    }
+
     public function testRateLimitsAndProxies(): void
     {
         $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
