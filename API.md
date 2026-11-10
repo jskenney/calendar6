@@ -8,8 +8,9 @@ the AI they work with, who has not read the code.
   the HTML that `html.php` produces is made here in the same commit.
 - `DESIGN.md` explains *why* (the design, the configuration files, the access rules, the tags);
   `REVIEW.md` is the review log. Neither is needed to use the API.
-- JSON format version: **1** (`config.php` → `version.format`). It is raised whenever the shape
-  of an answer changes.
+- JSON format version: **1** (`config.php` → `version.format`). It is raised when a change could
+  break a front end (a field removed, renamed or changed in meaning); new fields may appear
+  without a change of version, so ignore fields you do not know.
 
 Contents: [1. What Calendar 6 is](#1-what-calendar-6-is) ·
 [2. Files and URLs](#2-files-and-urls) · [3. Concepts](#3-concepts) ·
@@ -339,6 +340,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
   "generated": "2026-11-09T14:05:00-05:00",
   "viewer":    {"user": null, "instructor": false, "valid_until": null},
   "section":   "1121",
+  "dropdown":  ["class", "lab", "project"],
   "pages": {
     "home":      {"title": "Home", "key": "IfPCJDMatGX2jBxNZx2Lyc", "filename": "home.html", "kind": "html"},
     "resources": {"title": "Resources"},
@@ -382,6 +384,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
 | `generated` | moment | when the answer was built (it may come from the server's cache) |
 | `viewer` | object | `user` (string\|null), `instructor` (bool) and `valid_until` (moment\|null, when the login ends by itself, as in `config.php`); for an instructor's `as` preview, the previewed viewer, with `valid_until` `null` |
 | `section` | string | only when a section was requested |
+| `dropdown` | array | the event types (keys of `config.php` → `types`) to offer as drop-down menus in the menu bar, in order, from `config.ini` `[dropdown] show`; only types `[types]` defines; `[]` when the section is missing |
 | `pages` | object | page name → page (see below), in `paths.ini` order |
 | `days` | object | **every** date from `semester.start` to `semester.end` → list of items (see below), in date order; `[]` for a day with nothing on it |
 | `events` | object | event id → event (see below) |
@@ -626,7 +629,9 @@ source contains hidden material. Use `html.php`.
    in `localStorage`) → days, events, pages.
 3. Draw the calendar from `calendar.php` → `days` (one cell per date; markers for holidays and
    labels; event items with their titles). Use `config.php` → `types` for type labels,
-   `boxes` for box labels and order, `pages` for the menu.
+   `boxes` for box labels and order, `pages` for the menu, and `calendar.php` → `dropdown` for
+   the menu bar's drop-downs: one per listed type (labelled from `types`), holding that type's
+   events from `events` (in number order, with their titles).
 
 The two requests are independent; send them together.
 

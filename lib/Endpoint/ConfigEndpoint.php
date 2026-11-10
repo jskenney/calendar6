@@ -16,7 +16,7 @@ use Cal6\Http\Session;
  */
 final class ConfigEndpoint
 {
-    /** The version of the JSON the endpoints answer with: raised when its shape changes. */
+    /** The version of the JSON the endpoints answer with: raised when a change could break a front end (new fields do not raise it). */
     public const FORMAT = 1;
 
     public static function handle(Context $c): void

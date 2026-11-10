@@ -183,7 +183,7 @@ final class CalendarJson
         if ($section !== null) {
             $out['section'] = $section;
         }
-        $out += ['pages' => (object) $pages, 'days' => (object) $days, 'events' => (object) $events];
+        $out += ['dropdown' => $this->course->config->dropdown, 'pages' => (object) $pages, 'days' => (object) $days, 'events' => (object) $events];
         if ($instructor) {
             $out['problems'] = array_map(static fn ($p): array => $p->toArray(), $this->course->problems);
         }

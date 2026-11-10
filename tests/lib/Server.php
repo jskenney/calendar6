@@ -19,6 +19,13 @@ final class Server
         $this->log = (string) tempnam(sys_get_temp_dir(), 'cal6-log-');
         for ($try = 0; $try < 20; $try++) {
             $port = random_int(20000, 45000);
+            // a port something else already listens on (another server, a local proxy) would
+            // answer the readiness check below for a server that never started
+            $busy = @fsockopen('127.0.0.1', $port, $errno, $error, 0.1);
+            if ($busy !== false) {
+                fclose($busy);
+                continue;
+            }
             $env = getenv();
             if ($clock !== null) {
                 $env['CAL6_TEST_CLOCK'] = $clock;
@@ -29,6 +36,12 @@ final class Server
             }
             for ($wait = 0; $wait < 50; $wait++) {
                 $socket = @fsockopen('127.0.0.1', $port, $errno, $error, 0.1);
+                // ready only if our own process is the one still running (it exits when it can
+                // not bind the port)
+                if ($socket !== false && !(proc_get_status($process)['running'] ?? false)) {
+                    fclose($socket);
+                    break;
+                }
                 if ($socket !== false) {
                     fclose($socket);
                     $this->process = $process;

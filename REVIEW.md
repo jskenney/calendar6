@@ -328,6 +328,7 @@ None open.
 | DOC-40 | 23 | `44998f4` | A page used as `<img src>`, `<script src>` or `<link href>` loses its target (`data-cal6-hidden`); the link table does not say so. | Row added to the link table. |
 | E-11 | owner | decided | The owner wants calendar6 to be reachable as `<course>/calendar` by convention ("should, not must"); the code requires that exact name (any other name is a 500), which API.md documents as current behaviour. | Decided (owner): keep the fixed name `calendar` for simplicity; API.md says so. |
 | E-12 | 22 | `6ac31d1` | `valid_until` is only in the login answer: after a reload the front end can not know when the login ends (GET auth.php logs out, so it can not be asked). | Decided (owner): `viewer` in config.php and calendar.php carries `valid_until` (null for anonymous viewers and previews); calendar.php fills it in after the cache, since it belongs to the session. API.md and tests updated. |
+| DOC-41 | owner | (this commit) | A front end had no way to know which event types to offer as menu-bar drop-downs. | Decided (owner): config.ini `[dropdown] show = class, lab, project`; calendar.php sends `"dropdown": [...]` with only types `[types]` defines, in order, once each (unknown names are problems; no section gives `[]`). Template, DESIGN, API.md and tests updated; `version.format` is documented as raised only for breaking changes. |
 
 ## Reviews
 

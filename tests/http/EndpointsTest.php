@@ -638,6 +638,19 @@ HTML;
         $this->assertTrue(is_array($client->get('calendar/php/calendar.php')->json()['pages'] ?? null));
     }
 
+    public function testDropdownTypes(): void
+    {
+        $client = $this->start();
+        $this->assertSame(['class', 'lab', 'project'], $client->get('calendar/php/calendar.php')->json()['dropdown'] ?? null, 'the template\'s [dropdown] show');
+        $config = str_replace('show = class, lab, project', 'show = Lab, quiz, class, lab', (string) file_get_contents(__DIR__ . '/../../template/config/config.ini'));
+        $client = $this->start(['config/config.ini' => $config]);
+        $this->assertSame(['lab', 'class'], $client->get('calendar/php/calendar.php')->json()['dropdown'] ?? null, 'only [types] types, in the order given, once each (any case)');
+        $this->login($client);
+        $this->assertContains('"quiz" is not an event type in [types]', implode("\n", array_column($client->get('calendar/php/calendar.php')->json()['problems'] ?? [], 'message')), 'an unknown type is a problem');
+        $client = $this->start(['config/config.ini' => str_replace("[dropdown]\n", "[nodropdown]\n", $config)]);
+        $this->assertSame([], $client->get('calendar/php/calendar.php')->json()['dropdown'] ?? null, 'no [dropdown]: an empty list');
+    }
+
     public function testDayMarkers(): void
     {
         $client = $this->start(['config/dates.ini' => "2026-08-27 = lab\n2026-08-31 = none\n"]);

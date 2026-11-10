@@ -34,6 +34,9 @@ final class CourseConfig
     public array $schedule = [];
     /** @var array<string, string> type directory => label, in menu order */
     public array $types = [];
+
+    /** @var list<string> [dropdown] show: the event types a front end offers as menu-bar drop-downs */
+    public array $dropdown = [];
     /** @var list<array{box: string, files: list<string>, label: string}> */
     public array $boxes = [];
     public ?Window $lockdown = null;
@@ -152,6 +155,23 @@ final class CourseConfig
             [$files] = explode('|', $line->value, 2);
             $names = array_values(array_filter(array_map('trim', explode(',', $files)), static fn (string $f): bool => $f !== ''));
             $config->boxes[] = ['box' => $line->key, 'files' => $names, 'label' => $line->key, 'notes' => true];
+        }
+
+        // [dropdown] show = class, lab: only event types of [types], in the order given, once each
+        foreach ($ini->section('dropdown') as $line) {
+            if (strtolower($line->key) !== 'show') {
+                $config->problems[] = new Problem("[dropdown] $line->key: unknown key (only \"show\")", 'config.ini', $line->line);
+                continue;
+            }
+            $config->dropdown = [];
+            foreach (array_filter(array_map('trim', explode(',', $line->value)), static fn (string $t): bool => $t !== '') as $name) {
+                $type = $config->typeName($name);
+                if ($type === null) {
+                    $config->problems[] = new Problem("[dropdown] show: \"$name\" is not an event type in [types] (left out)", 'config.ini', $line->line);
+                } elseif (!in_array($type, $config->dropdown, true)) {
+                    $config->dropdown[] = $type;
+                }
+            }
         }
 
         foreach (['lockdown' => ['access', 'lockdown'], 'usersValid' => ['users', 'valid']] as $property => [$section, $key]) {
