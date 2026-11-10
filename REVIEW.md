@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 15 is in progress; its findings will be added here.
+1. **L-95..L-100**, **T-20** (cleanup cycle 1).
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -31,7 +31,14 @@ None open.
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-95 | 15 | `lib/Render/HtmlLexer.php:160, 256-265` | Foreign content is tracked without namespaces: SVG-only integration points count inside `<math>` and MathML-only ones inside `<svg>` (`<svg><mi>`), `annotation-xml` counts without `encoding="text/html"`, and an `<svg>`/`<math>` nested in an integration point is not counted, so a `<style>` there is raw to the lexer but markup to the browser and an `<inst>` in it is rendered. Gap after L-77/L-88. Confirmed by the reviewer in Chromium. | A namespace stack: svg integration points only under svg, MathML ones only under math, `annotation-xml` only with an HTML encoding; push nested svg/math. |
+| L-96 | 15 | `HtmlLexer::bogusEnd()` | Ending a bogus comment before an opening tag can let that tag swallow the block tag the browser sees: `<!x <img alt=">" <inst>S</inst>` sends `S` (the browser ends the comment inside `alt`). Gap after L-84. Confirmed. | Read both ways: if the stretch up to the browser's `>` holds an opening block tag, it counts as one; otherwise end at `>`. |
+| L-97 | 15 | `PageRenderer::injects()` | `<url>` values in an injected file from another directory are filled in that file's own context (L-90), so after a page's `<script>` that is never closed the value lands in live script, while the page's own `<url>` there is left alone. Needs contrived markup. Confirmed by the reviewer. | Fill `<url>` once in the whole page after injecting; rebase keeps the marker. |
+| L-98 | 15 | `HtmlLexer::commentEnd()` | Comment scanning is quadratic since M-42 (a `strpos` for `--!>` to the end of the page per comment): 20,000 comments take 5 s per scan. Confirmed. | One search for `--!?>` from the offset. |
+| L-99 | 15 | `CalendarBuilder::place()` | A `duplicate.ini` line whose number is never reached (after the folders run out: `lab_5 = lab_1` with 3 lab folders) is dropped without a problem. Confirmed by the reviewer. | List every copy line that is never placed as a problem. (**Owner may decide** whether empty meetings carry numbers.) |
+| L-100 | 15 | `lib/Http/Context.php:96-115` | Changing an account's password does not end its existing sessions (the session only stores the user name); after a leaked password is reset, the attacker stays logged in for up to `[users] session`. Confirmed by the reviewer on Apache. | Store a hash of `password_hash` in the session at login and compare it on each request. |
 
 ## Documentation
 
@@ -39,7 +46,9 @@ None open.
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-20 | 15 | `tests/` | No tests for namespaced foreign content, bogus comments before tags, injected `<url>` after an unclosed script, comment-scan speed, unplaced copies, sessions after a password change. | Tests with each fix. |
 
 ## Enhancements
 
@@ -259,6 +268,7 @@ None open.
 | 12 | 2026-11-10 | `6b6df97` | an **independent** review again, after fixing review 11's items except M-36 and M-38 (`4d84b3b`); about 30 direct-access probes per server (all refused); Chromium for markup checks; M-39, L-68 and L-73 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source through `get.php` | M-39, L-68..L-76, DOC-19, T-17 |
 | 13 | 2026-11-10 | `7908929` | an **independent** review again, after fixing review 12's items except L-75 (`5e1b1e1`); lexer compared with Chromium on 17,000 random snippets, Markdown fuzzed (4,000 samples), probes on Apache + FPM and nginx; M-40 reproduced again before recording. Nothing found that reads `config/`, `auth/` or code, and no anonymous input that causes a 500 | M-40, M-41, L-77..L-83, T-18 |
 | 14 | 2026-11-10 | `c4ef039` | an **independent** review again, after fixing every review-13 item (`c3e4a49`); 12,000 fuzzed `<url>` contexts and about 30,000 `<inst>` cases parsed in Chromium, Markdown and `.ini` fuzzing, about 30 direct-access probes per server; M-42 and L-84 reproduced again before recording. No `<url>` injection found; nothing found that reads `config/`, `auth/` or code. (The last of four fix-and-review rounds; these items are recorded, not yet fixed.) | M-42, L-84..L-94, DOC-20, E-8, T-19 |
+| 15 | 2026-11-10 | `b603b16` | an **independent** review again, after the owner's decisions (M-36, M-38, L-75, L-92) and fixing every review-14 item (`57ea865`); 24,000 Markdown and about 30,000 HTML samples compared in Chromium, about 22 direct-access probes per server, odd-input probes; L-96 and L-98 reproduced again before recording. Nothing found that reads `config/`, `auth/`, code or raw page source; no 500s | L-95..L-100, T-20 |
 
 ## CI notes
 
