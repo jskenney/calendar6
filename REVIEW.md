@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **M-44** first (a regression), **M-45**, then **L-111..L-116**, **T-23** (cleanup cycle 4).
+1. Review 19 (cleanup cycle 5) is in progress; its findings will be added here.
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -27,21 +27,11 @@ None open.
 
 ## Medium
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| M-44 | 18 | `PageRenderer::block()` (L-110 branch) | **Regression from L-110: a hidden block inside a `<textarea>` hides the rest of the page**: in starter code such as `i<n; ... <inst>sum += a[i];</inst>`, the lexer's markup reading puts `<inst>` in attribute position of a tag `n;`; the new branch opens a block with no bounded element, so the `</inst>` in the same textarea is skipped (M-39) and everything after it is removed. Confirmed by the reviewer. | Record the bounded element the token sits in, as for real tags; this page as a test. |
-| M-45 | 18 | `Policy::eventTargets()`, `lib/Course/Course.php:98-105` | **A rule whose target matches nothing is ignored silently**, also DESIGN's own example `class/quiz.html = start until end` (no `type/file` target exists) and typos (`labs = never`, `lab-1 = never`, `lab_1/lab-soluton = never`): the material stays visible, against H-2's principle. Grants the same. Confirmed by the reviewer. | Support `type/file` (after `type_N/file` and the file name); list rule and grant targets that match no place's candidate targets as problems. |
+None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-111 | 18 | `PageRenderer::blockInAttributes()` | Gap after L-110: a block tag in the tag-name position (`<p<inst>S</inst>`) or inside an end tag (`</p<inst>`, `</p <inst>`) is sent (and shown by a browser); Calendar 4 hid it. Confirmed by the reviewer. | Also look in the tag-name span and in end tags. |
-| L-112 | 18 | `lib/Render/HtmlLexer.php:283-317` | The namespace stack still loses sync with the browser: an end tag of an integration point (or `</svg>`) is popped while an HTML element is open inside it (the browser ignores it), and `annotation-xml encoding="text&#x2F;html"` is not recognised (the browser decodes it); a later `<style>` then leaks a block. Confirmed by the reviewer in Chromium. | Once any svg/math has opened, read script and style both ways for the rest of the page (fail closed); read `encoding` decoded and exact. |
-| L-113 | 18 | `PageRenderer::hideInAttributes()` | Entity-encoded blocks in `srcdoc` are shown: the browser decodes `srcdoc` and parses it (`srcdoc="&lt;inst&gt;S&lt;/inst&gt;"`). Confirmed by the reviewer in Chromium. | Hide on the decoded `srcdoc` value and re-encode it. |
-| L-114 | 18 | `PageRenderer::url()` | An `<inst>` in a `<url default="...">` inside another tag's quoted attribute is shown (attribute hiding goes one level deep and `default` is used as it stands). Confirmed by the reviewer. | Hide blocks in `default` before using it. |
-| L-115 | 18 | `PageRenderer::block()` (L-110 branch) | Block tags in attribute position bypass the depth cap, so processing is quadratic (`<b a<student>` 20,000 times: 43 s). Confirmed by the reviewer. | The same depth cap in that branch. |
-| L-116 | 18 | `HtmlLexer.php:287-300` | The bounded end-tag walk costs up to 256 steps per end tag (80,000 `</math>` in deep foreign content: 18 s per render). Confirmed by the reviewer. | Per-name position stacks and the index of the topmost HTML entry: O(1) per end tag. |
+None open.
 
 ## Documentation
 
@@ -49,9 +39,7 @@ None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-23 | 18 | `tests/` | No tests for the textarea starter-code page, unmatched rule targets and `type/file`, block tags in tag names and end tags, the namespace sync cases, encoded `srcdoc`, `<url default>` in attributes, depth in attribute position, many end tags in foreign content. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -118,6 +106,8 @@ None open.
 | M-41 | 13 | `c3e4a49` | **`instructor.md` or `lab-solution.md` on its own fills no box**, so `class/instructor = never` does not apply and it is released with the event. Confirmed by the reviewer. | The template's boxes (and DESIGN's sample) list the `.md` names; a page named like a box that fills none is a problem. |
 | M-42 | 14 | `57ea865` | **A comment ending in `--!>` runs on to the next `-->`**, removing the `<inst>` opening a browser sees: `<!-- old note --!> <inst>... <!-- x --> LEAK</inst>` sends `LEAK` (HTML and Markdown). Gap next to L-36. Confirmed. | `HtmlLexer::commentEnd()`: `-->` or `--!>`, in the lexer and in Markdown. |
 | M-43 | 17 | `2d76311` | **Regression from L-105: a common file-name rule releases a hidden box's files**: the base-name target ranks above the box targets, so `index.html = always` or `data.csv = always` publishes `lab-solution/index.html` and `lab-solution/data.csv` while `lab/lab-solution = never` (DESIGN: a box's assets stay hidden as long as the box). Confirmed by the reviewer. | For a box’s own files the base-name target ranks after the box targets (the box-asset promise wins over R2 for a box’s files). |
+| M-44 | 18 | `6d36770` | **Regression from L-110: a hidden block inside a `<textarea>` hides the rest of the page**: in starter code such as `i<n; ... <inst>sum += a[i];</inst>`, the lexer's markup reading puts `<inst>` in attribute position of a tag `n;`; the new branch opens a block with no bounded element, so the `</inst>` in the same textarea is skipped (M-39) and everything after it is removed. Confirmed by the reviewer. | A block tag in attribute position belongs to the bounded element it sits in, so a `</inst>` in the same textarea closes it. |
+| M-45 | 18 | `6d36770` | **A rule whose target matches nothing is ignored silently**, also DESIGN's own example `class/quiz.html = start until end` (no `type/file` target exists) and typos (`labs = never`, `lab-1 = never`, `lab_1/lab-soluton = never`): the material stays visible, against H-2's principle. Grants the same. Confirmed by the reviewer. | `type/file` targets are supported (after `type_N/file` and the file name); rule and grant targets that match no file, event, box or page are problems. |
 | L-1 | 1 | `29ca3f2` | Calendar 4's `<host server="a, b">` accepts a comma-separated list and also matches `SERVER_ADDR`; Calendar 6 takes one name and no address. | `<host>` matches `gethostname()` (and its short form) and `SERVER_ADDR`, never `SERVER_NAME`; a comma-separated list is accepted. |
 | L-2 | 1 | `628734a` | A `meets` entry without a type gets the **first type in `[types]`**, not `class`: a course that lists `lab` first makes every section a lab section. | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
 | L-3 | 1 | `628734a` | A `dates.ini` window with times is partial only for `holiday`/`none`; event types, weekdays and `period` apply to the whole day, although the template says a window with times "only affects meetings that start inside it". | See `628734a`: default meeting type `class`; times only with holiday/none; lock codes after inject, constant-time, 303 after POST; `filename*`; unreadable lockdown locks; config/calendar compared by real path and without case; dead parameter removed. |
@@ -228,6 +218,12 @@ None open.
 | L-108 | 17 | `2d76311` | Quadratic since L-103: each script/style tag not followed by its body is checked against every bounded range (16,000 `<textarea><script></textarea>`: 10 s). Confirmed by the reviewer. | `urlTags()` tracks bounded bodies with one pointer. |
 | L-109 | 17 | `2d76311` | Two more namespace gaps: `<svg / >` is not self-closing in a browser (the `/` must come right before `>`), and an end tag such as `</svg>` inside HTML content of a `<foreignObject>` is ignored by a browser but popped through by the lexer; in both cases an `<inst>` after a `<style>` is shown. Malformed markup. Confirmed by the reviewer in Chromium. | Self-closing needs `/` right before `>`; an end tag never pops through an HTML integration entry. |
 | L-110 | 17 | `2d76311` | An `<inst>` typed where a tag's attributes are (a missing `>`: `<div class="x"<inst>S</inst>`, `<p title=x<inst>S</inst>>`) never opens a block, so `S` is sent (and a browser shows it too); Calendar 4's patterns hid it. Confirmed by the reviewer. | `block()` opens a block for a block tag in an attribute-name or unquoted-value position. |
+| L-111 | 18 | `6d36770` | Gap after L-110: a block tag in the tag-name position (`<p<inst>S</inst>`) or inside an end tag (`</p<inst>`, `</p <inst>`) is sent (and shown by a browser); Calendar 4 hid it. Confirmed by the reviewer. | Block tags in a tag name or an end tag open a block (fail closed). |
+| L-112 | 18 | `6d36770` | The namespace stack still loses sync with the browser: an end tag of an integration point (or `</svg>`) is popped while an HTML element is open inside it (the browser ignores it), and `annotation-xml encoding="text&#x2F;html"` is not recognised (the browser decodes it); a later `<style>` then leaks a block. Confirmed by the reviewer in Chromium. | Once any svg/math has opened, script and style are read both ways for the rest of the page; `annotation-xml` encoding read decoded and exact. |
+| L-113 | 18 | `6d36770` | Entity-encoded blocks in `srcdoc` are shown: the browser decodes `srcdoc` and parses it (`srcdoc="&lt;inst&gt;S&lt;/inst&gt;"`). Confirmed by the reviewer in Chromium. | `srcdoc` is hidden in decoded and re-encoded. |
+| L-114 | 18 | `6d36770` | An `<inst>` in a `<url default="...">` inside another tag's quoted attribute is shown (attribute hiding goes one level deep and `default` is used as it stands). Confirmed by the reviewer. | `<url>` defaults go through the same hiding. |
+| L-115 | 18 | `6d36770` | Block tags in attribute position bypass the depth cap, so processing is quadratic (`<b a<student>` 20,000 times: 43 s). Confirmed by the reviewer. | The depth cap applies to block tags in attribute position. |
+| L-116 | 18 | `6d36770` | The bounded end-tag walk costs up to 256 steps per end tag (80,000 `</math>` in deep foreign content: 18 s per render). Confirmed by the reviewer. | Per-name position stacks and the topmost HTML entry: O(1) per end tag. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -270,6 +266,7 @@ None open.
 | T-20 | 15 | `af873f5` | No tests for namespaced foreign content, bogus comments before tags, injected `<url>` after an unclosed script, comment-scan speed, unplaced copies, sessions after a password change. | Tests with the fixes. |
 | T-21 | 16 | `3ceded2` | No tests for the L-101 namespace cases, Markdown codeinject masking cases, `<url>` after svg style/noscript script, mangled query names, R2 in subfolders, long prose with `<`. | Tests with the fixes. |
 | T-22 | 17 | `2d76311` | No tests for box assets against file-name rules, deep svg speed, many scripts in textareas with `<url>`, `<svg / >`, `</svg>` inside foreignObject HTML, block tags in attribute position. | Tests with the fixes. |
+| T-23 | 18 | `6d36770` | No tests for the textarea starter-code page, unmatched rule targets and `type/file`, block tags in tag names and end tags, the namespace sync cases, encoded `srcdoc`, `<url default>` in attributes, depth in attribute position, many end tags in foreign content. | Tests with the fixes. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
