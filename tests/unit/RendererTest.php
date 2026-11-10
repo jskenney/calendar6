@@ -68,6 +68,32 @@ final class RendererTest extends TestCase
         $this->assertNotContains('&lt;!DOCTYPE', $this->render($course, 'class_1/e.md'), 'a Markdown doctype is raw HTML, not text (L-137)');
     }
 
+    public function testBlocksLeftOpenInValuesNestedRepeatedAndInjected(): void
+    {
+        $part = '<p title="<inst x=">">A <inst>B</inst> C-SECRET</inst> tail';
+        $course = $this->course([
+            'config/default.ini' => "class = always\n",
+            'shared/part.html' => $part,
+            'class/01.Introduction/a.html' => '<p title="<inst x=">">Answer 42 <iframe srcdoc="<b>hi</b>"></iframe> SECRET-A</inst> tail',
+            'class/01.Introduction/b.html' => '<p title="<inst a><lock code=x y=">">S1</lock> SECRET-B </inst> tail',
+            'class/01.Introduction/c.html' => '</p title="<inst x=">">SECRET-C</inst> tail',
+            'class/01.Introduction/d.html' => '<p title="<inst x=">">S1 <b title="<inst>z</inst>">SECRET-D</inst> tail',
+            'class/01.Introduction/n.html' => $part,
+            'class/01.Introduction/i.html' => '<inject src="../../shared/part.html"><pre><codeinject src="../../shared/part.html"></pre>',
+            'class/01.Introduction/big.html' => str_repeat('<b title="<inst>">xxxxxxxxxx ', 4000),
+        ]);
+        $prof = Viewer::account($course->config, 'prof');
+        foreach (['a' => 'SECRET-A', 'b' => 'SECRET-B', 'c' => 'SECRET-C', 'd' => 'SECRET-D', 'n' => 'C-SECRET', 'i' => 'C-SECRET'] as $name => $secret) {
+            $page = $this->render($course, "class_1/$name.html");
+            $this->assertNotContains($secret, $page, "hidden: two open blocks, nesting, end tags, a tag inside the range, inject and codeinject (L-138..L-140): $name");
+            $this->assertContains('tail', $page, "the page after the block stays: $name");
+            $this->assertSame($name === 'i' ? 2 : 1, substr_count($this->render($course, "class_1/$name.html", viewer: $prof), $secret), "instructors see it once per inclusion, not twice (L-138): $name");
+        }
+        $start = microtime(true);
+        $page = $this->render($course, 'class_1/big.html', viewer: $prof);
+        $this->assertTrue(microtime(true) - $start < 5.0 && strlen($page) < 200000, 'many such values stay fast and small (L-138)');
+    }
+
     public function testHostMatchesOnlyServerNamesAndAddresses(): void
     {
         $course = $this->course(['class/01.Introduction/index.html' => '<host server="other, intranet">ONLY-INTRANET</host><host server="10.0.0.5">BY-ADDRESS</host>']);

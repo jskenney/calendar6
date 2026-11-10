@@ -481,7 +481,9 @@ final class PageRenderer
         $out = '';
         $pos = 0;
         foreach (HtmlLexer::scan($html) as $token) {
-            if ($token[0] !== 'tag' || $token[4]) {
+            // end tags too: a browser reads quoted values in them as well (L-140); a tag inside a
+            // range already handled by a continuation is skipped (L-138)
+            if ($token[0] !== 'tag' || $token[1] < $pos) {
                 continue;
             }
             $tag = substr($html, $token[1], $token[2] - $token[1]);
@@ -490,13 +492,15 @@ final class PageRenderer
             }
             $new = '';
             $at = 0;
-            $open = null;
+            $open = [];
             foreach (HtmlLexer::attributes($tag) as [$name, $start, $end]) {
                 if ($start < 0) {
                     continue;
                 }
                 $value = substr($tag, $start, $end - $start);
-                $open ??= $name === 'srcdoc' ? null : self::unclosedBlock($value);
+                if ($name !== 'srcdoc') {
+                    array_push($open, ...self::unclosedBlocks($value));
+                }
                 if ($name === 'srcdoc') {
                     // a browser decodes srcdoc (numeric references with or without ";" too) and
                     // reads it as a page: hide in that page, its comments and attributes as well
@@ -512,29 +516,30 @@ final class PageRenderer
             }
             $out .= substr($html, $pos, $token[1] - $pos) . $new . substr($tag, $at);
             $pos = $token[2];
-            if ($open !== null) {
-                // a block opened in a value and not closed there (a quoted ">" ended the tag early:
-                // <p title="<inst title=">">S</inst>) goes on in the page up to its own end, as a
-                // plain scan reads it, or to the end of the page: fail closed (L-136)
-                [$opening, $blockName] = $open;
-                $close = preg_match('/<\/' . $blockName . '(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', $html, $m, PREG_OFFSET_CAPTURE, $pos) ? $m[0][1] + strlen($m[0][0]) : strlen($html);
-                $out .= $this->hideValue($opening . '>' . substr($html, $pos, $close - $pos), $place);
-                $pos = $close;
+            if ($open !== [] && ($end = $this->continuationEnd($html, $pos, $open, $place)) !== null) {
+                // blocks opened in values and not closed there (a quoted ">" ended the tag early:
+                // <p title="<inst title=">">S</inst>) go on in the page up to their own ends, as a
+                // plain scan reads them counting nesting, or to the end of the page: fail closed
+                // (L-136, L-139). Only when one of them is hidden from this viewer; the range is
+                // handled once, and its visible parts are hidden in again (L-138)
+                $range = $this->hideValue(implode('', array_map(static fn (array $o): string => $o[0] . '>', $open)) . substr($html, $pos, $end - $pos), $place);
+                $out .= $depth < 3 ? $this->hideInAttributes($range, $place, $depth + 1) : (str_contains($range, '<') ? '' : $range);
+                $pos = $end;
             }
         }
         return $out . substr($html, $pos);
     }
 
     /**
-     * The last block tag opened in a value and not closed there, as a plain scan reads it:
-     * [its opening tag without ">", its lower-case name], or null.
+     * The block tags opened in a value and not closed there, as a plain scan reads them, outermost
+     * first: [opening tag without ">", lower-case name] each.
      *
-     * @return array{0: string, 1: string}|null
+     * @return list<array{0: string, 1: string}>
      */
-    private static function unclosedBlock(string $value): ?array
+    private static function unclosedBlocks(string $value): array
     {
         if (!preg_match_all('/<(\/?)(inst|lock|postmeeting|host)(?=[\t\n\f\r \/>]|$)([^>]*)(>|$)/i', $value, $matches, PREG_SET_ORDER)) {
-            return null;
+            return [];
         }
         $stack = [];
         foreach ($matches as $m) {
@@ -550,7 +555,48 @@ final class PageRenderer
                 }
             }
         }
-        return $stack === [] ? null : end($stack);
+        return $stack;
+    }
+
+    /**
+     * Where blocks left open in a tag's values end in the page after $pos: the furthest of their
+     * own closing tags, nesting counted (the end of the page for one never closed); null when
+     * this viewer may see them all, so nothing needs to go on (L-138).
+     *
+     * @param list<array{0: string, 1: string}> $open
+     */
+    private function continuationEnd(string $html, int $pos, array $open, Place $place): ?int
+    {
+        $hidden = false;
+        foreach ($open as [$opening, $name]) {
+            if ($this->hideValue($opening . ">\x01</$name>", $place) !== "\x01") {
+                $hidden = true;
+                break;
+            }
+        }
+        if (!$hidden) {
+            return null;
+        }
+        $end = $pos;
+        $depths = [];
+        foreach ($open as [, $name]) {
+            $depths[$name] = ($depths[$name] ?? 0) + 1;
+        }
+        foreach ($depths as $name => $depth) {
+            // tag by tag up to the matching close, so each continuation reads only its own range
+            $close = strlen($html);
+            $at = $pos;
+            while (preg_match('/<(\/?)' . $name . '(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', $html, $m, PREG_OFFSET_CAPTURE, $at)) {
+                $at = $m[0][1] + max(1, strlen($m[0][0]));
+                $depth += $m[1][0] === '' ? 1 : -1;
+                if ($depth === 0) {
+                    $close = $at;
+                    break;
+                }
+            }
+            $end = max($end, $close);
+        }
+        return $end;
     }
 
     /** An attribute value decoded as a browser decodes it, numeric references without ";" too. */

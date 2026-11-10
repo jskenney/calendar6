@@ -612,7 +612,11 @@ would end them. `<codeinject>` of a Markdown page sets its code aside before hid
 sample such as `` `<a href="` `` can not swallow the blocks after it. Inside `<svg>` and `<math>`,
 where a browser reads `<script>` and `<style>` as markup, they are read both ways too (L-77). A
 hidden block written inside an attribute value (a tooltip: `title="Hint: <inst>42</inst>"`) is
-removed for viewers who may not see it, and its tags go in any case (L-79). Comments and the
+removed for viewers who may not see it, and its tags go in any case (L-79). A block opened in a value and not closed there (a quoted `>` ended the tag early:
+`<p title="<inst x=">">S</inst>`, also in an end tag) goes on in the page as a plain scan reads
+it, nesting counted, up to its own closing tag, or to the end of the page if there is none:
+fail closed, so a stray `title="use <inst>"` hides the rest of the page from students
+(L-136, L-138..L-140). Comments and the
 doctype inside a `<textarea>`, `<xmp>` or `<title>` (not one inside `<svg>`) are text the
 reader sees, so they stay, unless they hold a block tag (L-82, L-89). Blocks of one tag
 nested more than 256 deep are removed with their content.

@@ -149,6 +149,12 @@ the calendar and material are unchanged. An event has a type, a number, a title 
 directory name), a date (or `null` for material that does not fit on the calendar: instructors
 only), boxes and notes.
 
+Events come **from the material folders**: the folders of a type (`class/01.…`, `class/02.…`)
+are numbered onto that type's days in order (holidays skipped, `duplicate.ini` applied). A day
+of that type after the last folder has no event (an empty day in `calendar.php`), and folders
+beyond the last day of the semester become events with `date: null` (instructors only). So the
+weekly schedule says which type *may* meet on a day; the folders decide which event is there.
+
 **Box.** A named slot in an event (`title`, `homework`, `lab-solution`, `slides`, ...), filled by
 the file `config.ini` names for it. The box list and labels come from `config.php`; the files
 the viewer may open come from `calendar.php`.
@@ -171,6 +177,10 @@ on given weekdays in given periods (`MF1` = Mondays and Fridays, period 1), in r
 instructors. A period schedule (`normal`, `2_hour_delay`, ...) gives the clock times of each
 period; a day may follow a non-default schedule. Times only appear in `calendar.php` when a
 section is requested.
+
+**Strings are plain text.** Every string in the JSON answers (titles from directory names,
+labels, file names, rooms, instructor names, problem messages, notes) is plain text, not HTML:
+insert it with `textContent` (or escape it), never with `innerHTML`.
 
 **Times.** Moments are ISO 8601 with offset in the course's timezone
 (`2026-11-16T17:00:00-05:00`); dates are `YYYY-MM-DD`; clock times `HH:MM` (24 h). The course's
@@ -456,7 +466,8 @@ never creates one.
 ```json
 {"user": "jdoe", "instructor": false, "valid_until": "2026-12-18T17:00:00-05:00", "csrf": "q9Xb...", "error": null}
 {"user": null, "instructor": false, "valid_until": null, "csrf": "Lm2c...", "error": null}
-{"user": null, "instructor": false, "valid_until": null, "csrf": null, "error": "Wrong username or password."}
+{"user": null, "instructor": false, "valid_until": null, "csrf": "Lm2c...", "error": "Wrong username or password."}
+{"user": null, "instructor": false, "valid_until": null, "csrf": null, "error": "the form has expired: reload the page"}
 ```
 
 | Field | Type | Meaning |
@@ -539,6 +550,7 @@ is `404` here.
 | `<a href="other.html">` (or `<area>`) to a course page the viewer may open | `href="#/view/KEY"` (the query string goes along: `#/view/KEY?week=3`; the fragment too) |
 | `<img src>`, `<script src>`, `<link href>`, `<source src>`, `<video poster>`, `<input type=image src>`, svg `<image href>`, `background=`, `srcset` candidates, and `<a href>` to a non-page file | `get.php` URLs, absolute paths: `/~jdoe/AB123/calendar/php/get.php?file=KEY` |
 | `<iframe>`, `<embed>`, `<object>` pointing at a page | `/~jdoe/AB123/calendar/php/html.php?file=KEY` (with the link's query string). Inside such a frame, `#/view/KEY` links do nothing (there is no app there) |
+| `<img src>`, `<script src>`, `<link href>` (or another resource link) pointing at a page | target removed, `data-cal6-hidden="1"`: a page is never an image, script or style sheet |
 | any link to a course file the viewer may not open, and an event page's link to a file outside its own event directory (`../../shared/style.css`; give such files a place with `virtual.ini`) | the element keeps its text, loses its target, and gets `data-cal6-hidden="1"` |
 | a link whose target is filled in by `<url>` (the visitor chose it) | rewritten only to a file `calendar.php` lists (a box file or a page) that the viewer may open; anything else loses its target |
 | `<showlink src="file">` | `<a href="…">file</a>` to that event file (a route or `get.php` URL as above), or just the text when the viewer may not open it |
