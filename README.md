@@ -1,7 +1,7 @@
 # Calendar 6
 
 A course calendar that is mostly static HTML/JS, with small PHP endpoints only where something
-must be protected. See [DESIGN.md](DESIGN.md) for how it works and [template/](template/) for
+must be protected. See [API.md](API.md) for the endpoints (everything a front end needs), [DESIGN.md](DESIGN.md) for how it works and [template/](template/) for
 a starting point for a course.
 
 ```

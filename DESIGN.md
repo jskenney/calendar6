@@ -7,7 +7,9 @@ under "Future enhancements" at the end.
 **Implemented so far:** the five endpoints in `php/` (`config.php`, `calendar.php`, `get.php`,
 `html.php`, `auth.php`) on the library in `lib/`, with tests in `tests/` (`php tests/run.php`).
 The front end (`app/`) is not started. "Implementation notes" near the end lists the choices the
-code made where this document left room.
+code made where this document left room. **`API.md` documents every endpoint's inputs and
+outputs** for anyone building on them; it is updated in the same commit as any change to an
+endpoint.
 
 ## Goal
 
@@ -30,7 +32,7 @@ example `/home/faculty/username/public_html/AB123/calendar/php/get.php`.
 ```
 calendar6/                    the shared software (linked into each course as calendar/)
 ├── php/                      the only scripts a browser requests
-│   ├── auth.php              log in / log out (POST only)
+│   ├── auth.php              log in (POST) / log out (GET or POST)
 │   ├── config.php            the site configuration, without secrets (JSON)
 │   ├── calendar.php          everything this viewer may see (JSON)
 │   ├── get.php               one file, by key, with its MIME type
@@ -434,61 +436,25 @@ page links to get keys too, decided by the page's rule (see `html.php`).
 
 ## The PHP endpoints
 
-All endpoints answer with explicit headers: `X-Content-Type-Options: nosniff`,
-`Referrer-Policy: same-origin`, `X-Frame-Options: SAMEORIGIN`, no caching of personalised
-answers (`Cache-Control: private, no-store`; `calendar.php` and `get.php` send
-`private, no-cache` with an `ETag` instead, so the browser asks again and gets `304` when
-nothing changed), and JSON as `application/json; charset=utf-8`. Errors are JSON too
-(`{"error": "..."}`) with the right status code (400, 401, 403, 404, 405, 416, 429; 500 when the
-course can not be found or its `config.ini` is unusable; 503 when the rate limiter can not keep
-count).
+**The inputs, outputs, status codes and examples of every endpoint are in `API.md`** (moved
+there; it is the contract, and is updated in the same commit as any change to an endpoint).
+This section keeps the design decisions behind them.
 
-Every request is answered for **the current viewer**: anonymous, or the user stored in the PHP
-session by `auth.php`. Logging in must carry the session's **CSRF token**, which `config.php`
-hands out; a lock code sent to `html.php` carries the token of its own form. Logging out needs
-no token (Decided).
+- Five endpoints, three answering JSON (`config.php`, `calendar.php`, `auth.php`), `html.php`
+  answering a processed page and `get.php` a file. Every request is answered for **the current
+  viewer**: anonymous, or the user stored in the PHP session by `auth.php`.
+- Errors are JSON (`{"error": "..."}`) with the right status code; `auth.php` answers always
+  carry all five of its fields (Decided). One answer (`404`) for "no such key" and "not allowed".
+- Logging in needs the session's **CSRF token** (from `config.php?csrf=1`); a lock code sent to
+  `html.php` carries the token of its own form; **logging out needs no token and may be a GET**
+  (Decided).
+- `config.php` never includes password hashes, the secret, server file paths, `default.ini`,
+  `auth/`, lock codes, the lockdown date or `[replace]` values; `calendar.php` gives anonymous
+  viewers no hints about hidden material (Decided); titles are shown to everyone (Decided);
+  notes are sent as written, unprocessed (Decided, H-7); there is no files list (Decided, E-8).
 
-### `auth.php` (Decided: POST to log in, GET or POST to log out, session, JSON)
+### `auth.php`: limits and hardening (Decided)
 
-**Logging out is easy** (Decided): `GET auth.php`, or a `POST` without `username` and `password`,
-logs out, with no CSRF token. It touches only a session the browser already has (none is
-created) and clears all of it, unlocked `<lock>` codes and `<url>` values too.
-
-**Logging in** (`POST`, form-encoded or JSON):
-
-| Field | Required | Meaning |
-|---|---|---|
-| `username` | to log in | the name of a file in `config/auth/` (letters, digits, `.`, `_`, `-` only) |
-| `password` | to log in | checked with `password_verify` against `password_hash` |
-| `csrf` | to log in | the token from `config.php?csrf=1` |
-
-Methods other than `GET` and `POST`: `405`.
-
-**Output:** every answer carries every field (Decided): `user`, `instructor`, `valid_until`,
-`csrf` and `error`, with `null` (or `false` for `instructor`) when a field does not apply.
-
-```json
-{"user": "jdoe", "instructor": false, "valid_until": "2026-12-18T17:00:00-05:00", "csrf": "q9Xb...", "error": null}
-```
-
-```json
-{"user": null, "instructor": false, "valid_until": null, "csrf": "Lm2c...", "error": null}
-```
-
-```json
-{"user": null, "instructor": false, "valid_until": null, "csrf": null, "error": "Wrong username or password."}
-```
-
-- Logged in: `200`, the first form. `valid_until` is when this login ends by itself: the end of
-  the account's `valid` window or of the session lifetime (`config.ini`), whichever comes
-  first. The session id is replaced, so a **new CSRF token** comes back. Grants are not listed (they could name hidden files); `calendar.php` shows their effect.
-- Logged out: `200`, the second form, with a new token for the next login (`null` when the
-  browser had no session).
-- Wrong password, unknown user, or outside the account's `valid` window: `401`, the same message
-  for all three (an unknown user costs a check against the course's costliest password hash,
-  so it takes as long). Too many attempts:
-  `429` with `Retry-After`. Bad or missing token: `403`. The limiter can not keep count (its
-  private directory is unusable): `503`, nobody can log in until it is fixed (fail closed).
 - Attempts are limited per address and username (`[users] login_attempts`, 5 per 15 minutes in
   the template) and per address (four times that); both block, and an IPv6 address counts per
   /64 network. Once a username has ten times that many failures from anywhere, its attempts pass
@@ -506,171 +472,7 @@ Methods other than `GET` and `POST`: `405`.
   `valid` window does, and when the account's `password_hash` changes (a reset after a leak ends
   every session of that account at once, L-100).
 
-### `config.php` (Decided: the site config without secrets)
-
-**Inputs:** `GET` (or `HEAD`; anything else is `405`). `csrf=1` (optional): start a session and include its CSRF token, for a login
-form. Without it, no session is created (anonymous visitors leave no session files), and `csrf`
-is `null` unless the browser already has a session. A cross-site request (`Sec-Fetch-Site:
-cross-site`) never creates one, so a link from another site can not plant a session.
-
-**Output:** what the front end needs to draw the site. It changes only when `config/*.ini`
-changes, apart from `viewer` and `csrf`.
-
-```json
-{
-  "course":   {"number": "AB123", "name": "Web and Internet Programming", "timezone": "America/New_York"},
-  "semester": {"start": "2026-08-24", "end": "2026-12-18", "weekends": false},
-  "schedule": {"mon": "class", "tue": "class", "wed": "lab", "fri": "class 08:00-08:50"},
-  "days":     [{"date": "2026-10-13", "events": ["class"], "as": "mon", "label": "Monday schedule"},
-               {"date": "2026-10-14", "events": ["lab"], "label": "Lab day"},
-               {"date": "2026-11-25", "events": [], "as": "holiday", "label": "Thanksgiving"},
-               {"date": "2026-11-26", "events": [], "as": "holiday", "label": "Thanksgiving"},
-               {"date": "2026-12-03", "period": "2_hour_delay", "label": "2-hour delay (snow)"},
-               {"date": "2026-09-18", "cancel": [{"from": "10:00", "until": "12:00", "as": "holiday"}], "label": "assembly"}],
-  "period":   "normal",
-  "periods":  {"normal": {"label": "Normal", "times": {"1": "07:45-08:35", "4": "10:45-11:35"}},
-               "2_hour_delay": {"label": "2 Hour Delay", "times": {"1": "09:45-10:35", "4": "13:45-14:35"}},
-               "4_hour_delay": {"label": "4 Hour Delay", "times": {"1": "cancelled", "5": "13:40-14:30"}}},
-  "sections": [{"section": "1121", "meetings": [{"meets": "MF1", "type": "class", "room": "HP111"}, {"meets": "T12", "type": "class", "room": "HP111"}], "instructor": "SMITH"},
-               {"section": "4345", "meetings": [{"meets": "MF4", "type": "class", "room": "HP132"}, {"meets": "R34", "type": "class", "room": "HP301"}], "instructor": "JONES"}],
-  "types":    {"class": {"label": "Class"}, "lab": {"label": "Lab"}, "exam": {"label": "Exam"}},
-  "boxes":    [{"box": "title", "label": "Lecture"}, {"box": "homework", "label": "Homework"},
-               {"box": "lab-solution", "label": "Solution"}],
-  "pages":    [{"page": "home", "label": "Home"}, {"page": "policy", "label": "Syllabus"}],
-  "duplicates": [{"event": "class_6", "copy_of": "class_5", "mode": "numbered"},
-                 {"event": "lab_6@2026-10-07", "copy_of": "lab_6", "mode": "same"}],
-  "session_seconds": 28800,
-  "version":  {"format": 1, "software": "3f9c2a71b0de"},
-  "viewer":   {"user": null, "instructor": false},
-  "csrf":     "Lm2c..."
-}
-```
-
-- `schedule`: config.ini `[schedule]`, a type per weekday, with the times when it gives them.
-- `days`: only the days `dates.ini` changes, one entry per date (a range such as
-  `2026-11-25 until 2026-11-27` gives one entry per day). `events` (the event types that day)
-  appears when the line chose them (a weekday, types, `holiday` or `none`); `as` is `holiday`,
-  `none` or the weekday the day follows; `period` a period schedule other than the default;
-  `cancel` the windows with times on that day (`from`, `until` with `24:00` for a window that
-  goes on past midnight, and `as`: `holiday` or `none`); they cancel the meetings that start
-  inside them (with `?section=`, `calendar.php` marks those `"cancelled": true`).
-- `period`: the default period schedule; `periods`: every schedule in `periods.ini`
-  (`cancelled` for a period that exists but does not meet).
-- `boxes`: config.ini `[boxes]` in order (not `[notes]`), with their labels.
-- `pages`: the `paths.ini` pages in order, by name and menu label (no file names; keys and
-  visibility come from `calendar.php`).
-- `duplicates`: `duplicate.ini` as the calendar applied it: each copy's event id (as in
-  `calendar.php`), the event it copies, and `numbered` or `same`. Lines that did nothing are
-  `problems` for instructors in `calendar.php`.
-- `session_seconds`: how long a login lasts at most (`[users] session`).
-- `version`: `format`, the version of the endpoints' JSON (raised when its shape changes), and
-  `software`, which changes with every update of the code (a front end can reload when it does).
-- Not sent: `[replace]` values (html.php fills them in), the box and notes file names.
-
-Never included: password hashes, the secret, server file paths, `default.ini`, `auth/`, lock
-codes, the lockdown date (its effect shows in `calendar.php`).
-
-### `calendar.php` (Decided: everything this viewer may see, cached)
-
-**Inputs:** none needed. Every field may come in the query or in the POST body (a form or
-JSON); the first non-empty value counts, the query's first, so an empty `?section=` does not hide
-a posted `section`. A list (`section[]=1121`) is a 400. For everyone:
-
-| Field | Meaning |
-|---|---|
-| `section=1121` | a section of `sections.ini`: each event then carries that section's `start`, `end`, `period`, `instructor` and `room` on its day (404 for an unknown section). A meeting cancelled that day (its period is `cancelled` in the day's period schedule, or it starts inside a `dates.ini` `holiday`/`none` window with times) also carries `"cancelled": true`, without `start` and `end` when the period schedule cancelled it. Without `section` no times are sent. |
-
-For instructors only (ignored otherwise):
-
-| Field | Meaning |
-|---|---|
-| `as=anonymous` or `as=<username>` | the answer that viewer would get |
-| `at=YYYY-MM-DD HH:MM` | the answer at that moment instead of now |
-
-An unknown `as` user, or an `at` that is not `YYYY-MM-DD HH:MM` (or `YYYY-MM-DD`), is a `400`.
-Previews are never cached. Methods other than `GET`, `HEAD` and `POST`: `405`.
-
-**Output:** every day of the semester, the events on them, and for each event the box files and
-notes the viewer may see, with their keys. Files the viewer may not see are left out entirely.
-There is no `next_change` (E-10): an instructor's edit can change the answer at any moment.
-
-```json
-{
-  "generated":   "2026-11-09T14:05:00-05:00",
-  "viewer":      {"user": null, "instructor": false},
-  "section":     "1121",
-  "pages":  {"home":   {"title": "Home", "key": "h3Lm8", "filename": "home.html", "kind": "html"},
-             "policy": {"title": "Syllabus"}},
-  "days": {
-    "2026-11-09": [{"event": "class_30", "type": "class", "number": 30, "title": "Sessions and Cookies",
-                    "start": "07:45", "end": "08:35", "period": "1", "instructor": "SMITH", "room": "HP111"},
-                   {"event": "lab_10", "type": "lab", "number": 10, "title": "Cookies"}],
-    "2026-11-10": [{"event": "", "title": "", "label": "lab day"},
-                   {"event": "lab_11", "type": "lab", "number": 11, "title": "Forms"}],
-    "2026-11-11": [{"event": "", "title": "holiday", "label": "Veterans Day"}],
-    "2026-11-12": [],
-    "2026-12-03": [{"event": "", "title": "", "label": "2-hour delay (snow)", "schedule": "2_hour_delay"},
-                   {"event": "class_35", "type": "class", "number": 35, "title": "Review",
-                    "start": "09:45", "end": "10:35", "period": "1", "instructor": "SMITH", "room": "HP111"}]
-  },
-  "events": {
-    "class_30": {
-      "type": "class", "number": 30, "title": "Sessions and Cookies", "date": "2026-11-09",
-      "start": "07:45", "end": "08:35", "period": "1", "instructor": "SMITH", "room": "HP111",
-      "section": "1121",
-      "boxes": [
-        {"box": "title",    "filename": "index.html",    "key": "a1Xc9", "kind": "html"},
-        {"box": "homework", "filename": "homework.html", "key": "b4Rt0", "kind": "html"},
-        {"box": "slides",   "filename": "slides.pdf",    "key": "c8Pz3", "kind": "get"}
-      ],
-      "notes": [{"filename": "notes.txt", "text": "The class meets in the auditorium today."}]
-    },
-    "lab_10": {"type": "lab", "number": 10, "title": "Cookies", "date": "2026-11-09", "boxes": []}
-  }
-}
-```
-
-- `days`: every day from the semester's start to its end, by date, each a list (empty when
-  nothing happens). When `dates.ini` says something about the day, the first item has `"event":
-  ""`: its `title` is what the day is instead of its own weekday (`holiday`, `none`, or another
-  weekday such as `mon`; empty when the line only gives the day another type, like
-  `2026-11-10 = lab | lab day`), with its `label` and, for another period schedule, `schedule`.
-  Then one item per shown event: `event` (its id in `events`), `type`, `number`, `title`, and with
-  `section` that section's `start`, `end`, `period`, `instructor`, `room` and, for a cancelled
-  meeting, `"cancelled": true`.
-- `title`: always shown, to everyone, even for an event with nothing visible yet (Decided); its
-  `boxes` are then empty. With `section`, an event the section meets for also carries the
-  times, `period`, `instructor`, `room` and `section`.
-- `pages`: the `paths.ini` pages by name, each with its title, key, file name and kind; a page
-  hidden by a rule (`page/policy = never`) gives its title only. Logged-on viewers get the same
-  hints on pages as on files.
-- `boxes`: one item per visible file, in the order of `config.php`'s `boxes`; `kind` says which
-  script serves it: `html` → `html.php`, `get` → `get.php`. **There is no list of an event's
-  other files** (Decided, E-8): `calendar.php` lists only the files `config.ini` names for boxes,
-  plus notes; any other file is reached through a link in a page.
-- `notes`: the text of the event's notes file (`config.ini` `[notes]`: any file named there,
-  HTML included), as written, trimmed, at most 2000 bytes (a longer text is cut and ends in `…`):
-  short remarks such as "the assignment is due Tuesday". **Notes are not processed** (Decided,
-  H-7): no `<inst>` hiding, no lock codes; whoever may see the note gets the file's text. It is
-  released like a box, by any rule that names it (`lab/notes = always`, `lab/notes = -0`,
-  `class_25/notes = never`), and comes back as text, not as a key; a notes file is never in
-  `boxes`, and a `[notes]` name (or `notes`) in `[boxes]` is ignored, with a problem listed.
-- **No hints for anonymous viewers** (Decided): they get only what they may see, with no
-  `visible` or `opens`. A **logged-on viewer** (an instructor, or a user with grants) sees, on
-  each file it may see that anonymous viewers may not yet, `"visible": false` and, when a moment
-  will release it (not `never`), `"opens"`:
-  `{"box": "lab-solution", "filename": "lab-solution.html", "key": "d2Wq7", "kind": "html",
-  "visible": false, "opens": "2026-11-16T17:00:00-05:00"}` (notes the same way); the event's
-  own `opens` is the earliest of them. Files anonymous viewers already see carry neither.
-- `copy_of` / `mode`: an event from `duplicate.ini`. A `same` repeat is shown under the source's
-  number, so its id adds the date (`class_5@2026-11-11`); its files have their own keys, since
-  relative rules can give each showing a different window. Events on no calendar day are left out.
-- **Instructors** get every file, events on no calendar day (with `"date": null`), each event's
-  `directory`, and `problems` (each `{"message", "file", "line"}`: bad lines in the `.ini` files, overridden lines, names that are
-  not UTF-8 or differ only in case, copies that can not be made, files named like a box's file
-  but not the one `config.ini` lists, such as `lab-solution.pdf`, which follow the event's rule). Whether material can be
-  fetched directly is checked from outside, by `tests/deploy/smoke.php` (and later
-  `bin/cal6 check`, E-5), not by `calendar.php`.
+### `calendar.php`: caching
 
 **Caching (Decided: cache when possible):**
 
@@ -691,7 +493,7 @@ There is no `next_change` (E-10): an instructor's edit can change the answer at 
    system temporary directory, in a folder named by a hash of the course path, so the web server
    never needs write access to the course directory (the same for the login rate limiter).
 
-### `get.php` (Decided: one file by key, with the right MIME type; never a page)
+### `get.php` and `html.php`: who serves what
 
 **Which endpoint serves what (Decided):** `get.php` serves every file except pages; `html.php`
 serves only pages. A page is an `.html`, `.htm` or `.md` file (by its name and by the real file
@@ -711,24 +513,6 @@ same way under every spelling and as backups (`.php5`, `.phtml`, `.phtm`, `.phar
 `part.inc.md`) is still a page, but one with a PHP extension in its name (`x.php.html`) is never
 served and is listed as a problem.
 
-**Inputs:**
-
-| Field | Required | Meaning |
-|---|---|---|
-| `file` | yes | the key, from `calendar.php` or a rewritten link |
-| `download=1` | no | send as an attachment instead of inline |
-| header `Range` | no | part of the file (video, large PDFs): `206 Partial Content` |
-| header `If-None-Match` / `If-Modified-Since` | no | `304` when unchanged |
-
-`GET` and `HEAD` only. The key is looked up and **the access rule is checked again for the
-current viewer** (a key alone never grants access); then the file is streamed with its MIME
-type, `Content-Length`, `Accept-Ranges`, `ETag`, `Last-Modified`, `Cache-Control: private,
-no-cache`, and `Content-Disposition` inline or attachment by type (HTML and SVG always as attachments, so they can not run as pages
-of the site). Unknown key or not allowed: `404`, the same answer for both. A `Range` beyond the
-end of the file: `416`. Methods other than `GET` and `HEAD`: `405`. `.php` files are never sent.
-
-### `html.php` (Decided: one HTML page by key, processed inline)
-
 **html.php returns only the contents of an HTML or Markdown file, processed by the rules**
 (hidden blocks removed for viewers who may not see them, **HTML comments removed**, links
 rewritten, the other tags handled). Everything else comes back exactly as written: a
@@ -738,53 +522,26 @@ their attributes are not stripped or added.
 JavaScript, no other file types. Style sheets, scripts and every other file come from the front
 end itself or through `get.php`.
 
-**Inputs:**
+Links in processed pages follow this table (Decided, M-36):
 
-| Field | Required | Meaning |
-|---|---|---|
-| `file` | yes | the key of a page (`.html`, `.htm`, `.md`), from `calendar.php` or a rewritten link |
-| `lock` (POST, with `csrf`) | no | a `<lock>` code; when it matches, it is remembered in the session for the rest of the session and opens every `<lock>` with that code. The form's `csrf` is a token signed from the page and the hour (valid for up to two hours), so showing a page with `<lock>` creates no session. The answer is `303` back to the page (`GET`), so a reload does not resend it. A session is created only for a matching code. A POST from another site (`Sec-Fetch-Site: cross-site`, or without that header an `Origin` naming another host) is refused (`403`), because the token itself is not secret. Wrong codes are limited per address and page (four times `login_attempts`) and per address (twenty times); a right code does not count, so a classroom behind one address is not blocked by a few typos |
-| any other query parameter | no | values for `<url value="...">` tags: names of letters, digits, `_` and `-` (at most 64; not `file`, `lock` or `csrf`), values cut to 200 characters (HTML-escaped; a value with a URL scheme other than `http(s):`, such as `javascript:`, is ignored; remembered only in a session that already exists, so a link can not create or replace one) |
-
-`GET`, `HEAD` and `POST` (only for `lock`); anything else is `405`. A wrong or expired lock-form
-token: `403`; too many wrong codes: `429` with `Retry-After` (`503` when the limiter can not keep
-count).
-
-**Output:** `text/html; charset=utf-8` with `Cache-Control: private, no-store`: the file's
-whole content after processing (for Markdown, the HTML it converts to). The
-same key lookup and access check as `get.php`; unknown or not allowed: `404`. Then the page is
-processed:
-
-- links to files are rewritten to keys, as Calendar 4 does: `<img src="pic.png">` becomes
-  `/<course>/calendar/php/get.php?file=KEY`, `<a href="notes.html">` becomes the front end's
-  route `#/view/KEY`, `<a href="data.zip">`, `<script src>`, `<link href>`, `<source src>`,
-  `<video poster>`, `<area href>`, `<input type=image src>`, svg `<image href>`/`xlink:href`,
-  `background=` and each `srcset` candidate become `get.php` URLs (or page routes, L-122); `<iframe>`, `<embed>` and
-  `<object>` pointing at a page get `html.php?file=KEY`, the page's processed contents (a page is never sent by
-  `get.php`, and is never an image or script); links to files the viewer may not see keep their
-  text but lose their target (`data-cal6-hidden="1"`). Links follow this table (Decided, M-36):
-
-  | Link | Result |
-  |---|---|
-  | external (`https://…`, `mailto:`, `/path`, `#anchor`, `?query`) | unchanged |
-  | written by the author, to a course file this viewer may see | rewritten to `#/view/KEY` (pages; a query string goes along: `#/view/KEY?week=3`, or `html.php?file=KEY&week=3` for frames) or `get.php?file=KEY` |
-  | written by the author, to a course file this viewer may not see (or one never served) | text kept, target removed (`data-cal6-hidden`) |
-  | written by the author, to a missing file, or a path outside the course (or into `config/`, `calendar/`) | left exactly as written, as in Calendar 4; nothing is said about the disk outside the course |
-  | filled in by `<url>` (the visitor chose it) | rewritten only to a visible file `calendar.php` lists (a box file or a `paths.ini` page); anything else (a missing file, a path outside the course, any other file of an event, one that borrows a page's rule) loses its target, all alike |
+| Link | Result |
+|---|---|
+| external (`https://…`, `mailto:`, `/path`, `#anchor`, `?query`) | unchanged |
+| written by the author, to a course file this viewer may see | rewritten to `#/view/KEY` (pages; a query string goes along: `#/view/KEY?week=3`, or `html.php?file=KEY&week=3` for frames) or `get.php?file=KEY` |
+| written by the author, to a course file this viewer may not see (or one never served) | text kept, target removed (`data-cal6-hidden`) |
+| written by the author, to a missing file, or a path outside the course (or into `config/`, `calendar/`) | left exactly as written, as in Calendar 4; nothing is said about the disk outside the course |
+| filled in by `<url>` (the visitor chose it) | rewritten only to a visible file `calendar.php` lists (a box file or a `paths.ini` page); anything else (a missing file, a path outside the course, any other file of an event, one that borrows a page's rule) loses its target, all alike |
 
 - files that a `paths.ini` page links to (its images, style sheets, the pages next to it) get
   keys of their own, decided by that page's rule; an event page's link to a file outside its event
   (`../../shared/style.css`) gets no key and loses its target, so give such a course-wide file a
   place with a `virtual.ini` line (`class_1/style.css = shared/style.css`, or a range for every
   event) and link it by that name (DOC-21);
-- every Calendar 4 tag except `<ace>` is processed on the server (see "Tags");
 - **HTML comments are removed, for everyone** (Decided): `<!-- ... -->` never reaches the
   browser, so an author's private remarks stay private and a commented-out `<inst>`, `<lock>` or
   `<inject>` can not leak. Inside a `<textarea>`, `<xmp>` or `<title>` a comment is text the
   reader sees (starter code) and stays, unless it holds a block tag. A `<!DOCTYPE ...>` is not
   a comment: it is kept exactly as written;
-- `<a name>` anchors (and `##` headings in Markdown) get ids; the front end builds the page's menu
-  from them, as v4 did on the server;
 - **JavaScript is passed through unchanged** (Decided): `<script>` elements and inline handlers
   reach the browser as written. The front end runs them after placing the page (see "The front
   end").
@@ -1125,7 +882,7 @@ pointer to any one course. Instead:
 
 ## The front end (Proposed; not built yet)
 
-What the endpoints expect from it (the contract):
+`API.md` section 10 is the guide for building it. In short, what the endpoints expect from it:
 
 - **Routes:** `html.php` writes links to other pages as `#/view/KEY`, with the link's query string
   if it had one (`#/view/KEY?week=3`, L-75); the front end shows that page
@@ -1141,7 +898,7 @@ What the endpoints expect from it (the contract):
 - **Scripts:** inserted pages keep their `<script>` elements; run them after insertion, in
   document order.
 - **Login:** get a token from `config.php?csrf=1`, post to `auth.php`, keep the new token it
-  returns, then reload `calendar.php`.
+  returns, then reload `calendar.php`. Logging out is `GET auth.php`.
 
 The plan:
 

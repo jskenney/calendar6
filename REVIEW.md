@@ -51,6 +51,7 @@ None open.
 | E-5 | 1 | `bin/` | `DESIGN.md` mentions `bin/cal6 check`; there is no command-line tool (problems, overridden lines, a check that material can not be fetched directly, `user add`). | Add `bin/cal6` with `check` and `user add`. |
 | E-7 | 1 | `calendar.php` | Instructors get `problems` in JSON but nothing shows them yet. | A status view in the front end. |
 | E-10 | owner | `calendar.php` | `next_change` was removed from the answer (owner): a browser that trusted it would keep an old answer when the instructor edits material before then (say, notes students should not have seen). The server's own cache is safe (the fingerprint changes with any edit), but the front end has no way to know when to reload. | A cheap change signal for the front end: an `ETag`/`If-None-Match` poll (already answered with 304), a short polling interval, or a version number in `config.php`. |
+| E-11 | owner | `lib/Http/Locator.php:23` | The owner wants calendar6 to be reachable as `<course>/calendar` by convention ("should, not must"); the code requires that exact name (any other name is a 500), which API.md documents as current behaviour. | Owner to decide: accept any directory name two levels above `php/` whose parent holds `config/config.ini` (still checking that it resolves to the running code), or keep the fixed name. |
 | E-9 | 19 | `PageRenderer` links | Relative URLs in CSS (`style="background:url(x.png)"`, `url()` in `<style>`) are not rewritten. | Rewrite them, or say so in DESIGN. |
 
 ## Fixed items
@@ -303,6 +304,7 @@ None open.
 | DOC-26 | owner | `d58d6a7` | Logging out needed a POST with the session's CSRF token. | Decided (owner): logging out is easy: `GET auth.php`, or a POST without username and password, logs out with no token; it touches only an existing session. Logging in still needs the token. DESIGN and tests updated. |
 | DOC-27 | owner | `655b298` | auth.php's answers had different shapes: a login gave four fields, a logout three, an error only `error`. | Decided (owner): every auth.php answer carries `user`, `instructor`, `valid_until`, `csrf` and `error` in that order, `null` (or `false`) when they do not apply, errors (401, 403, 405, 429, 503) included. DESIGN and tests updated. |
 | DOC-28 | owner | `97b3fde` | config.php lacked what the front end needs from duplicate.ini, dates.ini windows with times, paths.ini pages, the session length and a version; it sent `[replace]` values it does not need. | Decided (owner): config.php adds `duplicates` (as applied), `cancel` windows on days, `pages` (name and label, in order), `session_seconds` and `version` (`format`, `software`); `replace` is gone. DESIGN and tests updated. |
+| DOC-29 | owner | (this commit) | The endpoints' inputs and outputs lived inside DESIGN.md, mixed with design notes, with no guide for building a front end. | `API.md`: the contract for every endpoint (inputs, outputs, field types, status codes, the HTML `html.php` produces), the file-system and URL expectations, and a front-end guide; DESIGN.md keeps the design decisions and points to it. API.md is updated with any endpoint change. |
 
 ## Reviews
 
