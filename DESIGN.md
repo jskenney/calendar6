@@ -684,7 +684,13 @@ states (`<!--` ... `<script>` ... `</script>` ... `-->`). `<textarea>`, `<title>
 them (at their closing tag, even one that looks like part of an attribute); their content is
 hidden under both readings (a block tag inside is removed as in markup) and gets no `<url>`
 values. Hiding repeats until nothing changes, so removing a block or comment can not join the
-text around it into a new comment or block that still carries hidden content. Blocks of one tag
+text around it into a new comment or block that still carries hidden content. A closing block
+tag counts only where both readings see a closing tag (with and without these elements, since a
+`<title>` inside `<svg>` is markup), so a `</inst>` written inside a `<textarea>` never closes an
+`<inst>` opened outside it. End tags are read as a browser reads them (quoted attributes, and
+`</` followed by a non-letter is a comment). `<replace>` and `<url>` tags end where a browser
+would end them. `<codeinject>` of a Markdown page sets its code aside before hiding, so a code
+sample such as `` `<a href="` `` can not swallow the blocks after it. Blocks of one tag
 nested more than 256 deep are removed with their content.
 
 **`<url>` and other sites (DOC-18):** in `href` and `src`, `<url>` accepts any relative or
@@ -699,8 +705,8 @@ HTML however far it is indented, so an indented `<inst>` still hides. Code shows
 an `<inst>` inside a fenced code block (or a code span) is shown as code, so to hide a code
 block, put `<inst>` and `</inst>` on lines of their own around the fence. Image alt text, link
 titles and heading ids are plain text: a hidden block written there is removed, with its
-content, for everyone. A link reference definition inside a hidden block is part of the block,
-not a definition.
+content, for everyone, and so is one in a link's destination. A link reference definition inside
+a hidden block is part of the block, not a definition.
 `<codeinject>` of a page shows its source without what the viewer may not see. If any other
 pattern fails on a page, the request fails rather than sending the page half processed.
 
@@ -708,7 +714,7 @@ pattern fails on a page, the request fails rather than sending the page half pro
 |---|---|
 | `<inst>` ... `</inst>` | only for instructors (`instructor = true`) |
 | `<student>` ... `</student>` | answers behind a "reveal" icon (sent to everyone, hidden only visually, as v4) |
-| `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times). In an injected or codeinjected page, that page's own event decides (a file without an event, such as `shared/`, follows the page that injects it) |
+| `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times). In an injected or codeinjected page, that page's own event decides (a file without an event, such as `shared/`, follows the page that injects it). A page with no event at all (a `paths.ini` page) has no meeting to wait for: its `<postmeeting>` is always shown (DOC-19), so do not use it there to hide anything |
 | `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it) |
 | `<host server="name">` ... `</host>` | shown only when served by that server |
 | `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`) |
@@ -781,7 +787,7 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | R12 | **A semester-end lockdown** | the block at the top of the example |
 | R13 | **Virtual files** (v4 `$CLASS_FILE`, now `virtual.ini`: a file shown in an event but stored elsewhere) are checked under both names; the stricter answer wins (Calendar 5 behaviour; v4 mixed them up) | `notes.html  homework/homework01.html  lab  1` |
 | R14 | **Events that are on no calendar day** are never shown to anonymous viewers | a third exam folder with two exam days |
-| R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable or missing file** hides everything from anonymous viewers (fail closed, Calendar 6 also for a missing one). `default.ini` has no sections: a line under a header such as `[rules]` is still a rule, and the header is listed (M-33) | |
+| R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable or missing file** hides everything from anonymous viewers (fail closed, Calendar 6 also for a missing one). `default.ini` has no sections: a line under a header such as `[rules]` is still a rule, and the header is listed (M-33). An old-style line without `=` (`lab 99 99 9999`) hides its first word's target until it is rewritten (L-74) | |
 | R16 | **Paths with spaces** | tab-separated lines |
 
 Event numbers are numbers: `class_01` is `class_1` (M-35); the name as written is matched too,
@@ -1004,11 +1010,14 @@ The plan:
   endpoint answers `500` instead of guessing.
 - **Reverse proxies:** list them in `config.ini` `[server] trusted_proxies`; only then are
   `X-Forwarded-For` (the client's address, for rate limits) and `X-Forwarded-Proto` (HTTPS, for
-  the `Secure` cookie flag) believed.
+  the `Secure` cookie flag) believed. Entries are addresses or CIDR ranges (`10.0.0.0/8`),
+  compared in binary (any IPv6 spelling); anything else is listed as a problem and ignored.
 - **Sessions:** a login lasts `[users] session`; Calendar 6 sets PHP's `session.gc_maxlifetime`
   to match and keeps the course's sessions in its private directory
   (`<temp>/cal6-<uid>-<hash>/sessions`) when it can, so another application's cleanup does not
-  end them early.
+  end them early. Calendar 6 sweeps that directory itself (expired files, and the oldest beyond
+  20000), since PHP's own cleanup is often off, and a read-only request with an unknown session
+  id creates no new session (L-72).
 - **One origin, many courses:** courses on one host (`/~bob/AB123/`, `/~ann/CD456/`) each have
   their own login: the session cookie is named after the course directory and limited to its
   URL, sessions are stored per course, and a session records the course directory's real path

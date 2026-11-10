@@ -38,6 +38,15 @@ final class Session
         $path = TempDir::for($c->courseDir, 'sessions');
         if ($path !== null) {
             session_save_path($path);
+            // a read-only request opens only a session that exists: an unknown or expired id
+            // is not replaced by a new one (strict mode would make one, L-72)
+            $id = (string) ($_COOKIE[$name] ?? '');
+            if (!$create && (!preg_match('/^[A-Za-z0-9,-]{22,256}$/', $id) || !is_file("$path/sess_$id"))) {
+                return false;
+            }
+            if ($create && random_int(1, 50) === 1) {
+                self::sweep($path, max(1440, $c->config->sessionSeconds));
+            }
         }
         session_name($name);
         session_set_cookie_params([
@@ -52,6 +61,34 @@ final class Session
             self::bind($c->courseDir);
         }
         return self::$open;
+    }
+
+    private const MAX_FILES = 20000;
+
+    /**
+     * Removes session files older than the session lifetime, and the oldest beyond MAX_FILES,
+     * because PHP's own cleanup is often switched off (Debian: gc_probability = 0) and the
+     * system's cleans only php.ini's directory (L-72).
+     */
+    public static function sweep(string $path, int $lifetime): void
+    {
+        clearstatcache();
+        $files = [];
+        $now = time();
+        foreach (glob($path . '/sess_*') ?: [] as $file) {
+            $mtime = (int) @filemtime($file);
+            if ($mtime < $now - $lifetime) {
+                @unlink($file);
+            } else {
+                $files[$file] = $mtime;
+            }
+        }
+        if (count($files) > self::MAX_FILES) {
+            asort($files);
+            foreach (array_slice(array_keys($files), 0, count($files) - self::MAX_FILES) as $file) {
+                @unlink($file);
+            }
+        }
     }
 
     /**

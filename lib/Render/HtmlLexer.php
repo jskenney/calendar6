@@ -25,6 +25,13 @@ final class HtmlLexer
      * attribute name or an unquoted value, and the tag ends at the first ">" outside a quoted
      * value.
      */
+    /** The end of the tag that starts at $lt (its name included), read with the browser's quote rules. */
+    public static function tagEnd(string $html, int $lt): int
+    {
+        $nameStart = $lt + (($html[$lt + 1] ?? '') === '/' ? 2 : 1);
+        return self::openingTagEnd($html, $nameStart + strcspn($html, " \t\n\r\f/>", $nameStart));
+    }
+
     private static function openingTagEnd(string $html, int $i): int
     {
         $length = strlen($html);
@@ -49,13 +56,6 @@ final class HtmlLexer
             }
         }
         return $i < $length ? $i + 1 : $length;
-    }
-
-    /** The end of a closing tag: the first ">". */
-    private static function closingTagEnd(string $html, int $i): int
-    {
-        $close = strpos($html, '>', $i);
-        return $close === false ? strlen($html) : $close + 1;
     }
 
     /**
@@ -155,13 +155,18 @@ final class HtmlLexer
      *
      * @return list<array{0: string, 1: int, 2: int, 3?: string, 4?: bool}>
      */
-    public static function scan(string $html): array
+    public static function scan(string $html, bool $bounded = true): array
     {
-        return self::scanRange($html, false);
+        return self::scanRange($html, !$bounded, false);
     }
 
-    /** @return list<array{0: string, 1: int, 2: int, 3?: string, 4?: bool}> */
-    private static function scanRange(string $html, bool $inBody): array
+    /**
+     * $plain: no bounded elements (the reading of a <title> inside <svg>, where it is markup);
+     * $body: the content of a bounded element (no script or style raw text either).
+     *
+     * @return list<array{0: string, 1: int, 2: int, 3?: string, 4?: bool}>
+     */
+    private static function scanRange(string $html, bool $plain, bool $body): array
     {
         $tokens = [];
         $noClose = [];
@@ -201,23 +206,32 @@ final class HtmlLexer
             $closing = $next === '/';
             $nameStart = $lt + ($closing ? 2 : 1);
             if (!ctype_alpha($html[$nameStart] ?? '')) {
+                if ($closing && $nameStart < $length) {
+                    // "</" and a non-letter: a bogus comment up to ">", as in a browser (L-68)
+                    $close = strpos($html, '>', $nameStart);
+                    $end = $close === false ? $length : $close + 1;
+                    $tokens[] = ['comment', $lt, $end];
+                    $pos = $end;
+                    continue;
+                }
                 $pos = $lt + 1;                          // text
                 continue;
             }
             // a tag name runs to whitespace, "/" or ">", as in a browser (L-59)
             $nameEnd = $nameStart + strcspn($html, " \t\n\r\f/>", $nameStart);
             $name = strtolower(substr($html, $nameStart, $nameEnd - $nameStart));
-            $end = $closing ? self::closingTagEnd($html, $nameEnd) : self::openingTagEnd($html, $nameEnd);
+            // an end tag's attributes are read like a start tag's, quotes and all (L-68)
+            $end = self::openingTagEnd($html, $nameEnd);
             $tokens[] = ['tag', $lt, $end, $name, $closing];
             $pos = $end;
-            if (!$closing && !$inBody && in_array($name, self::BOUNDED, true)) {
+            if (!$closing && !$plain && in_array($name, self::BOUNDED, true)) {
                 $close = $name === 'plaintext' || ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);
                 if ($close === false) {
                     $noClose[$name] = min($noClose[$name] ?? PHP_INT_MAX, $end);
                     $close = $length;
                 }
                 $tokens[] = ['bounded', $end, $close, $name];
-                foreach (self::scanRange(substr($html, $end, $close - $end), true) as $inner) {
+                foreach (self::scanRange(substr($html, $end, $close - $end), true, true) as $inner) {
                     $inner[1] += $end;
                     $inner[2] += $end;
                     $tokens[] = $inner;
@@ -225,7 +239,7 @@ final class HtmlLexer
                 $pos = $close;
                 continue;
             }
-            if (!$closing && !$inBody && ($name === 'script' || $name === 'style')) {
+            if (!$closing && !$body && ($name === 'script' || $name === 'style')) {
                 $close = ($noClose[$name] ?? PHP_INT_MAX) <= $end ? false : self::rawEnd($html, $end, $name);
                 if ($close !== false) {
                     $tokens[] = ['raw', $end, $close];

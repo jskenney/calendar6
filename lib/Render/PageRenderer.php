@@ -201,7 +201,7 @@ final class PageRenderer
                 if (ContentFile::isPage($real)) {
                     // the source of a page, shown as code, still loses what this viewer may
                     // not see: raw page source never leaves the server (L-30, C-1)
-                    $source = $this->hideForSource($source, $owner);
+                    $source = $this->hideForSource($source, $owner, $real);
                 }
                 return htmlspecialchars($source, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
@@ -213,7 +213,28 @@ final class PageRenderer
     }
 
     /** A page's source with the blocks this viewer may not see removed (for <codeinject>). */
-    private function hideForSource(string $source, Place $place): string
+    private function hideForSource(string $source, Place $place, string $path): string
+    {
+        // Markdown code is set aside first, so a code sample can not hide what follows (L-69)
+        $codes = [];
+        if (preg_match('/\.md$/i', $path)) {
+            [$source, $codes] = Markdown::maskCode($source);
+        }
+        // until nothing changes, as render() does (L-61, L-69)
+        for ($round = 0; ; $round++) {
+            $before = $source;
+            $source = $this->hideForSourceOnce($source, $place);
+            if ($source === $before) {
+                break;
+            }
+            if ($round >= 8) {
+                self::failed();
+            }
+        }
+        return strtr($source, $codes);
+    }
+
+    private function hideForSourceOnce(string $source, Place $place): string
     {
         $source = self::stripComments($source); // a commented-out block is still hidden content
         $source = $this->postmeeting($source, $place);
@@ -475,8 +496,35 @@ final class PageRenderer
      */
     private static function valueTags(string $html, string $name, callable $fn): string
     {
-        $out = preg_replace_callback('/<' . $name . '\b[^>]*>|<\/' . $name . '\s*>/i', static fn (array $m): string => $m[0][1] === '/' ? '' : $fn($m[0]), $html);
-        return $out ?? self::failed();
+        $out = '';
+        $pos = 0;
+        foreach (self::findValueTags($html, $name) as [$start, $end, $closing]) {
+            $out .= substr($html, $pos, $start - $pos) . ($closing ? '' : $fn(substr($html, $start, $end - $start)));
+            $pos = $end;
+        }
+        return $out . substr($html, $pos);
+    }
+
+    /**
+     * The <name ...> and </name> tags of a value tag, each ending where a browser would end it
+     * (a ">" inside a quoted value does not end it, L-73). @return list<array{0: int, 1: int, 2: bool}>
+     */
+    private static function findValueTags(string $html, string $name): array
+    {
+        if (preg_match_all('/<\/?' . $name . '(?=[\t\n\f\r \/>]|$)/i', $html, $matches, PREG_OFFSET_CAPTURE) === false) {
+            self::failed();
+        }
+        $found = [];
+        $after = 0;
+        foreach ($matches[0] as [$text, $start]) {
+            if ($start < $after) {
+                continue; // inside the previous tag
+            }
+            $end = HtmlLexer::tagEnd($html, $start);
+            $found[] = [$start, $end, $text[1] === '/'];
+            $after = $end;
+        }
+        return $found;
     }
 
     /** Attributes where a value from a link may go (quoted only); href and src also check the scheme. */
@@ -494,19 +542,22 @@ final class PageRenderer
      */
     private static function urlTags(string $html, callable $fn): string
     {
-        if (preg_match_all('/<url\b[^>]*>/i', $html, $matches) === false) {
-            self::failed();
-        }
-        if ($matches[0] === []) {
-            return preg_replace('/<\/url\s*>/i', '', $html) ?? self::failed();
-        }
-        $tags = $matches[0];
+        $tags = [];
         $marker = 'cal6url' . bin2hex(random_bytes(6)) . 'n';
-        $counter = 0;
-        $marked = preg_replace_callback('/<url\b[^>]*>/i', static function () use ($marker, &$counter): string {
-            return $marker . ($counter++) . 'x';
-        }, $html) ?? self::failed();
-        $marked = preg_replace('/<\/url\s*>/i', '', $marked) ?? self::failed();
+        $marked = '';
+        $pos = 0;
+        foreach (self::findValueTags($html, 'url') as [$start, $end, $closing]) {
+            $marked .= substr($html, $pos, $start - $pos);
+            if (!$closing) {
+                $marked .= $marker . count($tags) . 'x';
+                $tags[] = substr($html, $start, $end - $start);
+            }
+            $pos = $end;
+        }
+        $marked .= substr($html, $pos);
+        if ($tags === []) {
+            return $marked;
+        }
         $allowed = [];
         $pos = 0;
         // the body of a textarea, title, noscript, ... is text in one reading and markup in the
@@ -797,11 +848,32 @@ final class PageRenderer
         $openings = [];
         $pos = 0;
         $skip = 0; // blocks nested deeper than MAX_BLOCK_DEPTH are dropped with their content (L-67)
+        $range = [-1, -1, -1];   // the bounded element (textarea, title, ...) being read: id, start, end
+        $ranges = [];            // for each open block, the bounded element it was opened in (-1: none)
+        $rangeCount = 0;
+        // a closing tag counts only where both readings see it: with bounded elements and
+        // without them (a <title> inside <svg> is markup, M-39)
+        $plainClosings = [];
+        foreach (HtmlLexer::scan($html, false) as $token) {
+            if ($token[0] === 'tag' && $token[4] && $token[3] === $tag) {
+                $plainClosings[$token[1]] = true;
+            }
+        }
         foreach (HtmlLexer::scan($html) as $token) {
+            if ($token[0] === 'bounded') {
+                $range = [$rangeCount++, $token[1], $token[2]];
+                continue;
+            }
             if ($token[0] !== 'tag' || $token[3] !== $tag) {
                 continue;
             }
             [, $start, $end, , $closing] = $token;
+            $in = $start >= $range[1] && $start < $range[2] ? $range[0] : -1;
+            // a closing tag inside a bounded element is text to a browser: it closes only a block
+            // opened inside the same element, never one opened outside it (M-39)
+            if ($closing && (!isset($plainClosings[$start]) || ($in >= 0 && $skip === 0 && (end($ranges) === false || end($ranges) !== $in)))) {
+                continue;
+            }
             if ($skip > 0) {
                 $skip += $closing ? -1 : 1;
                 $pos = $end;
@@ -815,9 +887,11 @@ final class PageRenderer
             }
             if (!$closing) {
                 $openings[] = substr($html, $start, $end - $start);
+                $ranges[] = $in;
                 $buffers[] = '';
             } elseif ($openings !== []) {
                 $inner = array_pop($buffers);
+                array_pop($ranges);
                 $buffers[count($buffers) - 1] .= $replace($inner, array_pop($openings));
             } else {
                 $buffers[count($buffers) - 1] .= substr($html, $start, $end - $start);

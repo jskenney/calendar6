@@ -129,7 +129,7 @@ final class Context
         }
         $hops = array_reverse(array_map('trim', explode(',', (string) ($this->server['HTTP_X_FORWARDED_FOR'] ?? ''))));
         foreach ($hops as $hop) {
-            if (filter_var($hop, FILTER_VALIDATE_IP) !== false && !in_array($hop, $this->config->trustedProxies, true)) {
+            if (filter_var($hop, FILTER_VALIDATE_IP) !== false && !self::isTrusted($hop, $this->config->trustedProxies)) {
                 return $hop;
             }
         }
@@ -145,7 +145,49 @@ final class Context
 
     private function fromTrustedProxy(): bool
     {
-        return in_array((string) ($this->server['REMOTE_ADDR'] ?? ''), $this->config->trustedProxies, true);
+        return self::isTrusted((string) ($this->server['REMOTE_ADDR'] ?? ''), $this->config->trustedProxies);
+    }
+
+    /** An IP address, or a CIDR range (10.0.0.0/8, 2001:db8::/32). */
+    public static function validProxy(string $proxy): bool
+    {
+        [$address, $bits] = array_pad(explode('/', $proxy, 2), 2, null);
+        $packed = @inet_pton((string) $address);
+        if ($packed === false) {
+            return false;
+        }
+        return $bits === null || (ctype_digit($bits) && (int) $bits <= strlen($packed) * 8);
+    }
+
+    /**
+     * Whether $address is one of $proxies (addresses compared in binary, so any spelling of an
+     * IPv6 address matches, and CIDR ranges work, L-76).
+     *
+     * @param list<string> $proxies
+     */
+    public static function isTrusted(string $address, array $proxies): bool
+    {
+        $packed = @inet_pton($address);
+        if ($packed === false) {
+            return false;
+        }
+        foreach ($proxies as $proxy) {
+            [$network, $bits] = array_pad(explode('/', $proxy, 2), 2, null);
+            $net = @inet_pton((string) $network);
+            if ($net === false || strlen($net) !== strlen($packed)) {
+                continue;
+            }
+            $bits = $bits === null ? strlen($net) * 8 : (int) $bits;
+            $bytes = intdiv($bits, 8);
+            if (substr($net, 0, $bytes) !== substr($packed, 0, $bytes)) {
+                continue;
+            }
+            $rest = $bits % 8;
+            if ($rest === 0 || ((ord($net[$bytes]) ^ ord($packed[$bytes])) & (0xFF << (8 - $rest)) & 0xFF) === 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function iso(?int $timestamp): ?string

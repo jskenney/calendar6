@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Cal6\Course;
 
 use Cal6\Access\Rules;
+use Cal6\Ini\IniLine;
 use Cal6\Access\Target;
 use Cal6\Content\ContentFile;
 use Cal6\Content\Scanner;
@@ -65,7 +66,18 @@ final class Course
         // default.ini has no sections: a line under a header such as [rules] is still a rule
         // (dropping it would publish what it hides), in file order, and the header is a
         // problem (M-33)
-        $course->rules = Rules::fromLines($default->lines, $default->label);
+        // an old-style line without "=" (lab 99 99 9999, exam never) hides its first word's
+        // target, as an unreadable time does (H-2): dropping it would publish what it hides (L-74)
+        $lines = $default->lines;
+        foreach ($default->unreadable as $bad) {
+            $target = preg_split('/\s+/', $bad->key, 2)[0] ?? '';
+            if ($target !== '') {
+                $lines[] = new IniLine($bad->section, $target, 'never', $bad->line);
+                $course->problems[] = new Problem("$target is hidden until line $bad->line is written as \"target = when\"", 'default.ini', $bad->line);
+            }
+        }
+        usort($lines, static fn (IniLine $a, IniLine $b): int => $a->line <=> $b->line);
+        $course->rules = Rules::fromLines($lines, $default->label);
         array_unshift($course->rules->problems, ...$default->problems);
         foreach ($default->sections() as $section) {
             if ($section !== '') {

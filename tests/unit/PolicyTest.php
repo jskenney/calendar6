@@ -56,6 +56,9 @@ INI;
     /** @param array<string, string|null> $extra */
     private function load(array $extra = []): Course
     {
+        if ($this->dir !== '') {
+            Fixture::remove($this->dir); // a test that loads twice leaves nothing behind (T-17)
+        }
         $this->dir = Fixture::course(array_merge(self::files(), $extra));
         return Course::load($this->dir);
     }
@@ -210,6 +213,14 @@ INI;
         ]);
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/report_01', self::now($course)), 'a file rule shaped like an event still matches its file (L-65)');
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'class_1/solution_1.2', self::now($course)));
+    }
+
+    public function testOldStyleLinesHideTheirTarget(): void
+    {
+        $course = $this->load(['config/default.ini' => "class = always\nlab\t99 99 9999\nexam never\n"]);
+        $now = self::now($course);
+        $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/index.html', $now), 'a line without "=" hides its target (L-74)');
+        $this->assertTrue(self::sees($course, Viewer::anonymous(), 'class_1/index.html', $now));
     }
 
     public function testOpensAndNextChange(): void

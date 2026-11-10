@@ -153,6 +153,47 @@ final class Markdown
         return $out;
     }
 
+    # The code of a Markdown source (fenced and indented blocks, `code spans`) swapped for markers
+    # of letters and digits, so hiding can read the rest as markup without a code sample such as
+    # `<a href="` swallowing the page (L-69).  Returns [masked text, marker => code].
+    public static function maskCode($text) {
+        $marker = 'cal6code' . bin2hex(random_bytes(6)) . 'n';
+        $codes = array();
+        $out = array();
+        $fence = '';
+        $codeAllowed = True;
+        $hold = function ($code) use ($marker, &$codes) {
+            $key = $marker . count($codes) . 'x';
+            $codes[$key] = $code;
+            return $key;
+        };
+        foreach (explode("\n", str_replace(array("\r\n", "\r"), "\n", $text)) as $line) {
+            if ($fence !== '') {
+                if (preg_match('/^ {0,3}' . preg_quote($fence[0], '/') . '{' . strlen($fence) . ',}\s*$/', $line)) {
+                    $fence = '';
+                }
+                $out[] = $hold($line);
+                continue;
+            }
+            if (preg_match('/^ {0,3}(`{3,}|~{3,})/', $line, $m)) {
+                $fence = $m[1];
+                $out[] = $hold($line);
+                continue;
+            }
+            $indented = strlen($line) - strlen(ltrim($line, " \t")) >= 4 || str_starts_with($line, "\t");
+            if ($indented && $codeAllowed && !preg_match('/^\s*<\/?(inst|lock|postmeeting|host|student)(\s|>|$)/i', $line)) {
+                $out[] = $hold($line);
+                continue;
+            }
+            $masked = preg_replace_callback('/(`+)(?!`)(.+?)(?<!`)\1(?!`)/', static function ($m) use ($hold) {
+                return $hold($m[0]);
+            }, $line);
+            $out[] = $masked === null ? $line : $masked;
+            $codeAllowed = trim($line) === '' || ($indented && $codeAllowed);
+        }
+        return array(implode("\n", $out), $codes);
+    }
+
     # A hidden block's tag (<inst>, <lock>, <postmeeting>, <host>, <student>) on its own line is
     # HTML however far it is indented, never code (L-42): an indented <inst> hides its content.
     private function isHiddenTag($line) {
@@ -179,7 +220,8 @@ final class Markdown
     # Clean a link/image destination.  Relative paths are URL-decoded so that
     # they match the file names Cal4 rewrites (for example "my%20pic.png").
     private function destination($url) {
-        $url = trim($url);
+        # a hidden block written in a link's destination is removed with its content (L-70)
+        $url = trim($this->withoutHiddenBlocks($this->restore($url)));
         if (strlen($url) > 1 && $url[0] === '<' && substr($url, -1) === '>') {
             $url = substr($url, 1, -1);
         }
@@ -589,7 +631,8 @@ final class Markdown
 
     private function inline($text) {
         # 1. Code spans
-        $text = $this->orUnchanged($text, preg_replace_callback('/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/s', function ($m) {
+        # (code spans and math fail closed: unprocessed, their text would be read as HTML, L-71)
+        $text = $this->orFail(preg_replace_callback('/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/s', function ($m) {
             $code = $m[2];
             if (strlen($code) > 2 && $code[0] === ' ' && substr($code, -1) === ' ' && trim($code) !== '') {
                 $code = substr($code, 1, -1);
@@ -598,7 +641,7 @@ final class Markdown
         }, $text));
 
         # 2. Math for MathJax: keep exactly as written (only HTML-escape it)
-        $text = $this->orUnchanged($text, preg_replace_callback('/\$\$.+?\$\$|\\\\\(.+?\\\\\)|\\\\\[.+?\\\\\]/s', function ($m) {
+        $text = $this->orFail(preg_replace_callback('/\$\$.+?\$\$|\\\\\(.+?\\\\\)|\\\\\[.+?\\\\\]/s', function ($m) {
             return $this->hold($this->escText($m[0]));
         }, $text));
 

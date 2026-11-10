@@ -170,7 +170,14 @@ final class CourseConfig
                 $config->problems[] = new Problem("[users] login_attempts: \"$attempts\" is not like \"5 per 15m\" with at least 1 attempt and 1 minute (the default is kept)", 'config.ini');
             }
         }
-        $config->trustedProxies = array_values(array_filter(array_map('trim', explode(',', (string) $ini->get('server', 'trusted_proxies', ''))), static fn (string $p): bool => $p !== ''));
+        // addresses or CIDR ranges; anything else never matches, so it is a problem (L-76)
+        foreach (array_filter(array_map('trim', explode(',', (string) $ini->get('server', 'trusted_proxies', ''))), static fn (string $p): bool => $p !== '') as $proxy) {
+            if (\Cal6\Http\Context::validProxy($proxy)) {
+                $config->trustedProxies[] = $proxy;
+            } else {
+                $config->problems[] = new Problem("[server] trusted_proxies: \"$proxy\" is not an IP address or CIDR range (ignored)", 'config.ini');
+            }
+        }
         foreach ($ini->section('replace') as $line) {
             $config->replace[$line->key] = $line->value;
         }

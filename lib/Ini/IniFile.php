@@ -23,6 +23,8 @@ final class IniFile
     public array $lines = [];
     /** @var list<Problem> */
     public array $problems = [];
+    /** @var list<IniLine> lines without "key = value" (the whole line as key), for fail-closed readers */
+    public array $unreadable = [];
     public bool $exists = true;
     public bool $readable = true;
 
@@ -67,6 +69,7 @@ final class IniFile
             $equals = strpos($line, '=');
             if ($equals === false || trim(substr($line, 0, $equals)) === '') {
                 $file->problems[] = new Problem('expected "key = value": ' . $line, $label, $number);
+                $file->unreadable[] = new IniLine($section, $line, '', $number);
                 continue;
             }
             $file->lines[] = new IniLine($section, trim(substr($line, 0, $equals)), trim(substr($line, $equals + 1)), $number);

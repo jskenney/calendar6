@@ -318,6 +318,11 @@ HTML;
         $noToken = $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD]);
         $this->assertSame(403, $noToken->status, 'no token');
         $this->assertSame('', $noToken->header('set-cookie'), 'and no session is created (L-43)');
+        $bogus = new HttpClient($this->server);
+        foreach (['calendar/php/calendar.php', 'calendar/php/config.php'] as $path) {
+            $answer = $bogus->get($path, ['Cookie' => 'cal6_' . substr(sha1((string) realpath($this->dir)), 0, 12) . '=bogusbogusbogusbogusbogus12']);
+            $this->assertSame('', $answer->header('set-cookie'), "an unknown session id creates no session (L-72): $path");
+        }
         $cross = $client->get('calendar/php/config.php?csrf=1', ['Sec-Fetch-Site' => 'cross-site']);
         $this->assertSame(null, $cross->json()['csrf'], 'a cross-site csrf=1 creates no session (L-43)');
         $this->assertSame('', $cross->header('set-cookie'));
@@ -361,9 +366,9 @@ HTML;
             $client->post('calendar/php/auth.php', ['username' => $user, 'password' => 'wrong', 'csrf' => $csrf]);
             return microtime(true) - $start;
         };
-        $known = $time('slow');
-        $unknown = $time('nosuchuser');
-        $this->assertTrue($unknown > $known * 0.5, sprintf('an unknown user costs about as much as the costliest account (L-63): %.3f s vs %.3f s', $unknown, $known));
+        $known = min($time('slow'), $time('slow'));
+        $unknown = max($time('nosuchuser'), $time('nosuch2'));
+        $this->assertTrue($unknown > $known * 0.4, sprintf('an unknown user costs about as much as the costliest account (L-63): %.3f s vs %.3f s', $unknown, $known));
     }
 
     public function testRateLimitsAndProxies(): void

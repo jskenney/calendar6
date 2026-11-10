@@ -525,6 +525,34 @@ final class RendererTest extends TestCase
         $this->assertTrue(microtime(true) - $start < 3.0, 'deep nesting that is kept stays fast (L-67)');
     }
 
+    public function testClosingTagsCountOnlyWhereBothReadingsSeeThem(): void
+    {
+        $cases = [
+            'textarea' => '<p>Q1</p><inst>Answer: write <textarea>the closing tag </inst> here</textarea> S1</inst><p>end</p>',
+            'title' => '<inst><title>x</inst></title>S2</inst>',
+            'svg' => '<inst><svg><title><a x="</title></inst>">S3</inst>',
+            'bogus' => '<inst>A </1 </inst> > S4 </inst><p>pub</p>',
+            'endattr' => '<inst>A</x y="></inst>">B S5</inst><p>pub</p>',
+            'replace' => '<replace value="><inst>S6</inst>">',
+            'codeinject' => '<codeinject src="m.md"><codeinject src="f.html">',
+        ];
+        $files = [
+            'config/default.ini' => "class_1 = always\n",
+            'class/01.Introduction/m.md' => "Start a link with `<a href=\"` and close it.\n\n<inst>\nS7\n</inst>\n\n[f](https://forms.example.com/f?k=<inst>S8</inst>)\n",
+            'class/01.Introduction/f.html' => 'A<<inst>x</inst>inst>S9</inst>',
+        ];
+        foreach ($cases as $name => $html) {
+            $files["class/01.Introduction/$name.html"] = $html;
+        }
+        $course = $this->course($files);
+        foreach ($cases as $name => $html) {
+            $page = $this->render($course, "class_1/$name.html");
+            $this->assertSame(0, preg_match('/S[1-9]\b/', $page), "hidden (M-39, L-68, L-69, L-73): $name: $page");
+        }
+        $this->assertSame(0, preg_match('/S[78]\b/', $this->render($course, 'class_1/m.md')), 'Markdown destinations (L-70)');
+        $this->assertContains('&lt;a href=&quot;', $this->render($course, 'class_1/codeinject.html'), 'the code sample is shown');
+    }
+
     public function testExtremeInputStaysFastAndSmall(): void
     {
         $course = $this->course([
