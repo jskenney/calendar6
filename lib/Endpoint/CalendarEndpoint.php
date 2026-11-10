@@ -12,7 +12,7 @@ use Cal6\Http\Session;
 
 /**
  * calendar.php: everything this viewer may see, cached per viewer while the
- * course is unchanged and until the answer's next_change.  Instructors may ask
+ * course is unchanged and until the next moment a rule changes it (not sent: E-10).  Instructors may ask
  * for another viewer (as=anonymous | as=<username>) or another moment
  * (at=YYYY-MM-DD HH:MM); those previews are never cached.
  */

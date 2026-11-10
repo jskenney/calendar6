@@ -65,7 +65,9 @@ final class EndpointsTest extends TestCase
             }
         }
         foreach ($calendar['pages'] ?? [] as $name => $page) {
-            $keys["page/$name"] = $page['key'];
+            if (isset($page['key'])) {
+                $keys["page/$name"] = $page['key'];
+            }
         }
         return $keys;
     }
@@ -109,13 +111,14 @@ final class EndpointsTest extends TestCase
         $this->assertFalse(isset($keys['lab_1/lab-solution.html']));
         $this->assertFalse(isset($data['events']['exam_2']), 'events on no day are left out');
         $this->assertSame('Third', $data['events']['class_3']['title'] ?? 'x', 'the title is always shown, even with nothing visible');
-        $this->assertSame(['class_1'], $data['days'][0]['events'] ?? null);
+        $this->assertSame([['event' => 'class_1', 'type' => 'class', 'number' => 1, 'title' => 'Introduction']], $data['days']['2026-08-24'] ?? null, 'days by date: the events on each');
         $first = $data['events']['class_1']['boxes'][0] ?? [];
         $this->assertSame(['box', 'filename', 'key', 'kind'], array_keys($first), 'one item per file: box, filename, key, kind (no size)');
         $this->assertSame(['title', 'index.html', 'html'], [$first['box'], $first['filename'], $first['kind']]);
-        $this->assertSame(['home', 'policy'], array_keys($data['pages']), 'pages by name');
+        $this->assertSame(['home', 'resources', 'policy'], array_keys($data['pages']), 'pages by name');
+        $this->assertSame(['title' => 'Resources'], $data['pages']['resources'], 'page/resources = never: its title only');
         $this->assertSame(['title', 'key', 'filename', 'kind'], array_keys($data['pages']['home']));
-        $this->assertSame(['class', 1, 'Introduction'], [$data['days'][0]['type'] ?? null, $data['days'][0]['number'] ?? null, $data['days'][0]['title'] ?? null], 'a day carries its event\'s type, number and title');
+        $this->assertFalse(isset($data['next_change']), 'no next_change (E-10)');
         $this->assertFalse(isset($data['events']['class_1']['start']), 'no times without a section');
         $this->assertNotContains('"opens"', $anon->body, 'no hints for anonymous viewers');
         $this->assertNotContains('"visible"', $anon->body);
@@ -429,12 +432,13 @@ HTML;
     {
         $hash = password_hash(Fixture::PASSWORD, PASSWORD_DEFAULT);
         $client = $this->start([
-            'config/default.ini' => "class = always\nclass/slides = 2099-01-01 08:00\nclass/instructor = never\n",
+            'config/default.ini' => "class = always\nclass/slides = 2099-01-01 08:00\nclass/instructor = never\npage/policy = 2099-01-01 08:00\n",
             'class/01.Introduction/slides.pdf' => 'PDF',
             'config/auth/ta.ini' => "password_hash = $hash\nvalid = always\n[grants]\nclass_1/slides.pdf = always\n",
         ]);
         $anon = $client->get('calendar/php/calendar.php');
         $this->assertNotContains('slides.pdf', $anon->body, 'anonymous viewers do not see it');
+        $this->assertSame(['title' => 'Syllabus'], $anon->json()['pages']['policy'] ?? null, 'a hidden page: its title only');
         $this->assertNotContains('"opens"', $anon->body, 'and get no hint of when it opens');
 
         $this->login($client, 'ta');
@@ -444,12 +448,15 @@ HTML;
         $this->assertSame('2099-01-01T08:00:00-05:00', $ta['opens'] ?? null, 'and the event says its earliest opening');
         $index = array_values(array_filter($ta['boxes'], static fn (array $b): bool => $b['filename'] === 'index.html'))[0] ?? [];
         $this->assertFalse(isset($index['opens']) || isset($index['visible']), 'nothing extra on what students already see');
+        $this->assertSame(['title' => 'Syllabus'], $client->get('calendar/php/calendar.php')->json()['pages']['policy'] ?? null, 'a page hidden from this user too: its title only');
 
         $this->login($client);
         $prof = $client->get('calendar/php/calendar.php')->json()['events']['class_1'] ?? [];
         $instructor = array_values(array_filter($prof['boxes'], static fn (array $b): bool => $b['box'] === 'instructor'))[0] ?? [];
         $this->assertSame(false, $instructor['visible'] ?? null, 'instructors see what is hidden');
         $this->assertFalse(isset($instructor['opens']), '"never" has no opening');
+        $policy = $client->get('calendar/php/calendar.php')->json()['pages']['policy'] ?? [];
+        $this->assertSame([false, '2099-01-01T08:00:00-05:00'], [$policy['visible'] ?? null, $policy['opens'] ?? null], 'pages carry the same hints');
     }
 
     public function testSectionTimes(): void
@@ -471,13 +478,16 @@ HTML;
         $this->assertSame(['10:45', '11:35', 'HP132', 'JONES'], [$posted['events']['class_1']['start'] ?? null, $posted['events']['class_1']['end'] ?? null, $posted['events']['class_1']['room'] ?? null, $posted['events']['class_1']['instructor'] ?? null], 'section by POST');
         $this->assertSame(404, $client->get('calendar/php/calendar.php?section=9999')->status, 'an unknown section');
 
-        $day = array_values(array_filter($data['days'], static fn (array $d): bool => $d['date'] === '2026-08-28'))[0] ?? [];
-        $this->assertFalse(isset($day['as']), 'a day given another type is not "as" anything');
-        $this->assertSame('lab day', $day['label'] ?? null);
-        $this->assertSame('lab', $day['type'] ?? null);
-        $this->assertSame(1, preg_match('/^lab_\d+$/', $day['events'][0] ?? ''));
-        $this->assertSame(count($data['days']), count(array_unique(array_column($data['days'], 'date'))));
-        $this->assertSame('2026-12-18', end($data['days'])['date'], 'every day of the semester');
+        $day = $data['days']['2026-08-28'] ?? [];
+        $this->assertSame(['event' => '', 'title' => '', 'label' => 'lab day'], $day[0] ?? null, 'a day given another type: its label, no weekday or holiday');
+        $this->assertSame('lab', $day[1]['type'] ?? null);
+        $this->assertSame(1, preg_match('/^lab_\d+$/', $day[1]['event'] ?? ''));
+        $this->assertFalse(isset($day[1]['start']), 'and no times: section 1121 meets for no lab');
+        $this->assertSame(['event' => 'class_1', 'type' => 'class', 'number' => 1, 'title' => 'Introduction', 'start' => '07:45', 'end' => '08:35', 'period' => '1', 'instructor' => 'SMITH', 'room' => 'HP111'], $data['days']['2026-08-24'][0] ?? null, 'a day\'s items carry the section\'s times');
+        $this->assertSame('1121', $one['section'] ?? null, 'and so does the event, with the section');
+        $this->assertSame([], $data['days']['2026-08-27'] ?? null, 'a day with nothing on it');
+        $this->assertSame(117, count($data['days']), 'every day of the semester');
+        $this->assertSame('2026-12-18', array_key_last($data['days']));
     }
 
     public function testNotesComeBackAsText(): void
@@ -538,7 +548,7 @@ HTML;
             'class/01.Introduction/index.html' => '<img src="img/pic.png"><lock code="sesame">LOCKED</lock>',
         ]);
         $data = $client->get('calendar/php/calendar.php')->json();
-        $this->assertSame(['class_1@2026-08-25'], $data['days'][1]['events'] ?? null, 'a "same" repeat on day two (T-4)');
+        $this->assertSame(['class_1@2026-08-25'], array_column($data['days']['2026-08-25'] ?? [], 'event'), 'a "same" repeat on day two (T-4)');
         $repeat = $data['events']['class_1@2026-08-25'] ?? [];
         $this->assertSame(1, $repeat['number'] ?? null);
         $this->assertSame('same', $repeat['mode'] ?? null);
@@ -589,6 +599,9 @@ HTML;
             ['date' => '2026-11-26', 'events' => [], 'as' => 'holiday', 'label' => 'Thanksgiving'],
             ['date' => '2026-11-27', 'events' => [], 'as' => 'holiday', 'label' => 'Thanksgiving'],
         ], $data['days'] ?? null, 'the days of dates.ini (T-6)');
+        $days = $client->get('calendar/php/calendar.php')->json()['days'] ?? [];
+        $this->assertSame([['event' => '', 'title' => 'holiday', 'label' => 'Labor Day']], $days['2026-09-07'] ?? null, 'calendar.php: a holiday is an item with no event');
+        $this->assertSame(['event' => '', 'title' => 'mon', 'label' => 'Monday schedule'], $days['2026-10-13'][0] ?? null, 'another weekday');
         $this->assertSame('normal', $data['period'] ?? null);
         $this->assertSame(['label' => '2 Hour Delay', 'times' => ['1' => '09:45-10:35', '2' => '10:45-11:35', '3' => '12:45-13:35', '4' => '13:45-14:35', '5' => '14:45-15:35', '6' => '15:45-16:35', '7' => '16:45-17:35', '8' => '09:45-11:00', '9' => '12:45-14:00', '10' => '14:45-16:00']], $data['periods']['2_hour_delay'] ?? null);
         $this->assertSame([

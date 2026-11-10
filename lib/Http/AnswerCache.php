@@ -6,8 +6,8 @@ namespace Cal6\Http;
 
 /**
  * calendar.php's answers, one per viewer (all anonymous viewers share one).  An
- * answer is reused while the course is unchanged (Fingerprint) and until its
- * next_change, the earliest moment at which a rule, grant, window or the lockdown
+ * answer is reused while the course is unchanged (Fingerprint) and until the
+ * earliest moment at which a rule, grant, window or the lockdown
  * changes what that viewer sees.  Only a speed-up: deleting it is always safe.
  */
 final class AnswerCache

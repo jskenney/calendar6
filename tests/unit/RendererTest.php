@@ -799,7 +799,9 @@ final class RendererTest extends TestCase
         foreach (['deep.html', 'ends.html'] as $file) {
             $start = microtime(true);
             $this->render($course, "class_1/$file");
-            $this->assertTrue(microtime(true) - $start < 3.0, "$file renders quickly (L-115, L-116)");
+            // linear but not instant (ends.html: ~3 s on a slow machine); the quadratic walks this
+            // guards against took 18 s and more (T-26)
+            $this->assertTrue(microtime(true) - $start < 10.0, "$file renders quickly (L-115, L-116)");
         }
     }
 

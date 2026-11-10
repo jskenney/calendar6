@@ -16,7 +16,7 @@ A running list of code and security findings for the whole project, and their hi
 1. No critical, high, medium, low, documentation or testing items are open (after six cleanup
    cycles, reviews 15 to 20). A further independent review would show whether the last fixes
    (`48b57b1`) hold.
-2. The owner is reviewing the shape of `calendar.php`'s answer (lists for menus, what anonymous viewers learn).
+2. The owner is reviewing the shape of `calendar.php`'s answer (days by date, titles for everyone, section times; E-10 for change signals).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
@@ -52,6 +52,7 @@ None open.
 | E-4 | 1 | `lib/` | No access or login log (Calendar 4 had one, with secrets removed). | Log logins, failed logins and lock-code attempts outside the web root. |
 | E-5 | 1 | `bin/` | `DESIGN.md` mentions `bin/cal6 check`; there is no command-line tool (problems, overridden lines, a check that material can not be fetched directly, `user add`). | Add `bin/cal6` with `check` and `user add`. |
 | E-7 | 1 | `calendar.php` | Instructors get `problems` in JSON but nothing shows them yet. | A status view in the front end. |
+| E-10 | owner | `calendar.php` | `next_change` was removed from the answer (owner): a browser that trusted it would keep an old answer when the instructor edits material before then (say, notes students should not have seen). The server's own cache is safe (the fingerprint changes with any edit), but the front end has no way to know when to reload. | A cheap change signal for the front end: an `ETag`/`If-None-Match` poll (already answered with 304), a short polling interval, or a version number in `config.php`. |
 | E-9 | 19 | `PageRenderer` links | Relative URLs in CSS (`style="background:url(x.png)"`, `url()` in `<style>`) are not rewritten. | Rewrite them, or say so in DESIGN. |
 
 ## Fixed items
@@ -286,6 +287,7 @@ None open.
 | T-22 | 17 | `2d76311` | No tests for box assets against file-name rules, deep svg speed, many scripts in textareas with `<url>`, `<svg / >`, `</svg>` inside foreignObject HTML, block tags in attribute position. | Tests with the fixes. |
 | T-23 | 18 | `6d36770` | No tests for the textarea starter-code page, unmatched rule targets and `type/file`, block tags in tag names and end tags, the namespace sync cases, encoded `srcdoc`, `<url default>` in attributes, depth in attribute position, many end tags in foreign content. | Tests with the fixes. |
 | T-24 | 19 | `717f821` | No tests for same-name tags with a missing `>`, numeric `srcdoc` entities, comments/quotes in attribute values, script in a textarea before a block, deep svg end tags, grants for missing events, nested lock codes, attribute openings in skipped content, the added link elements. | Tests with the fixes. |
+| T-26 | dev | (this commit) | `ends.html renders quickly` (L-115/L-116) failed on a slower container: 3.8 s against a 3 s limit. Measured linear (20k → 160k end tags: 0.9 → 6.1 s), so not a regression. | The limit is 10 s, still far under the quadratic walks it guards against (18 s and more). |
 | T-25 | 20 | `48b57b1` | No tests for opening nested locks in turn, zero-padded and surrogate references in `srcdoc`, limits above 200, the device cookie after a password change, repeated headings. | Tests with the fixes. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |

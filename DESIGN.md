@@ -544,26 +544,32 @@ For instructors only (ignored otherwise):
 
 **Output:** every day of the semester, the events on them, and for each event the box files and
 notes the viewer may see, with their keys. Files the viewer may not see are left out entirely.
+There is no `next_change` (E-10): an instructor's edit can change the answer at any moment.
 
 ```json
 {
   "generated":   "2026-11-09T14:05:00-05:00",
-  "next_change": "2026-11-10T08:00:00-05:00",
   "viewer":      {"user": null, "instructor": false},
   "section":     "1121",
-  "pages":  {"policy": {"title": "Policy", "key": "p7Kq2", "filename": "policy.html", "kind": "html"}},
-  "days": [
-    {"date": "2026-11-09", "events": ["class_30", "lab_10"],
-     "items": [{"event": "class_30", "type": "class", "number": 30, "title": "Sessions and Cookies"},
-               {"event": "lab_10", "type": "lab", "number": 10, "title": "Cookies"}]},
-    {"date": "2026-11-10", "label": "lab day", "events": ["lab_11"], "type": "lab", "number": 11, "title": "Forms"},
-    {"date": "2026-11-11", "events": ["class_5@2026-11-11"], "type": "class", "number": 5, "title": "Forms"},
-    {"date": "2026-11-26", "as": "holiday", "label": "Thanksgiving", "events": []}
-  ],
+  "pages":  {"home":   {"title": "Home", "key": "h3Lm8", "filename": "home.html", "kind": "html"},
+             "policy": {"title": "Syllabus"}},
+  "days": {
+    "2026-11-09": [{"event": "class_30", "type": "class", "number": 30, "title": "Sessions and Cookies",
+                    "start": "07:45", "end": "08:35", "period": "1", "instructor": "SMITH", "room": "HP111"},
+                   {"event": "lab_10", "type": "lab", "number": 10, "title": "Cookies"}],
+    "2026-11-10": [{"event": "", "title": "", "label": "lab day"},
+                   {"event": "lab_11", "type": "lab", "number": 11, "title": "Forms"}],
+    "2026-11-11": [{"event": "", "title": "holiday", "label": "Veterans Day"}],
+    "2026-11-12": [],
+    "2026-12-03": [{"event": "", "title": "", "label": "2-hour delay (snow)", "schedule": "2_hour_delay"},
+                   {"event": "class_35", "type": "class", "number": 35, "title": "Review",
+                    "start": "09:45", "end": "10:35", "period": "1", "instructor": "SMITH", "room": "HP111"}]
+  },
   "events": {
     "class_30": {
       "type": "class", "number": 30, "title": "Sessions and Cookies", "date": "2026-11-09",
       "start": "07:45", "end": "08:35", "period": "1", "instructor": "SMITH", "room": "HP111",
+      "section": "1121",
       "boxes": [
         {"box": "title",    "filename": "index.html",    "key": "a1Xc9", "kind": "html"},
         {"box": "homework", "filename": "homework.html", "key": "b4Rt0", "kind": "html"},
@@ -571,21 +577,24 @@ notes the viewer may see, with their keys. Files the viewer may not see are left
       ],
       "notes": [{"filename": "notes.txt", "text": "The class meets in the auditorium today."}]
     },
-    "lab_10": {"type": "lab", "number": 10, "title": "Cookies", "date": "2026-11-09", "boxes": []},
-    "class_5@2026-11-11": {"type": "class", "number": 5, "title": "Forms", "date": "2026-11-11",
-                "boxes": [], "copy_of": "class_5", "mode": "same"}
+    "lab_10": {"type": "lab", "number": 10, "title": "Cookies", "date": "2026-11-09", "boxes": []}
   }
 }
 ```
 
-- `days`: every day from the semester's start to its end. `as` says what the day is instead of
-  its own weekday: `holiday`, `none`, or another weekday (`mon`); a `dates.ini` line that only
-  gives the day another type (`2026-11-10 = lab | lab day`) has no `as`, just its `label` and
-  events. `period` appears when the day keeps another period schedule. A day with one shown
-  event repeats its `type`, `number` and `title`; a day with several lists them in `items`.
-- `title`: always shown, to everyone, even for an event with nothing visible yet (Decided).
+- `days`: every day from the semester's start to its end, by date, each a list (empty when
+  nothing happens). When `dates.ini` says something about the day, the first item has `"event":
+  ""`: its `title` is what the day is instead of its own weekday (`holiday`, `none`, or another
+  weekday such as `mon`; empty when the line only gives the day another type, like
+  `2026-11-10 = lab | lab day`), with its `label` and, for another period schedule, `schedule`.
+  Then one item per shown event: `event` (its id in `events`), `type`, `number`, `title`, and with
+  `section` that section's `start`, `end`, `period`, `instructor` and `room`.
+- `title`: always shown, to everyone, even for an event with nothing visible yet (Decided); its
+  `boxes` are then empty. With `section`, an event the section meets for also carries the
+  times, `period`, `instructor`, `room` and `section`.
 - `pages`: the `paths.ini` pages by name, each with its title, key, file name and kind; a page
-  hidden by a rule (`page/policy = never`) is left out.
+  hidden by a rule (`page/policy = never`) gives its title only. Logged-on viewers get the same
+  hints on pages as on files.
 - `boxes`: one item per visible file, in the order of `config.php`'s `boxes`; `kind` says which
   script serves it: `html` → `html.php`, `get` → `get.php`. **There is no list of an event's
   other files** (Decided, E-8): `calendar.php` lists only the files `config.ini` names for boxes,
@@ -618,7 +627,7 @@ notes the viewer may see, with their keys. Files the viewer may not see are left
    directories, the event directories and the real files of `virtual.ini` (adding, removing or
    renaming a file changes its directory's time; boxes depend only on names).
 2. **The answer per viewer** is stored too: one answer shared by all anonymous viewers, one per
-   user. It stays valid until `next_change`, the earliest moment at which any rule, grant,
+   user. It stays valid until the earliest moment at which any rule, grant,
    window or lockdown changes what that viewer sees, or until the course model changes. So most
    requests are one `stat()` sweep and one file read.
 3. **HTTP:** `ETag` (a hash of the answer) and `Cache-Control: private, no-cache`; the browser
@@ -1161,7 +1170,8 @@ Choices the code made where the design left room (change them here if they are w
   modification times of everything in it except `calendar/`, following links only while they
   stay inside) with the software's version (a hash of the contents of its `lib/` and `php/`
   files, so an update never serves what older code built). It keys two caches: the built course model (shared by every endpoint, signed with the course secret) and
-  `calendar.php`'s answer per viewer (valid until `next_change`). Both live in
+  `calendar.php`'s answer per viewer (valid until the next moment a rule changes it; that moment
+  is not sent, E-10). Both live in
   `<temp>/cal6-<uid>-<hash of course path>/`, used only when that directory is ours and closed
   to others.
 - **Calendar:** event numbers follow the calendar slots; when a type runs out of directories its

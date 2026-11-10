@@ -50,10 +50,12 @@ final class CalendarJson
             $place = $this->course->places[$key];
             $decision = $policy->decide($viewer, $place, $now);
             $this->note($decision->nextChange);
+            // the title is always shown, to everyone (Decided); the rest only when visible
+            $page = ['title' => $this->course->config->pages[$name]['label']];
             if ($decision->visible) {
-                $pages[$name] = ['title' => $this->course->config->pages[$name]['label'], 'key' => $key,
-                    'filename' => basename($place->file->name), 'kind' => $kind($place)];
+                $page += ['key' => $key, 'filename' => basename($place->file->name), 'kind' => $kind($place)] + $this->hint($policy, $place, $now, $loggedOn);
             }
+            $pages[$name] = $page;
         }
 
         $notesBoxes = array_column(array_filter($this->course->config->boxes, static fn (array $b): bool => $b['notes'] ?? false), 'box');
@@ -82,17 +84,9 @@ final class CalendarJson
                 if (!$decision->visible) {
                     continue;
                 }
-                $item = [];
-                if ($loggedOn) {
-                    $anonymous = $policy->decide(Viewer::anonymous(), $place, $now);
-                    if (!$anonymous->visible) {
-                        // not yet visible to students: when it opens (nothing for "never")
-                        $item['visible'] = false;
-                        if ($anonymous->opens !== null) {
-                            $item['opens'] = $this->c->iso($anonymous->opens);
-                            $opens = Policy::min($opens, $anonymous->opens);
-                        }
-                    }
+                $item = $this->hint($policy, $place, $now, $loggedOn);
+                if (isset($item['opens'])) {
+                    $opens = Policy::min($opens, $policy->decide(Viewer::anonymous(), $place, $now)->opens);
                 }
                 if (in_array($place->box, $notesBoxes, true)) {
                     // a notes file: its text, not a key (short remarks; nothing to serve)
@@ -105,7 +99,7 @@ final class CalendarJson
             // the title is always shown, to everyone (Decided)
             $entry = ['type' => $event->type, 'number' => $event->number, 'title' => $event->title(), 'date' => $event->date];
             if ($section !== null && ($times = $this->sectionTimes($section, $event)) !== null) {
-                $entry += $times;
+                $entry += $times + ['section' => $section];
             }
             $entry['boxes'] = $boxes;
             if ($notes !== []) {
@@ -124,42 +118,52 @@ final class CalendarJson
             $events[$event->id] = $entry;
         }
 
+        // every day of the semester, by date: a marker for what dates.ini says about the day (a
+        // holiday, another weekday, a label, another period schedule), then its shown events
         $days = [];
         foreach ($this->course->days as $day) {
-            $item = ['date' => $day->key()];
-            // "as": what the day is instead of its own weekday (holiday, none, or another weekday)
+            $items = [];
+            $marker = [];
             if ($day->kind !== null) {
-                $item['as'] = $day->kind;
+                $marker['title'] = $day->kind;
             } elseif ($day->weekday !== (int) $day->date->format('N')) {
-                $item['as'] = $names[$day->weekday];
-            }
-            if ($day->period !== $this->course->config->defaultPeriod) {
-                $item['period'] = $day->period;
+                $marker['title'] = $names[$day->weekday];
             }
             if ($day->label !== null) {
-                $item['label'] = $day->label;
+                $marker['label'] = $day->label;
             }
-            $item['events'] = $day->events;
-            $shown = array_values(array_filter($day->events, static fn (string $id): bool => isset($events[$id])));
-            if (count($shown) === 1) {
-                $one = $events[$shown[0]];
-                $item += ['type' => $one['type'], 'number' => $one['number'], 'title' => $one['title']];
-            } elseif (count($shown) > 1) {
-                $item['items'] = array_map(static fn (string $id): array => ['event' => $id, 'type' => $events[$id]['type'], 'number' => $events[$id]['number'], 'title' => $events[$id]['title']], $shown);
+            if ($day->period !== $this->course->config->defaultPeriod) {
+                $marker['schedule'] = $day->period;
             }
-            $days[] = $item;
+            if ($marker !== []) {
+                $items[] = ['event' => '', 'title' => $marker['title'] ?? ''] + $marker;
+            }
+            foreach ($day->events as $id) {
+                if (!isset($events[$id])) {
+                    continue;
+                }
+                $one = $events[$id];
+                $item = ['event' => $id, 'type' => $one['type'], 'number' => $one['number'], 'title' => $one['title']];
+                foreach (['start', 'end', 'period', 'instructor', 'room'] as $field) {
+                    if (array_key_exists($field, $one)) {
+                        $item[$field] = $one[$field];
+                    }
+                }
+                $items[] = $item;
+            }
+            $days[$day->key()] = $items;
         }
 
         $this->note($viewer->user !== null ? $viewer->validUntil($now, $this->course->config->zone) : null);
         $out = [
+            // no next_change: the answer may change before it (an instructor edits a file), E-10
             'generated' => $this->c->iso($now),
-            'next_change' => $this->c->iso($this->nextChange),
             'viewer' => ['user' => $viewer->user, 'instructor' => $instructor],
         ];
         if ($section !== null) {
             $out['section'] = $section;
         }
-        $out += ['pages' => (object) $pages, 'days' => $days, 'events' => (object) $events];
+        $out += ['pages' => (object) $pages, 'days' => (object) $days, 'events' => (object) $events];
         if ($instructor) {
             $out['problems'] = array_map(static fn ($p): array => $p->toArray(), $this->course->problems);
         }
@@ -193,6 +197,24 @@ final class CalendarJson
             ];
         }
         return null;
+    }
+
+    /**
+     * For a logged-on viewer, on what students may not see yet: "visible": false, and when it
+     * opens (nothing for "never"). Anonymous viewers get no hints at all (Decided).
+     *
+     * @return array{visible?: false, opens?: string}
+     */
+    private function hint(Policy $policy, Place $place, int $now, bool $loggedOn): array
+    {
+        if (!$loggedOn) {
+            return [];
+        }
+        $anonymous = $policy->decide(Viewer::anonymous(), $place, $now);
+        if ($anonymous->visible) {
+            return [];
+        }
+        return ['visible' => false] + ($anonymous->opens !== null ? ['opens' => $this->c->iso($anonymous->opens)] : []);
     }
 
     private function note(?int $moment): void

@@ -56,10 +56,10 @@ final class TimeTest extends TestCase
         $client = $this->start(['config/default.ini' => "lab/lab-solution = 2026-09-02 17:00\n"], '2026-09-02 16:59');
         $before = $client->get('calendar/php/calendar.php')->json();
         $this->assertFalse(self::hasFile($before, 'lab_1', 'lab-solution.html'), 'not yet');
-        $this->assertSame('2026-09-02T17:00:00-04:00', $before['next_change'] ?? null);
+        $this->assertFalse(isset($before['next_change']), 'not sent (E-10)');
         $this->assertFalse(self::hasFile($client->get('calendar/php/calendar.php')->json(), 'lab_1', 'lab-solution.html'), 'cached');
         $this->at('2026-09-02 17:00');
-        $this->assertTrue(self::hasFile($client->get('calendar/php/calendar.php')->json(), 'lab_1', 'lab-solution.html'), 'the cached answer expires at next_change');
+        $this->assertTrue(self::hasFile($client->get('calendar/php/calendar.php')->json(), 'lab_1', 'lab-solution.html'), 'the cached answer expires when the next rule changes');
     }
 
     public function testPostmeetingOpensWhenTheLastSectionEnds(): void
