@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **L-101..L-106**, **T-21** (cleanup cycle 2).
+1. Review 17 (cleanup cycle 3) is in progress; its findings will be added here.
 2. **E-8** needs the owner's decision (see its suggestion).
 3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
@@ -31,14 +31,7 @@ None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-101 | 16 | `lib/Render/HtmlLexer.php` (`scanRange()` namespace stack) | The namespace stack still differs from the browser: a nested `<svg>`/`<math>` outside an integration point keeps the parent's namespace in a browser (`<math><svg><foreignObject>` is no integration point), the `annotation-xml` test is a loose regex (`data-encoding="text/html"`), `<svg width=10/>` is not self-closing (the `/` belongs to the value), `mglyph`/`malignmark` stay MathML, and an end tag pops only a matching top entry; in each case a `<style>` is raw to the lexer but markup to the browser, so an `<inst>` after it is shown. Gap after L-95. Confirmed by the reviewer in Chromium. | Read `<style>`/`<script>` both ways whenever any svg/math is open; self-closing only for a separate `/`; an end tag pops to the nearest matching entry. |
-| L-102 | 16 | `Markdown::maskCode()`, `PageRenderer::hideForSource()` | `<codeinject>` of a Markdown page shows `<inst>` content that the page itself hides: `maskCode()` reads code differently from the converter (an indented continuation line in a list item, a backtick fence with a backtick in its info string, a code span starting inside a tag's attribute). Gap after L-69/L-85. Confirmed by the reviewer. | Hide blocks inside the set-aside code too (fail closed); keep a fenced or indented block as one piece. |
-| L-103 | 16 | `PageRenderer::urlTags()` | Regression: `<url>` stops working after an inline SVG `<style>`, a `<noscript><script>` or a `<textarea>` with a script sample, because such a tag counts as a script "never closed". Confirmed by the reviewer. | Skip tags inside bounded ranges; a script/style followed by its bounded body is closed. |
-| L-104 | 16 | `PageRenderer::urlFor()` | The filter for html.php's own names in a page link's query ignores PHP's name mangling: `file%00x=K2` arrives as `file=K2`, so a frame (or the front end) can be steered to another known page key (access is still checked; only M-36's restriction is bypassed). Confirmed by the reviewer. | Normalise names as PHP does (cut at NUL, `name[...]` is `name`, space and `.` are `_`) before comparing. |
-| L-105 | 16 | `lib/Access/Policy.php:142` (`eventTargets`) | An R2 file-name rule (`solution.pdf = never`) does not match the file in a subfolder (`class_1/img/solution.pdf` stays visible), though R2 says "a file name alone matches that file in every event". Confirmed by the reviewer. | Also match the base name (stricter, as R2 reads). |
-| L-106 | 16 | `lib/Render/Markdown.php:628` | A long Markdown paragraph with many `<x` (`if x <y ` 4000 times, 32 KB) answers 500: the inline tag pattern backtracks quadratically and hits the PCRE limit (fails closed, but on plain prose). Confirmed by the reviewer. | Possessive attribute loop; attribute names never take `<`. |
+None open.
 
 ## Documentation
 
@@ -46,9 +39,7 @@ None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-21 | 16 | `tests/` | No tests for the L-101 namespace cases, Markdown codeinject masking cases, `<url>` after svg style/noscript script, mangled query names, R2 in subfolders, long prose with `<`. | Tests with each fix. |
+None open.
 
 ## Enhancements
 
@@ -214,6 +205,12 @@ None open.
 | L-98 | 15 | `af873f5` | Comment scanning is quadratic since M-42 (a `strpos` for `--!>` to the end of the page per comment): 20,000 comments take 5 s per scan. Confirmed. | `commentEnd()` uses one search for `--!?>`. |
 | L-99 | 15 | `af873f5` | A `duplicate.ini` line whose number is never reached (after the folders run out: `lab_5 = lab_1` with 3 lab folders) is dropped without a problem. Confirmed by the reviewer. | Copy lines no meeting reaches are listed as problems. |
 | L-100 | 15 | `af873f5` | Changing an account's password does not end its existing sessions (the session only stores the user name); after a leaked password is reset, the attacker stays logged in for up to `[users] session`. Confirmed by the reviewer on Apache. | The session keeps a hash of the password hash it logged in with; a changed password ends it. |
+| L-101 | 16 | `3ceded2` | The namespace stack still differs from the browser: a nested `<svg>`/`<math>` outside an integration point keeps the parent's namespace in a browser (`<math><svg><foreignObject>` is no integration point), the `annotation-xml` test is a loose regex (`data-encoding="text/html"`), `<svg width=10/>` is not self-closing (the `/` belongs to the value), `mglyph`/`malignmark` stay MathML, and an end tag pops only a matching top entry; in each case a `<style>` is raw to the lexer but markup to the browser, so an `<inst>` after it is shown. Gap after L-95. Confirmed by the reviewer in Chromium. | While any svg/math is open, script and style are read both ways; self-closing needs a separate `/`; end tags pop to the nearest matching entry. |
+| L-102 | 16 | `3ceded2` | `<codeinject>` of a Markdown page shows `<inst>` content that the page itself hides: `maskCode()` reads code differently from the converter (an indented continuation line in a list item, a backtick fence with a backtick in its info string, a code span starting inside a tag's attribute). Gap after L-69/L-85. Confirmed by the reviewer. | `maskCode()` keeps a fenced or indented block as one piece, and hiding also runs inside the set-aside code. |
+| L-103 | 16 | `3ceded2` | Regression: `<url>` stops working after an inline SVG `<style>`, a `<noscript><script>` or a `<textarea>` with a script sample, because such a tag counts as a script "never closed". Confirmed by the reviewer. | `urlTags()` ignores script/style inside bounded bodies or followed by their bounded body. |
+| L-104 | 16 | `3ceded2` | The filter for html.php's own names in a page link's query ignores PHP's name mangling: `file%00x=K2` arrives as `file=K2`, so a frame (or the front end) can be steered to another known page key (access is still checked; only M-36's restriction is bypassed). Confirmed by the reviewer. | Query names are normalised as PHP reads them (NUL, `[`, space, `.`) before the filter. |
+| L-105 | 16 | `3ceded2` | An R2 file-name rule (`solution.pdf = never`) does not match the file in a subfolder (`class_1/img/solution.pdf` stays visible), though R2 says "a file name alone matches that file in every event". Confirmed by the reviewer. | R2: the base name of a file in a subfolder is a target too. |
+| L-106 | 16 | `3ceded2` | A long Markdown paragraph with many `<x` (`if x <y ` 4000 times, 32 KB) answers 500: the inline tag pattern backtracks quadratically and hits the PCRE limit (fails closed, but on plain prose). Confirmed by the reviewer. | Markdown tag patterns: possessive attribute loop, names never take `<`. |
 | DOC-1 | 1 | `f686841` | Comments: `#` and `;` start a comment only at the beginning of a line, and `;` at the end of a line only after a space. Not written down anywhere. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-2 | 1 | `f686841` | During the lockdown, pages with no rule (home, syllabus) disappear too, because only `always` rules count. Probably surprising. | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
 | DOC-3 | 1 | `f686841` | Keys include the event's number, so a `numbered` copy in `duplicate.ini` renumbers the following events and changes their keys (bookmarks break). | `DESIGN.md` ("Deploying", the front end contract, keys, lockdown, comments), template comments and READMEs. |
@@ -254,6 +251,7 @@ None open.
 | T-18 | 13 | `c3e4a49` | No tests for math with hidden blocks, `.md` box pages, svg/math style, digit backups, hidden blocks in attributes, tab-separated old lines, mapped proxy addresses, comments in textareas. | Tests with the fixes (and the trusted-proxy test meant for `5e1b1e1`). |
 | T-19 | 14 | `57ea865` | No tests for `--!>`, CDATA with `>`, backticks in Markdown attributes, codeinject attribute hiding, injected postmeeting in attributes, svg integration points, comments in noscript/svg, rebased value tags, lock codes inside hidden blocks, `.mdN`, ports in X-Forwarded-For, math tags with `>`. | Tests with the fixes. |
 | T-20 | 15 | `af873f5` | No tests for namespaced foreign content, bogus comments before tags, injected `<url>` after an unclosed script, comment-scan speed, unplaced copies, sessions after a password change. | Tests with the fixes. |
+| T-21 | 16 | `3ceded2` | No tests for the L-101 namespace cases, Markdown codeinject masking cases, `<url>` after svg style/noscript script, mangled query names, R2 in subfolders, long prose with `<`. | Tests with the fixes. |
 | E-2 | 1 | `a6c0b7f` | No model cache (see M-9). | The course model is cached (signed with the secret); the fingerprint follows links only inside the course. |
 | E-6 | 1 | `97f2030` | `placeForPath()` scans every place for each link. | `script src`, `link href` and `srcset` are rewritten; `.js`/`.css` served for use; files `paths.ini` pages link to get keys; places indexed by real path. |
 
