@@ -13,8 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. No critical, high, medium, low, documentation or testing items are open. An independent
-   review of the new `md.php` (DOC-42) and of the L-138..L-141 rework is next.
+1. M-50 (md.php `<url>` contexts), then L-142..L-146, DOC-43, T-30.
 2. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
@@ -27,19 +26,31 @@ None open.
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-50 | 24 | `lib/Render/PageRenderer.php:238-251` (`markdownUrl`) | **md.php fills `<url>` in script, event-handler, style and unquoted-attribute contexts** (M-28/M-32 again, for md.php): `<button onclick="go('<url value=week default=1>')">` with `week=',top.location='javascript:alert(document.domain)','` gives an `onclick` that runs script once converted (marked and markdown-it, `html:true`); a `<script>` body likewise. html.php leaves these as written. Reproduced over HTTP and in Chromium by the reviewer. | Use html.php's context rules (`urlTags`): text and quoted values of the allowed attributes only. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-142 | 24 | `PageRenderer.php:675-684`, `:726-758` | A continuation's end can fall inside a later tag's quoted value; the rest of that tag is then emitted unprocessed: `<b title="<inst x=">">S0</b> <abbr title="Hint: </inst> <inst>SECRET1</inst>">tip</abbr>` shows SECRET1 to anonymous (also with `<lock>`, `<host>`). 2 in 3,000 fuzz cases. | Extend the end to the end of the token it falls in (fail closed). |
+| L-143 | 24 | `PageRenderer.php` (`hideMarkdown`) | md.php ends a block at the first closing tag anywhere, also inside an attribute value: `<inst><p title="</inst>">SECRET</inst>` gives `">SECRET` through md.php while html.php hides it. | Also run html.php's lexer-based hiding, so what either reading hides is hidden. |
+| L-144 | 24 | `PageRenderer.php:178-187`, `:200`, `:207`, `:241`, `:281`, `:289` | A failed regex in md.php gives an empty 200 (a 1.2 MB comment hits the backtrack limit; ~500 KB after an unmatched `[` the JIT stack), against "never half processed"; the fixed-point failure message reads "No error". | Fail on a null result; scan comments without a regex; possessive link-text pattern. |
+| L-145 | 24 | `PageRenderer.php:159-163`, `:187`, `:207` | md.php runs `<inject>`, `<codeinject>`, `<calphp>`, `<replace>` and the srcdoc removal inside Markdown code, where html.php treats code as text (a code sample with `<calphp src="run.php">` runs it). | Set code aside before those steps (hiding still reads it). |
+| L-146 | 24 | `PageRenderer.php` (`markdownText`) | `<url>` escaping: backslashes stay literal in HTML attribute values (`?w=a\_b`); GFM autolinks and markdown-it's linkify turn a value such as `www.evil.example` into a link. | HTML escaping only in attributes; document autolinks. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-43 | 24 | `API.md` 8a; `DESIGN.md` "md.php" | The `<url>` row covers neither contexts nor autolinks; `<calphp>` output is processed further in md.php; srcdoc is removed everywhere, code included; nothing says tags in code are processed or that a close tag anywhere ends a block. | Correct with the fixes. |
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-30 | 24 | `tests/` | md.php has one test: none for `<url>` in scripts, handlers, unquoted values or `javascript:`; instructors' `<postmeeting>`/`<host>`; fixed-point joins; unclosed blocks and comments; a raw `<a href>` to a .md page; hidden reference definitions; the regex-failure path and size; and no test of a continuation ending inside a later tag (L-142). | Tests with the fixes. |
 
 ## Enhancements
 
@@ -359,6 +370,7 @@ None open.
 | 21 | 2026-11-10 | `7590d11` | an **independent** full review after the calendar.php reshaping (E-8, `[notes]`, days by date, sections, no `next_change`): the full diff since `af9b622` read; ~60 calendar.php probes as anonymous, a user without grants, a granted TA and an instructor (no hints reached anonymous viewers or users without grants; hidden pages title-only; answers cached per viewer and section with no mixing; `section` by GET, form and JSON POST, odd values 404 or ignored); 5,000 entity-encoded `srcdoc` payloads against Chromium (no leaks); 800 `.ini` fuzz rounds (~3,200 requests, no PHP warnings); nginx and Apache deploys, both smoke tests passing, 44 direct-access probes all refused. H-7 reproduced over HTTP by the reviewer and again before recording. Nothing else reads `config/`, `auth/`, code or files outside the course | H-7, L-128..L-131, DOC-22, T-27 |
 | 22 | 2026-11-10 | `79c587e` | an **independent** full review after API.md was written: API.md checked line by line against the code and ~60 live probes (sections and previews by GET/POST/JSON, lists, auth error shapes, HEAD/PUT, the link and markup tables) on a course with cancel windows, duplicates and 21 extra events; 7 Chromium flows for the front-end advice (srcdoc, blob frames, innerHTML, scripts, the lock form through the 303, GET logout); 12,139 fuzz cases (8,625 HTML, 3,510 Markdown) against the doctype exception, every output holding the secret rendered in Chromium (no leak through the doctype). Logout by GET creates or fixes no session. | L-132..L-137, DOC-30..DOC-36, T-28, E-12 |
 | 23 | 2026-11-10 | `5f134d8` | an **independent** review of the review-22 fixes (`de1d3cc..5f134d8` read line by line): ~45 live probes (headers on all endpoints, auth errors logged in and out, the lock form and 303 with hostile query names and values, JSON lists and objects, `at` forms, problems, sections); 6,000 differential fuzz cases of block tags opened in attribute values rendered by Chromium for anonymous and instructor (3,000 at `5f134d8`: 474 leak, all of them also at `de1d3cc`, which leaked 1,636; 925 duplicate text); inject/codeinject variants; scaling runs; API.md read end to end against the code ("a capable AI could build a working front end from it"). L-132, L-133, L-134, L-135, L-137 and the Context change verified | L-138..L-141, DOC-37..DOC-40 |
+| 24 | 2026-11-11 | `e7c55fc` | an **independent** review of the new `md.php` (`87b16f2`) and the L-138..L-141 rework (`44998f4`): 2,100 differential md.php fuzz cases converted by marked and markdown-it (`html:true`) and checked in Chromium against html.php; 34 hand cases and inject/codeinject probes (config/, auth/, .php, dot files, /etc, calendar/lib, hidden boxes: all refused or hidden); 23 adversarial 0.2-1.2 MB pages (linear); 6,300 hideInAttributes cases against Chromium and 16 scaling runs up to 1.8 MB (linear, no duplicated text). M-50 reproduced over HTTP and in Chromium. Nothing reads config/, auth/, code or files outside the course | M-50, L-142..L-146, DOC-43, T-30 |
 
 ## CI notes
 
