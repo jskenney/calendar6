@@ -157,34 +157,50 @@ final class PageRenderer
     {
         $this->markdownRoutes = true;
         $dir = dirname($place->file->realPath);
-        $text = $this->markdownInjects((string) @file_get_contents($place->file->realPath), $dir, 0, $place);
-        $text = $this->hideMarkdown($text, $place);
+        // hidden first, on the whole source (code included); then the tags and links, with code
+        // set aside, so a code sample's <inject>, <calphp> or <replace> is text (L-145)
+        $text = $this->hideMarkdown((string) @file_get_contents($place->file->realPath), $place);
+        [$text, $codes] = Markdown::maskCode($text);
+        $text = strtr($this->markdownInjects($text, $dir, 0, $place), $codes);
+        [$text, $codes] = Markdown::maskCode($text);
         $text = strtr($this->calphp($text, $dir, $place), $this->outputs);
         $text = $this->replace($text, $place);
-        [$text, $codes] = Markdown::maskCode($text);
         $text = $this->markdownUrl($text);
         $text = $this->markdownShowlinks($text, $dir, $place);
         $text = $this->markdownLinks($text, $dir, $place);
+        // a browser reads srcdoc as a page of its own (entities decoded): never passed on
+        $text = self::checked(preg_replace('/\bsrcdoc\s*=\s*(?:"[^"]*"?|\'[^\']*\'?|[^\s>]*)/i', '', $text));
         $text = str_replace(self::URL_MARK, '', strtr($text, $codes));
-        // values from <calphp> and <replace> are hidden in again, to be sure (fail closed)
+        // what <calphp>, <replace> and <inject> brought in is hidden in too (fail closed)
         return $this->hideMarkdown($text, $place);
     }
 
-    /** The hiding of renderMarkdown(), to a fixed point (removing a block can join a new tag, L-61). */
-    private function hideMarkdown(string $text, ?Place $place): string
+    /** A preg_* result, or the request fails: never a page half processed (L-144). */
+    private static function checked(?string $result): string
+    {
+        return $result ?? self::failed();
+    }
+
+    /**
+     * The hiding of renderMarkdown(), to a fixed point (removing a block can join a new tag,
+     * L-61): html.php's reading (the lexer) and a plain scan, so whatever either one hides is
+     * hidden (L-143).
+     */
+    private function hideMarkdown(string $text, Place $place): string
     {
         for ($round = 0; ; $round++) {
             $before = $text;
             $text = self::plainComments($text);
-            $text = self::textBlock($text, 'lock', static fn (): string => '');
+            $text = self::textBlock(self::block($text, 'lock', static fn (): string => ''), 'lock', static fn (): string => '');
+            $text = $this->postmeeting($text, $place);
+            $text = self::block($text, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
+            $text = $this->host($text);
             $text = $this->hideValue($text, $place);
-            $text = self::textBlock($text, 'student', static fn (string $inner): string => $inner);
+            $text = self::textBlock(self::block($text, 'student', static fn (string $inner): string => $inner), 'student', static fn (string $inner): string => $inner);
             $text = self::textBlock($text, 'ace', static fn (string $inner): string => "\n```\n" . $inner . "\n```\n");
             foreach (['keyword', 'search'] as $removed) {
-                $text = (string) preg_replace('/<\/?' . $removed . '(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', '', $text);
+                $text = self::checked(preg_replace('/<\/?' . $removed . '(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', '', $text));
             }
-            // a browser reads srcdoc as a page of its own (entities decoded): never passed on
-            $text = (string) preg_replace('/\bsrcdoc\s*=\s*(?:"[^"]*"?|\'[^\']*\'?|[^\s>]*)/i', '', $text);
             if ($text === $before) {
                 return $text;
             }
@@ -194,17 +210,36 @@ final class PageRenderer
         }
     }
 
-    /** HTML comments by plain scan, code included; one never closed runs to the end. */
+    /** HTML comments by plain scan (no regex: any length), code included; one never closed runs to the end. */
     private static function plainComments(string $text): string
     {
-        return (string) preg_replace('/<!--(?:>|->|.*?(?:--!?>|$))/s', '', $text);
+        $out = '';
+        $pos = 0;
+        while (($start = strpos($text, '<!--', $pos)) !== false) {
+            $out .= substr($text, $pos, $start - $pos);
+            if (substr($text, $start + 4, 1) === '>') {
+                $pos = $start + 5; // <!-->
+                continue;
+            }
+            if (substr($text, $start + 4, 2) === '->') {
+                $pos = $start + 6; // <!--->
+                continue;
+            }
+            $ends = array_filter([strpos($text, '-->', $start + 4), strpos($text, '--!>', $start + 4)], static fn ($e): bool => $e !== false);
+            if ($ends === []) {
+                return $out;
+            }
+            $end = min($ends);
+            $pos = $end + (substr($text, $end, 3) === '-->' ? 3 : 4);
+        }
+        return $out . substr($text, $pos);
     }
 
     /** <inject> and <codeinject> in a Markdown page, with the checks of injects() (by plain scan). */
     private function markdownInjects(string $text, string $dir, int $depth, Place $place, array $ancestors = []): string
     {
         $ancestors[] = $place->file->realPath;
-        return (string) preg_replace_callback('/<(inject|codeinject)(?=[\t\n\f\r \/>])[^>]*>/i', function (array $m) use ($dir, $depth, $place, $ancestors): string {
+        return self::checked(preg_replace_callback('/<(inject|codeinject)(?=[\t\n\f\r \/>])[^>]*>/i', function (array $m) use ($dir, $depth, $place, $ancestors): string {
             $src = self::attribute($m[0], 'src');
             $real = $src === null ? null : $this->course->boundary->resolve($dir . '/' . $src);
             if ($real === null || !is_file($real) || Boundary::neverServed($real) || !$this->mayInject($real)) {
@@ -231,22 +266,29 @@ final class PageRenderer
                 $inner = strtr($this->markdownLinks($inner, dirname($real), $owner), $codes);
             }
             return $inner;
-        }, $text);
+        }, $text));
     }
 
-    /** <url value="name" default="x"> in Markdown: the value escaped so it is text, never syntax. */
+    /**
+     * <url value="name" default="x"> in Markdown, with html.php's context rules (M-50): only in
+     * text and in quoted values of the allowed attributes (never in a script, a handler, a style
+     * or an unquoted value, where it is left as written), and in href/src only when the result
+     * has no unsafe scheme. In text the value is escaped for Markdown and HTML; in an attribute
+     * for HTML only (L-146).
+     */
     private function markdownUrl(string $text): string
     {
-        $text = (string) preg_replace('/<\/url\s*>/i', '', $text);
-        return (string) preg_replace_callback('/<url(?=[\t\n\f\r \/>])[^>]*>/i', function (array $m): string {
-            $name = (string) self::attribute($m[0], 'value');
+        return self::urlTags($text, function (string $tag, bool $inAttribute = false): string {
+            $name = (string) self::attribute($tag, 'value');
             if (isset($this->urlValues[$name]) && !self::hasUnsafeScheme($this->urlValues[$name])) {
                 $this->usedUrlValues[] = $name;
                 $value = str_replace(["\0", self::URL_MARK, "\r", "\n"], ['', '', ' ', ' '], $this->urlValues[$name]);
-                return self::URL_MARK . self::markdownText($value);
+                return self::URL_MARK . ($inAttribute ? htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : self::markdownText($value));
             }
-            return (string) self::attribute($m[0], 'default');
-        }, $text);
+            // a default is the author's text: as written in Markdown text, HTML-escaped in a value
+            $default = $this->hideValue((string) self::attribute($tag, 'default'), null);
+            return $inAttribute ? htmlspecialchars($default, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : $default;
+        });
     }
 
     /**
@@ -255,18 +297,18 @@ final class PageRenderer
      */
     private static function markdownText(string $value): string
     {
-        return (string) preg_replace('/[\\\\`*_{}\[\]()!|~]/', '\\\\$0', htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+        return self::checked(preg_replace('/[\\\\`*_{}\[\]()!|~]/', '\\\\$0', htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')));
     }
 
     /** <showlink src="file"> in Markdown: a link to that event file, or its name as text. */
     private function markdownShowlinks(string $text, string $dir, Place $place): string
     {
-        return (string) preg_replace_callback('/<showlink(?=[\t\n\f\r \/>])[^>]*>/i', function (array $m) use ($dir, $place): string {
+        return self::checked(preg_replace_callback('/<showlink(?=[\t\n\f\r \/>])[^>]*>/i', function (array $m) use ($dir, $place): string {
             $src = (string) self::attribute($m[0], 'src');
             $name = self::markdownText(basename($src));
             $target = $this->visiblePlace($place, $dir, $src);
             return $target === null ? $name : '[' . $name . '](' . $this->urlFor($target, 'a') . ')';
-        }, $text);
+        }, $text));
     }
 
     /**
@@ -278,19 +320,20 @@ final class PageRenderer
     {
         $text = $this->links($text, $dir, $place);
         $destination = '(<[^<>\n]*>|[^\s<>()]*(?:\([^\s()]*\)[^\s()]*)*)';
-        $text = (string) preg_replace_callback('/(!?)\[((?:[^\[\]\\\\]|\\\\.)*)\]\(\s*' . $destination . '((?:\s+(?:"[^"]*"|\'[^\']*\'|\([^)]*\)))?\s*)\)/', function (array $m) use ($dir, $place): string {
+        // possessive, so a long text after an unmatched "[" can not exhaust the stack (L-144)
+        $text = self::checked(preg_replace_callback('/(!?)\[((?:[^\[\]\\\\]++|\\\\.)*+)\]\(\s*' . $destination . '((?:\s+(?:"[^"]*"|\'[^\']*\'|\([^)]*\)))?\s*)\)/', function (array $m) use ($dir, $place): string {
             $angle = str_starts_with($m[3], '<');
             $url = $this->rewrite($angle ? substr($m[3], 1, -1) : $m[3], $dir, $place, $m[1] === '!' ? 'img' : 'a');
             if ($url === null) {
                 return $m[2];
             }
             return $m[1] . '[' . $m[2] . '](' . ($angle ? "<$url>" : $url) . $m[4] . ')';
-        }, $text);
-        return (string) preg_replace_callback('/^( {0,3}\[(?:[^\[\]\\\\]|\\\\.)+\]:[ \t]*)' . $destination . '(.*)$/m', function (array $m) use ($dir, $place): string {
+        }, $text));
+        return self::checked(preg_replace_callback('/^( {0,3}\[(?:[^\[\]\\\\]++|\\\\.)++\]:[ \t]*)' . $destination . '(.*)$/m', function (array $m) use ($dir, $place): string {
             $angle = str_starts_with($m[2], '<');
             $url = $this->rewrite($angle ? substr($m[2], 1, -1) : $m[2], $dir, $place, 'a');
             return $url === null ? '' : $m[1] . ($angle ? "<$url>" : $url) . $m[3];
-        }, $text);
+        }, $text));
     }
 
     private function load(string $path): string
@@ -638,7 +681,8 @@ final class PageRenderer
         }
         $out = '';
         $pos = 0;
-        foreach (HtmlLexer::scan($html) as $token) {
+        $tokens = HtmlLexer::scan($html);
+        foreach ($tokens as $token) {
             // end tags too: a browser reads quoted values in them as well (L-140); a tag inside a
             // range already handled by a continuation is skipped (L-138)
             if ($token[0] !== 'tag' || $token[1] < $pos) {
@@ -675,6 +719,9 @@ final class PageRenderer
             $out .= substr($html, $pos, $token[1] - $pos) . $new . substr($tag, $at);
             $pos = $token[2];
             if ($open !== [] && ($end = $this->continuationEnd($html, $pos, $open, $place)) !== null) {
+                // an end inside a later tag (a closing tag written in its quoted value) takes the
+                // whole tag along, so no part of it goes out unprocessed (L-142)
+                $end = self::tokenEndAround($tokens, $end);
                 // blocks opened in values and not closed there (a quoted ">" ended the tag early:
                 // <p title="<inst title=">">S</inst>) go on in the page up to their own ends, as a
                 // plain scan reads them counting nesting, or to the end of the page: fail closed
@@ -686,6 +733,26 @@ final class PageRenderer
             }
         }
         return $out . substr($html, $pos);
+    }
+
+    /**
+     * $at, or the end of the token (in document order) that $at falls inside of.
+     *
+     * @param list<array{0: string, 1: int, 2: int}> $tokens
+     */
+    private static function tokenEndAround(array $tokens, int $at): int
+    {
+        $low = 0;
+        $high = count($tokens) - 1;
+        while ($low <= $high) { // the last token starting before $at
+            $mid = intdiv($low + $high, 2);
+            if ($tokens[$mid][1] < $at) {
+                $low = $mid + 1;
+            } else {
+                $high = $mid - 1;
+            }
+        }
+        return $high >= 0 && $tokens[$high][2] > $at ? $tokens[$high][2] : $at;
     }
 
     /**
@@ -1077,13 +1144,13 @@ final class PageRenderer
                         if (in_array($attribute, ['href', 'src'], true)) {
                             // the whole value as it will be sent decides the scheme, so two
                             // values side by side can not spell javascript: (M-34)
-                            $final = preg_replace_callback('/' . $marker . '(\d+)x/', static fn (array $m): string => str_replace(self::URL_MARK, '', $fn($tags[(int) $m[1]])), $value) ?? self::failed();
+                            $final = preg_replace_callback('/' . $marker . '(\d+)x/', static fn (array $m): string => str_replace(self::URL_MARK, '', $fn($tags[(int) $m[1]], true)), $value) ?? self::failed();
                             if (self::hasUnsafeScheme($final)) {
                                 continue;
                             }
                         }
                         foreach ($found[1] as $number) {
-                            $allowed[(int) $number] = true;
+                            $allowed[(int) $number] = 'attribute'; // the callback is told (md.php, L-146)
                         }
                     }
                 }
@@ -1132,11 +1199,11 @@ final class PageRenderer
         }
         return preg_replace_callback('/' . $marker . '(\d+)x/', static function (array $m) use ($tags, $allowed, $fn): string {
             $n = (int) $m[1];
-            return isset($allowed[$n]) ? $fn($tags[$n]) : $tags[$n];
+            return isset($allowed[$n]) ? $fn($tags[$n], $allowed[$n] === 'attribute') : $tags[$n];
         }, $marked) ?? self::failed();
     }
 
-    /** @param array<int, true> $allowed */
+    /** @param array<int, true|string> $allowed */
     private static function allowMarkersIn(string $text, string $marker, array &$allowed): void
     {
         if ($text !== '' && preg_match_all('/' . $marker . '(\d+)x/', $text, $found) > 0) {
@@ -1537,7 +1604,8 @@ final class PageRenderer
     /** A pattern that failed (backtracking or another PCRE limit): never send the page half processed. */
     private static function failed(): never
     {
-        throw new \RuntimeException('the page could not be processed: ' . preg_last_error_msg());
+        // a regex that gave up (backtracking, stack) or hiding that did not settle (L-144)
+        throw new \RuntimeException('the page could not be processed: ' . (preg_last_error() !== PREG_NO_ERROR ? preg_last_error_msg() : 'hiding did not settle'));
     }
 
     public static function attribute(string $tag, string $name): ?string

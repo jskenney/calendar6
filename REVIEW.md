@@ -13,7 +13,8 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. M-50 (md.php `<url>` contexts), then L-142..L-146, DOC-43, T-30.
+1. No critical, high, medium, low, documentation or testing items are open. Review 24's fixes
+   (md.php hiding and `<url>`, L-142) would benefit from another independent review.
 2. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
@@ -26,31 +27,19 @@ None open.
 
 ## Medium
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| M-50 | 24 | `lib/Render/PageRenderer.php:238-251` (`markdownUrl`) | **md.php fills `<url>` in script, event-handler, style and unquoted-attribute contexts** (M-28/M-32 again, for md.php): `<button onclick="go('<url value=week default=1>')">` with `week=',top.location='javascript:alert(document.domain)','` gives an `onclick` that runs script once converted (marked and markdown-it, `html:true`); a `<script>` body likewise. html.php leaves these as written. Reproduced over HTTP and in Chromium by the reviewer. | Use html.php's context rules (`urlTags`): text and quoted values of the allowed attributes only. |
+None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-142 | 24 | `PageRenderer.php:675-684`, `:726-758` | A continuation's end can fall inside a later tag's quoted value; the rest of that tag is then emitted unprocessed: `<b title="<inst x=">">S0</b> <abbr title="Hint: </inst> <inst>SECRET1</inst>">tip</abbr>` shows SECRET1 to anonymous (also with `<lock>`, `<host>`). 2 in 3,000 fuzz cases. | Extend the end to the end of the token it falls in (fail closed). |
-| L-143 | 24 | `PageRenderer.php` (`hideMarkdown`) | md.php ends a block at the first closing tag anywhere, also inside an attribute value: `<inst><p title="</inst>">SECRET</inst>` gives `">SECRET` through md.php while html.php hides it. | Also run html.php's lexer-based hiding, so what either reading hides is hidden. |
-| L-144 | 24 | `PageRenderer.php:178-187`, `:200`, `:207`, `:241`, `:281`, `:289` | A failed regex in md.php gives an empty 200 (a 1.2 MB comment hits the backtrack limit; ~500 KB after an unmatched `[` the JIT stack), against "never half processed"; the fixed-point failure message reads "No error". | Fail on a null result; scan comments without a regex; possessive link-text pattern. |
-| L-145 | 24 | `PageRenderer.php:159-163`, `:187`, `:207` | md.php runs `<inject>`, `<codeinject>`, `<calphp>`, `<replace>` and the srcdoc removal inside Markdown code, where html.php treats code as text (a code sample with `<calphp src="run.php">` runs it). | Set code aside before those steps (hiding still reads it). |
-| L-146 | 24 | `PageRenderer.php` (`markdownText`) | `<url>` escaping: backslashes stay literal in HTML attribute values (`?w=a\_b`); GFM autolinks and markdown-it's linkify turn a value such as `www.evil.example` into a link. | HTML escaping only in attributes; document autolinks. |
+None open.
 
 ## Documentation
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| DOC-43 | 24 | `API.md` 8a; `DESIGN.md` "md.php" | The `<url>` row covers neither contexts nor autolinks; `<calphp>` output is processed further in md.php; srcdoc is removed everywhere, code included; nothing says tags in code are processed or that a close tag anywhere ends a block. | Correct with the fixes. |
+None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-30 | 24 | `tests/` | md.php has one test: none for `<url>` in scripts, handlers, unquoted values or `javascript:`; instructors' `<postmeeting>`/`<host>`; fixed-point joins; unclosed blocks and comments; a raw `<a href>` to a .md page; hidden reference definitions; the regex-failure path and size; and no test of a continuation ending inside a later tag (L-142). | Tests with the fixes. |
+None open.
 
 ## Enhancements
 
@@ -342,6 +331,14 @@ None open.
 | DOC-41 | owner | `cafd6b9` | A front end had no way to know which event types to offer as menu-bar drop-downs. | Decided (owner): config.ini `[dropdown] show = class, lab, project`; calendar.php sends `"dropdown": [...]` with only types `[types]` defines, in order, once each (unknown names are problems; no section gives `[]`). Template, DESIGN, API.md and tests updated; `version.format` is documented as raised only for breaking changes. |
 | T-29 | dev | `cafd6b9` | testHtml failed now and then: the test server chose a random port without checking it was free, so when it hit a port a local service listens on (here the session's proxy), PHP could not bind and the readiness check connected to that service instead. | The test server skips busy ports and counts as ready only while its own process is running. |
 | DOC-42 | owner | `87b16f2` | A front end that converts Markdown itself could not get a Markdown page as Markdown. | Decided (owner): new `md.php` returns a Markdown page as processed Markdown: hiding by plain scan (code included; instructors keep `<inst>` content without the tags), `<lock>` always removed (no lock codes), `<student>` tags removed, comments and `srcdoc` removed, `<inject>`/`<codeinject>`/`<replace>`/`<url>`/`<showlink>`/`<calphp>` handled, links rewritten (Markdown and HTML; `#/md/KEY` for Markdown pages). calendar.php gives Markdown pages `kind: "md"`; html.php is unchanged. API.md, DESIGN.md and tests updated. |
+| M-50 | 24 | (this commit) | **md.php fills `<url>` in script, event-handler, style and unquoted-attribute contexts** (M-28/M-32 again, for md.php): `<button onclick="go('<url value=week default=1>')">` with `week=',top.location='javascript:alert(document.domain)','` gives an `onclick` that runs script once converted (marked and markdown-it, `html:true`); a `<script>` body likewise. html.php leaves these as written. Reproduced over HTTP and in Chromium by the reviewer. | md.php's `<url>` goes through html.php's `urlTags()` (text and quoted values of the allowed attributes only; unsafe schemes refused on the whole href/src); `urlTags` now tells its callback whether a value is in an attribute. Test. |
+| L-142 | 24 | (this commit) | A continuation's end can fall inside a later tag's quoted value; the rest of that tag is then emitted unprocessed: `<b title="<inst x=">">S0</b> <abbr title="Hint: </inst> <inst>SECRET1</inst>">tip</abbr>` shows SECRET1 to anonymous (also with `<lock>`, `<host>`). 2 in 3,000 fuzz cases. | A continuation's end inside a later token is moved to that token's end (binary search over the tokens). Test. |
+| L-143 | 24 | (this commit) | md.php ends a block at the first closing tag anywhere, also inside an attribute value: `<inst><p title="</inst>">SECRET</inst>` gives `">SECRET` through md.php while html.php hides it. | md.php hides with html.php's lexer-based blocks as well as the plain scan, each round. Test. |
+| L-144 | 24 | (this commit) | A failed regex in md.php gives an empty 200 (a 1.2 MB comment hits the backtrack limit; ~500 KB after an unmatched `[` the JIT stack), against "never half processed"; the fixed-point failure message reads "No error". | md.php's regexes fail the request on a null result; comments are removed by a strpos loop; the link-text patterns are possessive; the failure message says "hiding did not settle" when no regex failed. Test (1.2 MB comment, 500 KB unmatched `[`). |
+| L-145 | 24 | (this commit) | md.php runs `<inject>`, `<codeinject>`, `<calphp>`, `<replace>` and the srcdoc removal inside Markdown code, where html.php treats code as text (a code sample with `<calphp src="run.php">` runs it). | Code is set aside (Markdown::maskCode) before injects, calphp, replace, url, showlink, links and the srcdoc removal; hiding still reads it. Test. |
+| L-146 | 24 | (this commit) | `<url>` escaping: backslashes stay literal in HTML attribute values (`?w=a\_b`); GFM autolinks and markdown-it's linkify turn a value such as `www.evil.example` into a link. | In attributes the value is HTML-escaped only; autolinks documented in API.md 8a. Test. |
+| DOC-43 | 24 | (this commit) | The `<url>` row covers neither contexts nor autolinks; `<calphp>` output is processed further in md.php; srcdoc is removed everywhere, code included; nothing says tags in code are processed or that a close tag anywhere ends a block. | API.md 8a: hiding by either reading, closing tags ending blocks early, code set aside, `<url>` contexts and escaping, autolinks, `<calphp>` output processed, srcdoc outside code; DESIGN.md md.php notes. |
+| T-30 | 24 | (this commit) | md.php has one test: none for `<url>` in scripts, handlers, unquoted values or `javascript:`; instructors' `<postmeeting>`/`<host>`; fixed-point joins; unclosed blocks and comments; a raw `<a href>` to a .md page; hidden reference definitions; the regex-failure path and size; and no test of a continuation ending inside a later tag (L-142). | Tests for `<url>` in a handler, a script body, an unquoted value and an unsafe href; a raw `<a href>` to a .md page; joins and unclosed blocks; L-143; tags in code; a hidden reference definition; instructors' `<postmeeting>`; `<host>`; long comments and an unmatched `[`; L-142. |
 
 ## Reviews
 

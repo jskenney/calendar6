@@ -562,9 +562,11 @@ Links in processed pages follow this table (Decided, M-36):
 For a front end that converts Markdown itself, `md.php` returns a Markdown page (`kind: "md"`)
 as Markdown, processed; `html.php` is unchanged and still serves the same page as HTML.
 
-- **Hiding is a plain scan of the source**, blind to Markdown structure, so no converter's reading
-  of the page can bring hidden text back (the server and the browser no longer share one reading,
-  as they do with `html.php`): a block tag counts in code too. `<inst>`, `<postmeeting>` and
+- **Hiding reads the source two ways**, html.php's lexer and a plain scan blind to Markdown
+  structure, and hides whatever either reading hides, so no converter's reading of the page can
+  bring hidden text back (the server and the browser no longer share one reading, as they do with
+  `html.php`): a block tag counts in code and attribute values too (L-143). The other tags and the
+  links are handled with code set aside (L-145). `<inst>`, `<postmeeting>` and
   `<host>` keep their content without the tags when the viewer may see it, and lose it otherwise.
 - **`<lock>` is not available:** its tags and content are always removed, for every viewer.
 - `<student>` tags are removed and their content kept; comments are removed everywhere; `srcdoc`
@@ -572,7 +574,11 @@ as Markdown, processed; `html.php` is unchanged and still serves the same page a
 - Links are rewritten as in `html.php`, also in Markdown syntax, outside code; links to Markdown
   pages become `#/md/KEY`. A link form the rewriter misses only breaks: a bare file name fetches
   nothing.
-- `<url>` values are escaped for Markdown and HTML alike, so they add no syntax.
+- `<url>` follows html.php's context rules (text and quoted values of a few attributes only,
+  M-50); values are escaped for Markdown and HTML in text, for HTML in attributes (L-146). A
+  front end's autolinking can still turn a value into a link.
+- A regex that gives up, or hiding that does not settle, fails the request (500), never a page
+  half processed (L-144).
 
 ### Tags (Decided: every Calendar 4 tag except `<ace>`)
 

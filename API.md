@@ -609,10 +609,14 @@ same page converted to HTML; use whichever suits the front end.
 Markdown after processing. Not a Markdown page (an HTML page, any other file), unknown, or not
 allowed: `404` (JSON error). Other methods: `405`.
 
-**What processing does.** Hiding is a **plain scan of the source that ignores Markdown
-structure**: a tag counts wherever it is, in code blocks and code spans too. So no converter's
-reading of the page can bring hidden text back; the price is that a code sample can not show a
-literal `<inst>` tag (write `&lt;inst&gt;`).
+**What processing does.** Hiding reads the source two ways, and hides whatever **either** reading
+hides: html.php's (an HTML reading, the lexer) and a **plain scan that ignores Markdown
+structure**, in which a tag counts wherever it is, in code blocks, code spans and attribute values
+too. So no converter's reading of the page can bring hidden text back. The price: a code sample can
+not show a literal `<inst>` tag (write `&lt;inst&gt;`), and a closing tag written anywhere, even
+inside an attribute value or in code, ends its block early, possibly hiding more than meant. The
+other tags and links are handled with code set aside: `<inject>`, `<calphp>`, `<replace>`,
+`<url>`, `<showlink>` and links inside code blocks and code spans are left as written.
 
 | In the source | In the answer |
 |---|---|
@@ -621,13 +625,13 @@ literal `<inst>` tag (write `&lt;inst&gt;`).
 | `<lock>…</lock>` | **always removed, tags and content, for every viewer (instructors too).** Lock codes are not available through `md.php`; a page that needs them must be shown through `html.php` |
 | `<student>…</student>` | the content, without the tags |
 | `<!-- … -->` | removed, everywhere (code included); one never closed runs to the end |
-| `srcdoc` attributes in HTML written in the page | removed |
+| `srcdoc` attributes in HTML written in the page (outside code) | removed |
 | `<inject src="part.md">` (or another file) | that file's text, processed the same way (its own place decides its blocks; its links are rewritten from its own directory) |
 | `<codeinject src="x">` | a fenced code block with the file's source (a page's source without what the viewer may not see) |
 | `<replace value>` | the value |
-| `<url value="name" default="x">` | the query value, escaped so it is plain text (HTML characters as entities, Markdown punctuation with `\`); a value with a scheme other than `http(s):` is ignored; otherwise the default |
+| `<url value="name" default="x">` | as in `html.php`, only in Markdown text and in quoted values of the allowed attributes (`href`, `src`, `title`, `alt`, `value`, `class`, `id`, `name`, `placeholder`, `label`, `data-*`); anywhere else (a script, an event handler, `style`, an unquoted value) the tag is left as written. In text the value is escaped for Markdown and HTML (entities, and `\` before Markdown punctuation); in an attribute it is HTML-escaped. A value with a scheme other than `http(s):` is ignored (the default is used), also when it would complete an `href` or `src`. A converter with autolinks (GFM, markdown-it's `linkify`) may still turn a value such as `www.example.com` into a link: turn autolinks off if visitors' values must stay plain text |
 | `<showlink src="file">` | `[file](url)`, or just the name when the viewer may not open the file |
-| `<calphp src>` | its output |
+| `<calphp src>` | its output, which (unlike in `html.php`) is then processed like the rest of the page: `<replace>`, `<url>`, links and hiding apply to it |
 | `<ace>…</ace>` | a fenced code block |
 | `[text](file)`, `![alt](file)`, `[id]: file` (outside code) | the target rewritten: Markdown pages `#/md/KEY`, HTML pages `#/view/KEY`, other files `/…/calendar/php/get.php?file=KEY`; a target the viewer may not open: the link becomes its text (an image its alt text, a definition is dropped); external and missing targets unchanged |
 | HTML tags written in the Markdown (`<a href>`, `<img src>`, ...) | rewritten as by `html.php` (section 8) |

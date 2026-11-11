@@ -94,6 +94,59 @@ final class RendererTest extends TestCase
         $this->assertTrue(microtime(true) - $start < 5.0 && strlen($page) < 200000, 'many such values stay fast and small (L-138)');
     }
 
+    public function testMarkdownEndpointContextsAndLeftovers(): void
+    {
+        $course = $this->course([
+            'config/default.ini' => "class = always\nclass/instructor = never\n",
+            'class/01.Introduction/instructor.html' => 'I',
+            'class/01.Introduction/run.php' => '<?php echo "RAN";',
+            'class/01.Introduction/part.md' => 'PARTTEXT',
+            'class/01.Introduction/reading.md' => '# R',
+            'class/01.Introduction/ctx.md' => "Pick: <button onclick=\"go('<url value=w default=1>')\">go</button>\n\n<script>var v = <url value=w default=1>;</script>\n\n<img alt=<url value=w>>\n\n<a href=\"reading.md?w=<url value=w>\">x</a> text <url value=w>\n\n<a href=\"<url value=j>\">j</a>",
+            'class/01.Introduction/blocks.md' => "<inst><p title=\"</inst>\">SECRET43</inst> tail\n\n<in<!-- x -->st>JOINED</inst> <inst>UNCLOSED and the rest",
+            'class/01.Introduction/code.md' => "```\n<calphp src=\"run.php\">\n<inject src=\"part.md\">\n<replace value=\"course\">\n```\n\nout <replace value=\"course\"> <a href=\"reading.md\">raw</a>\n\n[gone]: instructor.html\n\n<host server=\"no-such-host\">HOSTED</host> <postmeeting>LATER</postmeeting>",
+            'class/01.Introduction/big.md' => '<!--' . str_repeat('draft ', 200000) . "-->\nAFTER-COMMENT\n\n[" . str_repeat('x ', 250000),
+            'class/01.Introduction/l142.html' => '<b title="<inst x=">">S0</b> <abbr title="Hint: </inst> <inst>SECRET1</inst>">tip</abbr> end',
+        ]);
+        $md = function (string $name, ?Viewer $viewer = null, array $values = []) use ($course): string {
+            foreach ($course->places as $p) {
+                if ($p->id() === "class_1/$name") {
+                    return (new PageRenderer($course, new Policy($course), $viewer ?? Viewer::anonymous(), time(), '/', [], $values))->renderMarkdown($p);
+                }
+            }
+            throw new \RuntimeException($name);
+        };
+        $evil = "',top.location='javascript:alert(1)','a_b";
+        $ctx = $md('ctx.md', null, ['w' => $evil, 'j' => 'javascript:alert(1)']);
+        $this->assertContains("onclick=\"go('<url value=w default=1>')\"", $ctx, 'never in an event handler (M-50)');
+        $this->assertContains('var v = <url value=w default=1>;', $ctx, 'nor in a script body');
+        $this->assertContains('alt=<url value=w>', $ctx, 'nor in an unquoted value');
+        $this->assertSame(1, preg_match('/href="#\/md\/[A-Za-z0-9_-]{22}\?w=&#039;,top\.location=&#039;javascript:alert\(1\)&#039;,&#039;a_b"/', $ctx), 'in a quoted href: HTML-escaped only, no backslashes (L-146), and a raw link to a .md page is a #/md/ route');
+        $this->assertContains('text &#039;,top.location=&#039;javascript:alert\(1\)&#039;,&#039;a\_b', $ctx, 'in text: escaped for Markdown and HTML');
+        $this->assertNotContains('href="javascript', $ctx, 'an unsafe scheme is never filled in');
+
+        $blocks = $md('blocks.md');
+        foreach (['SECRET43', 'JOINED', 'UNCLOSED', 'the rest'] as $secret) {
+            $this->assertNotContains($secret, $blocks, "hidden by either reading (L-143), after joins, unclosed: $secret");
+        }
+        $this->assertContains('JOINED', $md('blocks.md', Viewer::account($course->config, 'prof')));
+
+        $code = $md('code.md');
+        $this->assertContains("<calphp src=\"run.php\">\n<inject src=\"part.md\">\n<replace value=\"course\">", $code, 'tags in code are text (L-145)');
+        $this->assertNotContains('RAN', $code);
+        $this->assertNotContains('PARTTEXT', $code);
+        $this->assertContains('out AB123', $code);
+        $this->assertNotContains('[gone]', $code, 'a reference definition to a file the viewer may not open is dropped');
+        $this->assertNotContains('HOSTED', $code);
+        $this->assertContains('LATER', $md('code.md', Viewer::account($course->config, 'prof')), 'instructors see <postmeeting>');
+
+        $big = $md('big.md');
+        $this->assertContains('AFTER-COMMENT', $big, 'a long comment and a long unmatched "[" are no failure (L-144)');
+        $this->assertNotContains('draft', $big);
+
+        $this->assertNotContains('SECRET1', $this->render($course, 'class_1/l142.html'), 'a continuation ending inside a later tag takes the tag along (L-142)');
+    }
+
     public function testHostMatchesOnlyServerNamesAndAddresses(): void
     {
         $course = $this->course(['class/01.Introduction/index.html' => '<host server="other, intranet">ONLY-INTRANET</host><host server="10.0.0.5">BY-ADDRESS</host>']);
