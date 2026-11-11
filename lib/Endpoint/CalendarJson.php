@@ -60,7 +60,10 @@ final class CalendarJson
         // not see yet opens; anonymous viewers get no hint at all (Decided)
         $loggedOn = $viewer->user !== null;
         $names = ['', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-        $kind = static fn (Place $place): string => $place->file->kind() === 'page' ? 'html' : 'get';
+        // which script serves a key: md (md.php, or html.php) for Markdown pages, html for other
+        // pages, get for every other file
+        $kind = static fn (Place $place): string => $place->file->kind() !== 'page' ? 'get'
+            : (\Cal6\Render\PageRenderer::isMarkdown($place->file->realPath) ? 'md' : 'html');
 
         $pages = [];
         foreach ($this->course->pageKeys as $name => $key) {

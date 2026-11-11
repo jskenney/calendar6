@@ -16,7 +16,7 @@ Contents: [1. What Calendar 6 is](#1-what-calendar-6-is) ·
 [2. Files and URLs](#2-files-and-urls) · [3. Concepts](#3-concepts) ·
 [4. Conventions for every endpoint](#4-conventions-for-every-endpoint) ·
 [5. config.php](#5-configphp) · [6. calendar.php](#6-calendarphp) · [7. auth.php](#7-authphp) ·
-[8. html.php](#8-htmlphp) · [9. get.php](#9-getphp) ·
+[8. html.php](#8-htmlphp) · [8a. md.php](#8a-mdphp) · [9. get.php](#9-getphp) ·
 [10. Building a front end](#10-building-a-front-end) · [11. Quick reference](#11-quick-reference)
 
 ---
@@ -24,7 +24,7 @@ Contents: [1. What Calendar 6 is](#1-what-calendar-6-is) ·
 ## 1. What Calendar 6 is
 
 A course web site whose browser side is static HTML and JavaScript (the **front end**, which
-you build), backed by five small PHP scripts (the **endpoints**, in this repository):
+you build), backed by six small PHP scripts (the **endpoints**, in this repository):
 
 | Endpoint | Returns | Purpose |
 |---|---|---|
@@ -32,6 +32,7 @@ you build), backed by five small PHP scripts (the **endpoints**, in this reposit
 | `calendar.php` | JSON | everything **this viewer** may see now: every day of the semester, the events on them, and for each event the files (as keys) and notes the viewer may open |
 | `auth.php` | JSON | log in (POST) and log out (GET or POST) |
 | `html.php` | HTML | one course page (`.html`, `.htm`, `.md`) by key, **processed**: hidden parts removed, links rewritten to keys |
+| `md.php` | Markdown | one Markdown page (`.md`) by key, processed the same way but **returned as Markdown** for the front end to convert |
 | `get.php` | the file | any other course file (PDF, image, zip, CSS, JS, ...) by key, byte for byte |
 
 The server decides who may see what. The front end never sees file paths, rules or hidden
@@ -170,8 +171,10 @@ you choose to render HTML notes, sanitize them first.
 Keys are stable (bookmarkable) until the course's secret, or the event the file belongs to,
 changes. A key is not a capability: every request with it is checked for the current viewer.
 
-**kind.** Which endpoint serves a key: `"html"` → `html.php?file=KEY` (a page: `.html`, `.htm`,
-`.md`), `"get"` → `get.php?file=KEY` (anything else).
+**kind.** Which endpoint serves a key: `"html"` → `html.php?file=KEY` (an HTML page: `.html`,
+`.htm`); `"md"` → `md.php?file=KEY` for the Markdown itself, or `html.php?file=KEY` for it
+converted to HTML (a Markdown page: `.md`, by its real file); `"get"` → `get.php?file=KEY`
+(anything else).
 
 **Section, period, period schedule.** A course has sections (`1121`, `4345`, ...), each meeting
 on given weekdays in given periods (`MF1` = Mondays and Fridays, period 1), in rooms, with
@@ -391,7 +394,8 @@ each name the first non-empty value counts, the query string first. A list (`sec
 | `problems` | array | instructors only: `{"message": string, "file": string, "line": int}` (bad configuration lines, overridden lines, odd file names, copies that could not be made, files named like a box's file that follow the event's rule, ...). `line` is `0` when it does not apply |
 
 **`pages` entries:** `title` always. When the viewer may open the page, also `key`, `filename`
-and `kind` (always `"html"`). Logged-on viewers may also see `visible` and `opens` (see "Hints").
+and `kind` (`"html"`, or `"md"` for a Markdown page). Logged-on viewers may also see `visible`
+and `opens` (see "Hints").
 A page whose file is missing (or outside the course, or not a page) is left out here, although
 `config.php` → `pages` still lists it; instructors find it in `problems`.
 
@@ -426,7 +430,7 @@ its times are in `config.php` → `days`), followed by one item per event shown 
 | `room` | string | with `section` and a meeting | the meeting's room |
 | `cancelled` | `true` | with `section`, when the meeting is cancelled | the meeting does not take place: its period is `cancelled` on that day's schedule (then no `start`/`end`), or it starts inside a `dates.ini` cancel window (then `start`/`end` are the times it would have had) |
 | `section` | string | with `section` and a meeting | the requested section |
-| `boxes` | array | always | the box files the viewer may open, in `config.php` box order: `box`, `filename`, `key`, `kind` (`html`/`get`), plus hints for logged-on viewers. `[]` when nothing is visible yet |
+| `boxes` | array | always | the box files the viewer may open, in `config.php` box order: `box`, `filename`, `key`, `kind` (`html`/`md`/`get`), plus hints for logged-on viewers. `[]` when nothing is visible yet |
 | `notes` | array | when a notes file is visible | `filename` and `text` (as written, trimmed, ≤ 2000 bytes, a longer text cut and ending in `…`), plus hints |
 | `opens` | moment | logged-on viewers | the earliest `opens` of its items (see "Hints") |
 | `copy_of`, `mode` | string | `duplicate.ini` copies | the source event's id; `numbered` or `same` |
@@ -522,7 +526,7 @@ converts to.
 
 | Parameter | Required | Meaning |
 |---|---|---|
-| `file` | yes | a page key (`kind: "html"`) |
+| `file` | yes | a page key (`kind: "html"` or `"md"`) |
 | any other query parameter | no | a value for the page's `<url value="name">` tags. Names: letters, digits, `_`, `-`, at most 64 characters, not `file`, `lock` or `csrf`; values: at most 200 characters, HTML-escaped when placed. Values are remembered in an existing session (not one created for this) |
 | `lock` (POST) | no | a code for a `<lock>` section, with `csrf` (POST): the token that is in the page's own lock form |
 
@@ -586,6 +590,55 @@ that code on every page until logout or the session ends.
 
 ---
 
+## 8a. `md.php`
+
+One Markdown page (`kind: "md"`), **returned as Markdown**, processed for the current viewer, for
+a front end that converts Markdown itself (marked, markdown-it, ...). `html.php` still serves the
+same page converted to HTML; use whichever suits the front end.
+
+**Methods:** `GET`, `HEAD`.
+
+**Input:**
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `file` | yes | a Markdown page key (`kind: "md"`) |
+| any other query parameter | no | a value for the page's `<url value="name">` tags, as for `html.php` |
+
+**Output:** `200`, `text/markdown; charset=utf-8`, `Cache-Control: private, no-store`: the page's
+Markdown after processing. Not a Markdown page (an HTML page, any other file), unknown, or not
+allowed: `404` (JSON error). Other methods: `405`.
+
+**What processing does.** Hiding is a **plain scan of the source that ignores Markdown
+structure**: a tag counts wherever it is, in code blocks and code spans too. So no converter's
+reading of the page can bring hidden text back; the price is that a code sample can not show a
+literal `<inst>` tag (write `&lt;inst&gt;`).
+
+| In the source | In the answer |
+|---|---|
+| `<inst>…</inst>` | instructors: the content, without the tags; everyone else: nothing |
+| `<postmeeting>…</postmeeting>`, `<host server>…</host>` | the content without the tags when the viewer may see it (as in `html.php`), otherwise nothing |
+| `<lock>…</lock>` | **always removed, tags and content, for every viewer (instructors too).** Lock codes are not available through `md.php`; a page that needs them must be shown through `html.php` |
+| `<student>…</student>` | the content, without the tags |
+| `<!-- … -->` | removed, everywhere (code included); one never closed runs to the end |
+| `srcdoc` attributes in HTML written in the page | removed |
+| `<inject src="part.md">` (or another file) | that file's text, processed the same way (its own place decides its blocks; its links are rewritten from its own directory) |
+| `<codeinject src="x">` | a fenced code block with the file's source (a page's source without what the viewer may not see) |
+| `<replace value>` | the value |
+| `<url value="name" default="x">` | the query value, escaped so it is plain text (HTML characters as entities, Markdown punctuation with `\`); a value with a scheme other than `http(s):` is ignored; otherwise the default |
+| `<showlink src="file">` | `[file](url)`, or just the name when the viewer may not open the file |
+| `<calphp src>` | its output |
+| `<ace>…</ace>` | a fenced code block |
+| `[text](file)`, `![alt](file)`, `[id]: file` (outside code) | the target rewritten: Markdown pages `#/md/KEY`, HTML pages `#/view/KEY`, other files `/…/calendar/php/get.php?file=KEY`; a target the viewer may not open: the link becomes its text (an image its alt text, a definition is dropped); external and missing targets unchanged |
+| HTML tags written in the Markdown (`<a href>`, `<img src>`, ...) | rewritten as by `html.php` (section 8) |
+| everything else (math, code, tables, ...) | as written |
+
+The front end's converter must allow raw HTML if the course's pages use HTML inside Markdown
+(common), and runs whatever scripts such HTML contains, as with `html.php` (see 10.4). Heading
+ids, syntax highlighting and math are the front end's to add.
+
+---
+
 ## 9. `get.php`
 
 Any course file that is not a page, by key, **byte for byte**.
@@ -639,10 +692,13 @@ The two requests are independent; send them together.
 
 Use `#` routes so every view is a static page and deep links work. `html.php` writes links to
 other pages as **`#/view/KEY`** (optionally `#/view/KEY?name=value`), so the app must handle that
-route: fetch `calendar/php/html.php?file=KEY` plus the query, and show the result. Choose any
+route: fetch `calendar/php/html.php?file=KEY` plus the query, and show the result. `md.php`
+writes links to Markdown pages as **`#/md/KEY`** (and to HTML pages as `#/view/KEY`): fetch
+`calendar/php/md.php?file=KEY` plus the query for those (or `html.php`, which takes them too). Choose any
 other routes you like (`#/day/2026-11-09`, `#/event/class_5`, `#/page/policy`).
 
-To open a box file: `kind: "html"` → `#/view/KEY`; `kind: "get"` → link to
+To open a box file: `kind: "html"` → `#/view/KEY`; `kind: "md"` → `#/md/KEY` (if you use
+`md.php`) or `#/view/KEY`; `kind: "get"` → link to
 `calendar/php/get.php?file=KEY` (add `&download=1` for a download button).
 
 ### 10.3 Sections and times
@@ -740,4 +796,5 @@ or through `get.php` as course files).
 | `GET auth.php` | log out |
 | `GET html.php?file=KEY[&name=value]` | a processed page (8) |
 | `POST html.php?file=KEY` `lock`, `csrf` | unlock, `303` to the page |
+| `GET md.php?file=KEY[&name=value]` | a Markdown page as processed Markdown (8a) |
 | `GET get.php?file=KEY[&download=1]` | a file, byte for byte (9) |

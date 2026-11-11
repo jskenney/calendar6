@@ -4,8 +4,8 @@ Status: **draft**, being defined. Sections marked **Decided** follow the agreed 
 sections marked **Proposed** are suggestions still to be confirmed. Later work is collected
 under "Future enhancements" at the end.
 
-**Implemented so far:** the five endpoints in `php/` (`config.php`, `calendar.php`, `get.php`,
-`html.php`, `auth.php`) on the library in `lib/`, with tests in `tests/` (`php tests/run.php`).
+**Implemented so far:** the six endpoints in `php/` (`config.php`, `calendar.php`, `get.php`,
+`html.php`, `md.php`, `auth.php`) on the library in `lib/`, with tests in `tests/` (`php tests/run.php`).
 The front end (`app/`) is not started. "Implementation notes" near the end lists the choices the
 code made where this document left room. **`API.md` documents every endpoint's inputs and
 outputs** for anyone building on them; it is updated in the same commit as any change to an
@@ -36,7 +36,8 @@ calendar6/                    the shared software (linked into each course as ca
 │   ├── config.php            the site configuration, without secrets (JSON)
 │   ├── calendar.php          everything this viewer may see (JSON)
 │   ├── get.php               one file, by key, with its MIME type
-│   └── html.php              one HTML page, by key, processed (keys, tags)
+│   ├── html.php              one page (HTML or Markdown), by key, processed, as HTML
+│   └── md.php                one Markdown page, by key, processed, as Markdown
 ├── lib/                      the library behind them (classes only; .htaccess denies all)
 ├── tests/                    php tests/run.php (unit tests, and HTTP tests on php -S)
 ├── (proposed) app/           the static front end: index.html, app.js, app.css, vendored
@@ -449,8 +450,9 @@ page links to get keys too, decided by the page's rule (see `html.php`).
 there; it is the contract, and is updated in the same commit as any change to an endpoint).
 This section keeps the design decisions behind them.
 
-- Five endpoints, three answering JSON (`config.php`, `calendar.php`, `auth.php`), `html.php`
-  answering a processed page and `get.php` a file. Every request is answered for **the current
+- Six endpoints, three answering JSON (`config.php`, `calendar.php`, `auth.php`), `html.php`
+  answering a processed page (HTML or Markdown, as HTML), `md.php` a processed Markdown page as
+  Markdown, and `get.php` a file. Every request is answered for **the current
   viewer**: anonymous, or the user stored in the PHP session by `auth.php`.
 - Errors are JSON (`{"error": "..."}`) with the right status code; `auth.php` answers always
   carry all five of its fields (Decided). One answer (`404`) for "no such key" and "not allowed".
@@ -554,6 +556,23 @@ Links in processed pages follow this table (Decided, M-36):
 - **JavaScript is passed through unchanged** (Decided): `<script>` elements and inline handlers
   reach the browser as written. The front end runs them after placing the page (see "The front
   end").
+
+### `md.php`: Markdown as Markdown (Decided)
+
+For a front end that converts Markdown itself, `md.php` returns a Markdown page (`kind: "md"`)
+as Markdown, processed; `html.php` is unchanged and still serves the same page as HTML.
+
+- **Hiding is a plain scan of the source**, blind to Markdown structure, so no converter's reading
+  of the page can bring hidden text back (the server and the browser no longer share one reading,
+  as they do with `html.php`): a block tag counts in code too. `<inst>`, `<postmeeting>` and
+  `<host>` keep their content without the tags when the viewer may see it, and lose it otherwise.
+- **`<lock>` is not available:** its tags and content are always removed, for every viewer.
+- `<student>` tags are removed and their content kept; comments are removed everywhere; `srcdoc`
+  attributes are removed.
+- Links are rewritten as in `html.php`, also in Markdown syntax, outside code; links to Markdown
+  pages become `#/md/KEY`. A link form the rewriter misses only breaks: a bare file name fetches
+  nothing.
+- `<url>` values are escaped for Markdown and HTML alike, so they add no syntax.
 
 ### Tags (Decided: every Calendar 4 tag except `<ace>`)
 

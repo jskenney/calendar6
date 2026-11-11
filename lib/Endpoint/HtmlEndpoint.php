@@ -59,7 +59,7 @@ final class HtmlEndpoint
      *
      * @return array<string, string>
      */
-    private static function pageQuery(Context $c): array
+    public static function pageQuery(Context $c): array
     {
         $values = [];
         foreach ($c->query as $name => $value) {

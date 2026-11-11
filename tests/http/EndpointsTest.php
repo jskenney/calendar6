@@ -651,6 +651,88 @@ HTML;
         $this->assertSame([], $client->get('calendar/php/calendar.php')->json()['dropdown'] ?? null, 'no [dropdown]: an empty list');
     }
 
+    public function testMarkdownEndpoint(): void
+    {
+        $page = <<<'MD'
+# Lesson <replace value="event">
+
+Before <inst>INST-ONLY</inst> after.
+
+<lock code="open">LOCKED-PART</lock>
+
+<student>STUDENT-ANSWER</student>
+
+<!-- PRIVATE-REMARK -->
+
+```html
+<p><inst>CODE-SECRET</inst></p>
+<!-- CODE-COMMENT -->
+```
+
+See [the reading](reading.md), [the index](index.html), [hidden](instructor.html) and ![a picture](pic.png).
+
+[ref]: reading.md
+
+<a href="pic.png">raw link</a> <iframe srcdoc="&lt;inst&gt;SRCDOC-SECRET"></iframe>
+
+Hello <url value="who" default="nobody">.
+
+<showlink src="pic.png">
+
+<inject src="part.md">
+
+<codeinject src="Example.java">
+MD;
+        $client = $this->start([
+            'config/default.ini' => "class = always\nclass/instructor = never\n",
+            'class/01.Introduction/lesson.md' => $page,
+            'class/01.Introduction/reading.md' => '# Reading',
+            'class/01.Introduction/pic.png' => 'PNG',
+            'class/01.Introduction/instructor.html' => 'I',
+            'class/01.Introduction/part.md' => 'INJECTED <inst>INJECTED-SECRET</inst> [back](reading.md)',
+            'class/01.Introduction/Example.java' => 'class A { }',
+            'config/config.ini' => str_replace('title             = index.html, index.md', 'title             = lesson.md, index.html', (string) file_get_contents(__DIR__ . '/../../template/config/config.ini')),
+        ]);
+        $data = $client->get('calendar/php/calendar.php')->json();
+        $box = $data['events']['class_1']['boxes'][0] ?? [];
+        $this->assertSame(['lesson.md', 'md'], [$box['filename'] ?? null, $box['kind'] ?? null], 'Markdown pages are kind "md"');
+        $key = $box['key'];
+        $answer = $client->get("calendar/php/md.php?file=$key&who=" . rawurlencode('[x](javascript:1) "q"'));
+        $this->assertSame([200, 'text/markdown; charset=utf-8'], [$answer->status, $answer->header('content-type')]);
+        $md = $answer->body;
+        $this->assertContains('# Lesson 1', $md, 'Markdown comes back as Markdown, tags handled');
+        foreach (['INST-ONLY', 'LOCKED-PART', 'PRIVATE-REMARK', 'CODE-SECRET', 'CODE-COMMENT', 'SRCDOC-SECRET', 'INJECTED-SECRET', '<student', '<lock', '<inst', 'srcdoc'] as $gone) {
+            $this->assertNotContains($gone, $md, "removed for anonymous viewers: $gone");
+        }
+        $this->assertContains('STUDENT-ANSWER', $md, '<student> tags go, the content stays');
+        $reading = $this->keys($data)['class_1/reading.md'] ?? '';
+        $this->assertContains("[the reading](#/md/$reading)", $md, 'links to Markdown pages are #/md/ routes');
+        $this->assertContains('[the index](#/view/', $md, 'links to HTML pages are #/view/ routes');
+        $this->assertContains(' hidden ', ' ' . str_replace(['and', ','], ' ', $md) . ' ', 'a hidden link keeps its text');
+        $this->assertNotContains('instructor.html', $md);
+        $this->assertSame(1, preg_match('#!\[a picture\]\(/calendar/php/get\.php\?file=[A-Za-z0-9_-]{22}\)#', $md), 'images become get.php URLs');
+        $this->assertContains("[ref]: #/md/$reading", $md, 'reference definitions too');
+        $this->assertSame(1, preg_match('#<a href="/calendar/php/get\.php\?file=[A-Za-z0-9_-]{22}">raw link</a>#', $md), 'HTML links too');
+        $this->assertContains('Hello \[x\]\(javascript:1\) &quot;q&quot;.', $md, '<url> values are escaped: no Markdown or HTML syntax');
+        $this->assertSame(1, preg_match('#\[pic\.png\]\(/calendar/php/get\.php\?file=[A-Za-z0-9_-]{22}\)#', $md), '<showlink> becomes a Markdown link');
+        $this->assertContains('INJECTED', $md);
+        $this->assertContains("[back](#/md/$reading)", $md, 'an injected file\'s links are rewritten');
+        $this->assertContains("````\nclass A { }\n````", $md, '<codeinject> becomes a fenced code block');
+
+        $this->login($client);
+        $prof = $client->get("calendar/php/md.php?file=$key")->body;
+        $this->assertContains('Before INST-ONLY after.', $prof, 'instructors keep <inst> content without the tags');
+        $this->assertContains('CODE-SECRET', $prof);
+        $this->assertNotContains('LOCKED-PART', $prof, '<lock> sections are removed for everyone, instructors too');
+        $this->assertNotContains('<inst', $prof);
+
+        $html = $this->keys($data)['class_1/instructor.html'] ?? $this->keys($data)['class_1/index.html'] ?? '';
+        $this->assertSame(404, $client->get('calendar/php/md.php?file=' . ($this->keys($data)['class_1/pic.png'] ?? ''))->status, 'not a page: 404');
+        $this->assertSame(404, $client->get("calendar/php/md.php?file=$html")->status, 'an HTML page: 404 (use html.php)');
+        $this->assertSame(405, $client->post("calendar/php/md.php?file=$key", [])->status);
+        $this->assertSame(200, $client->get("calendar/php/html.php?file=$key")->status, 'html.php still serves Markdown pages, as HTML');
+    }
+
     public function testDayMarkers(): void
     {
         $client = $this->start(['config/dates.ini' => "2026-08-27 = lab\n2026-08-31 = none\n"]);

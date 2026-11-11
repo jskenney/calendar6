@@ -13,8 +13,8 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. No critical, high, medium, low, documentation or testing items are open. Review 23's fixes
-   (L-138..L-141, a rework of L-136) would benefit from another independent review.
+1. No critical, high, medium, low, documentation or testing items are open. An independent
+   review of the new `md.php` (DOC-42) and of the L-138..L-141 rework is next.
 2. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
@@ -330,6 +330,7 @@ None open.
 | E-12 | 22 | `6ac31d1` | `valid_until` is only in the login answer: after a reload the front end can not know when the login ends (GET auth.php logs out, so it can not be asked). | Decided (owner): `viewer` in config.php and calendar.php carries `valid_until` (null for anonymous viewers and previews); calendar.php fills it in after the cache, since it belongs to the session. API.md and tests updated. |
 | DOC-41 | owner | `cafd6b9` | A front end had no way to know which event types to offer as menu-bar drop-downs. | Decided (owner): config.ini `[dropdown] show = class, lab, project`; calendar.php sends `"dropdown": [...]` with only types `[types]` defines, in order, once each (unknown names are problems; no section gives `[]`). Template, DESIGN, API.md and tests updated; `version.format` is documented as raised only for breaking changes. |
 | T-29 | dev | `cafd6b9` | testHtml failed now and then: the test server chose a random port without checking it was free, so when it hit a port a local service listens on (here the session's proxy), PHP could not bind and the readiness check connected to that service instead. | The test server skips busy ports and counts as ready only while its own process is running. |
+| DOC-42 | owner | (this commit) | A front end that converts Markdown itself could not get a Markdown page as Markdown. | Decided (owner): new `md.php` returns a Markdown page as processed Markdown: hiding by plain scan (code included; instructors keep `<inst>` content without the tags), `<lock>` always removed (no lock codes), `<student>` tags removed, comments and `srcdoc` removed, `<inject>`/`<codeinject>`/`<replace>`/`<url>`/`<showlink>`/`<calphp>` handled, links rewritten (Markdown and HTML; `#/md/KEY` for Markdown pages). calendar.php gives Markdown pages `kind: "md"`; html.php is unchanged. API.md, DESIGN.md and tests updated. |
 
 ## Reviews
 

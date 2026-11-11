@@ -27,6 +27,8 @@ final class PageRenderer
     private const MAX_BLOCK_DEPTH = 256;
 
     private int $injectedBytes = 0;
+    /** md.php: links to Markdown pages become #/md/KEY routes (html.php's stay #/view/KEY) */
+    private bool $markdownRoutes = false;
 
     /** @var list<string> <url> values that were used, to remember in the session */
     public array $usedUrlValues = [];
@@ -133,6 +135,162 @@ final class PageRenderer
         $html = str_replace(self::URL_MARK, '', $html);
         $html = $this->anchors($html);
         return strtr($html, $this->outputs);
+    }
+
+    /** A Markdown file (by its real file): md.php serves these. */
+    public static function isMarkdown(string $path): bool
+    {
+        return (bool) preg_match('/\.md$/i', $path);
+    }
+
+    /**
+     * md.php: a Markdown page as Markdown, processed for this viewer (API.md, `md.php`).
+     * Hiding is a plain scan of the source, blind to Markdown structure, so no converter's
+     * reading can bring hidden text back: <inst>, <postmeeting> and <host> keep their content
+     * (without the tags) when the viewer may see it and lose it otherwise, also inside code;
+     * <lock> sections are always removed with their content (md.php has no lock codes);
+     * <student> tags go and their content stays; comments go everywhere. Then <inject>,
+     * <codeinject>, <calphp>, <replace>, <url> and <showlink> are handled, and links (Markdown
+     * and HTML) are rewritten to keys, outside code.
+     */
+    public function renderMarkdown(Place $place): string
+    {
+        $this->markdownRoutes = true;
+        $dir = dirname($place->file->realPath);
+        $text = $this->markdownInjects((string) @file_get_contents($place->file->realPath), $dir, 0, $place);
+        $text = $this->hideMarkdown($text, $place);
+        $text = strtr($this->calphp($text, $dir, $place), $this->outputs);
+        $text = $this->replace($text, $place);
+        [$text, $codes] = Markdown::maskCode($text);
+        $text = $this->markdownUrl($text);
+        $text = $this->markdownShowlinks($text, $dir, $place);
+        $text = $this->markdownLinks($text, $dir, $place);
+        $text = str_replace(self::URL_MARK, '', strtr($text, $codes));
+        // values from <calphp> and <replace> are hidden in again, to be sure (fail closed)
+        return $this->hideMarkdown($text, $place);
+    }
+
+    /** The hiding of renderMarkdown(), to a fixed point (removing a block can join a new tag, L-61). */
+    private function hideMarkdown(string $text, ?Place $place): string
+    {
+        for ($round = 0; ; $round++) {
+            $before = $text;
+            $text = self::plainComments($text);
+            $text = self::textBlock($text, 'lock', static fn (): string => '');
+            $text = $this->hideValue($text, $place);
+            $text = self::textBlock($text, 'student', static fn (string $inner): string => $inner);
+            $text = self::textBlock($text, 'ace', static fn (string $inner): string => "\n```\n" . $inner . "\n```\n");
+            foreach (['keyword', 'search'] as $removed) {
+                $text = (string) preg_replace('/<\/?' . $removed . '(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', '', $text);
+            }
+            // a browser reads srcdoc as a page of its own (entities decoded): never passed on
+            $text = (string) preg_replace('/\bsrcdoc\s*=\s*(?:"[^"]*"?|\'[^\']*\'?|[^\s>]*)/i', '', $text);
+            if ($text === $before) {
+                return $text;
+            }
+            if ($round >= 8) {
+                self::failed();
+            }
+        }
+    }
+
+    /** HTML comments by plain scan, code included; one never closed runs to the end. */
+    private static function plainComments(string $text): string
+    {
+        return (string) preg_replace('/<!--(?:>|->|.*?(?:--!?>|$))/s', '', $text);
+    }
+
+    /** <inject> and <codeinject> in a Markdown page, with the checks of injects() (by plain scan). */
+    private function markdownInjects(string $text, string $dir, int $depth, Place $place, array $ancestors = []): string
+    {
+        $ancestors[] = $place->file->realPath;
+        return (string) preg_replace_callback('/<(inject|codeinject)(?=[\t\n\f\r \/>])[^>]*>/i', function (array $m) use ($dir, $depth, $place, $ancestors): string {
+            $src = self::attribute($m[0], 'src');
+            $real = $src === null ? null : $this->course->boundary->resolve($dir . '/' . $src);
+            if ($real === null || !is_file($real) || Boundary::neverServed($real) || !$this->mayInject($real)) {
+                return '';
+            }
+            $size = (int) filesize($real);
+            if (in_array($real, $ancestors, true) || $this->injectedBytes + $size > self::MAX_INJECT_BYTES) {
+                return '';
+            }
+            $this->injectedBytes += $size;
+            $owner = $this->injectOwner($real) ?? $place;
+            $source = (string) file_get_contents($real);
+            if (strtolower($m[1]) === 'codeinject') {
+                $source = ContentFile::isPage($real) ? $this->hideForSource($source, $owner, $real) : $source;
+                preg_match_all('/`+/', $source, $runs);
+                $fence = str_repeat('`', max(3, ...array_map('strlen', $runs[0] ?: [''])) + 1);
+                return "\n$fence\n" . rtrim($source, "\n") . "\n$fence\n";
+            }
+            // its own place decides its blocks, its links are relative to its own directory
+            $inner = $this->hideMarkdown($source, $owner);
+            $inner = $depth < self::MAX_INJECT_DEPTH ? $this->markdownInjects($inner, dirname($real), $depth + 1, $owner, [...$ancestors, $real]) : $inner;
+            if (dirname($real) !== $dir) {
+                [$inner, $codes] = Markdown::maskCode($inner);
+                $inner = strtr($this->markdownLinks($inner, dirname($real), $owner), $codes);
+            }
+            return $inner;
+        }, $text);
+    }
+
+    /** <url value="name" default="x"> in Markdown: the value escaped so it is text, never syntax. */
+    private function markdownUrl(string $text): string
+    {
+        $text = (string) preg_replace('/<\/url\s*>/i', '', $text);
+        return (string) preg_replace_callback('/<url(?=[\t\n\f\r \/>])[^>]*>/i', function (array $m): string {
+            $name = (string) self::attribute($m[0], 'value');
+            if (isset($this->urlValues[$name]) && !self::hasUnsafeScheme($this->urlValues[$name])) {
+                $this->usedUrlValues[] = $name;
+                $value = str_replace(["\0", self::URL_MARK, "\r", "\n"], ['', '', ' ', ' '], $this->urlValues[$name]);
+                return self::URL_MARK . self::markdownText($value);
+            }
+            return (string) self::attribute($m[0], 'default');
+        }, $text);
+    }
+
+    /**
+     * A value as text in Markdown: HTML-escaped (quotes too, so it can not leave an HTML
+     * attribute), then Markdown's own punctuation backslash-escaped, so it adds no syntax.
+     */
+    private static function markdownText(string $value): string
+    {
+        return (string) preg_replace('/[\\\\`*_{}\[\]()!|~]/', '\\\\$0', htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+    }
+
+    /** <showlink src="file"> in Markdown: a link to that event file, or its name as text. */
+    private function markdownShowlinks(string $text, string $dir, Place $place): string
+    {
+        return (string) preg_replace_callback('/<showlink(?=[\t\n\f\r \/>])[^>]*>/i', function (array $m) use ($dir, $place): string {
+            $src = (string) self::attribute($m[0], 'src');
+            $name = self::markdownText(basename($src));
+            $target = $this->visiblePlace($place, $dir, $src);
+            return $target === null ? $name : '[' . $name . '](' . $this->urlFor($target, 'a') . ')';
+        }, $text);
+    }
+
+    /**
+     * Links in Markdown (code set aside by the caller): inline links and images, reference
+     * definitions, and HTML tags written in the Markdown. A link to a file the viewer may not
+     * see keeps its text (an image its alt text) and loses its target.
+     */
+    private function markdownLinks(string $text, string $dir, Place $place): string
+    {
+        $text = $this->links($text, $dir, $place);
+        $destination = '(<[^<>\n]*>|[^\s<>()]*(?:\([^\s()]*\)[^\s()]*)*)';
+        $text = (string) preg_replace_callback('/(!?)\[((?:[^\[\]\\\\]|\\\\.)*)\]\(\s*' . $destination . '((?:\s+(?:"[^"]*"|\'[^\']*\'|\([^)]*\)))?\s*)\)/', function (array $m) use ($dir, $place): string {
+            $angle = str_starts_with($m[3], '<');
+            $url = $this->rewrite($angle ? substr($m[3], 1, -1) : $m[3], $dir, $place, $m[1] === '!' ? 'img' : 'a');
+            if ($url === null) {
+                return $m[2];
+            }
+            return $m[1] . '[' . $m[2] . '](' . ($angle ? "<$url>" : $url) . $m[4] . ')';
+        }, $text);
+        return (string) preg_replace_callback('/^( {0,3}\[(?:[^\[\]\\\\]|\\\\.)+\]:[ \t]*)' . $destination . '(.*)$/m', function (array $m) use ($dir, $place): string {
+            $angle = str_starts_with($m[2], '<');
+            $url = $this->rewrite($angle ? substr($m[2], 1, -1) : $m[2], $dir, $place, 'a');
+            return $url === null ? '' : $m[1] . ($angle ? "<$url>" : $url) . $m[3];
+        }, $text);
     }
 
     private function load(string $path): string
@@ -1196,8 +1354,9 @@ final class PageRenderer
                 }
             }
             $query = implode('&', $kept);
+            $route = $this->markdownRoutes && self::isMarkdown($target->file->realPath) ? '#/md/' : '#/view/';
             return in_array($element, ['a', 'area'], true)
-                ? '#/view/' . rawurlencode($target->key) . ($query !== '' ? '?' . $query : '')
+                ? $route . rawurlencode($target->key) . ($query !== '' ? '?' . $query : '')
                 : $this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($target->key) . ($query !== '' ? '&' . $query : '');
         }
         return $this->baseUrl . 'calendar/php/get.php?file=' . rawurlencode($target->key);
