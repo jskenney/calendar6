@@ -4,6 +4,7 @@
 # an .ini file (course.ini says where the course lives) or a Markdown file, and never run or send
 # a PHP file except the endpoints calendar/php/<name>.php, also not through a path after the
 # script name (report.php/calendar/php/get.php, M-20). Needs only AllowOverride AuthConfig.
+# If the software's directory has another name than calendar/, change "calendar" below to it.
 <IfModule mod_authz_core.c>
     <If "%{REQUEST_URI} =~ m#/\.(?!well-known/)# || %{REQUEST_URI} =~ m#\.(ini|md)$#i">
         Require all denied

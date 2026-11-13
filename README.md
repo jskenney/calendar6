@@ -27,7 +27,7 @@ web tree, so the web server can not send `config/` or the material directly. See
 ## Status
 
 The PHP endpoints are implemented: `php/config.php`, `php/calendar.php`, `php/get.php`,
-`php/html.php`, `php/md.php` and `php/auth.php`. The browser front end (`app/`) is not started yet, so the
+`php/html.php`, `php/md.php` and `php/auth.php`. The browser front end (`html/` in the web directory, a separate repository) is not started yet, so the
 template's `index.html` leads nowhere for now. Code and security findings are tracked in
 [REVIEW.md](REVIEW.md); deployment notes are under "Deploying" in DESIGN.md.
 
@@ -40,8 +40,9 @@ php tests/run.php
 ```
 
 `php tests/run.php unit` or `php tests/run.php http` runs one suite; any other word runs the
-test files whose names contain it. The HTTP tests copy `template/` into a temporary course and
-serve it with PHP's built-in server.
+test files whose names contain it. The HTTP tests copy `template/course/` into a temporary course
+directory, make a web directory beside it (the `calendar` link and a `course.ini`) and serve that
+with PHP's built-in server.
 
 Time-dependent behaviour (release times, `<postmeeting>`, session and account expiry) is tested
 end to end with a clock the tests control: under PHP's built-in server only, the environment
@@ -50,14 +51,15 @@ server ignores it.
 
 ### Deployment checks
 
-`tests/deploy/` checks a real web server serving a course through the `calendar` link:
+`tests/deploy/` checks a real web server serving a web directory (the `calendar` link and
+`course.ini`) for a course that lives outside the web tree:
 
 ```bash
-php tests/deploy/smoke.php https://server/AB123/
+php tests/deploy/smoke.php https://server/~bob/AB123/ /home/faculty/bob/public_html/AB123
 ```
 
-It checks the endpoints and that `config/`, the material, `.git/` and the software's own files
-can not be fetched directly; with the course directory and the password of an account named
-`prof` it checks a login too. On a throwaway machine (or in CI), `apache-setup.sh --yes` and
+It checks the endpoints and that `course.ini`, `config/`, the material, `.git/`, stray PHP and
+the software's own files can not be fetched directly; with the web directory and the password of
+an account named `prof` it checks a login too. On a throwaway machine (or in CI), `apache-setup.sh --yes` and
 `nginx-setup.sh --yes` build a test course and serve it with Apache or nginx and PHP-FPM;
 `nginx-site.conf` is the reference nginx configuration.

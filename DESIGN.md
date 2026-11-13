@@ -6,7 +6,7 @@ under "Future enhancements" at the end.
 
 **Implemented so far:** the six endpoints in `php/` (`config.php`, `calendar.php`, `get.php`,
 `html.php`, `md.php`, `auth.php`) on the library in `lib/`, with tests in `tests/` (`php tests/run.php`).
-The front end (`app/`) is not started. "Implementation notes" near the end lists the choices the
+The front end (`html/` in the web directory, a separate repository) is not started. "Implementation notes" near the end lists the choices the
 code made where this document left room. **`API.md` documents every endpoint's inputs and
 outputs** for anyone building on them; it is updated in the same commit as any change to an
 endpoint.
@@ -42,8 +42,6 @@ calendar6/                    the shared software (linked into each course as ca
 │   └── md.php                one Markdown page, by key, processed, as Markdown
 ├── lib/                      the library behind them (classes only; .htaccess denies all)
 ├── tests/                    php tests/run.php (unit tests, and HTTP tests on php -S)
-├── (proposed) app/           the static front end: index.html, app.js, app.css, vendored
-│                             libraries (MathJax, highlight.js; no Ace)
 └── template/                 a starting point for a new course (see template/README.md)
     ├── README.md
     ├── course/               the course directory: config/ (a sample of every .ini file;
@@ -139,7 +137,7 @@ between the server and the browser.
 
 ### Samples of every `.ini` file
 
-**The complete samples are the files in `template/config/`** (the course template); the excerpts
+**The complete samples are the files in `template/course/config/`** (the course template); the excerpts
 in this document follow them. One course, AB123, is used everywhere, also in the JSON samples of
 the endpoints:
 
@@ -300,7 +298,7 @@ section meets, so the site can show it, and they give `start` / `end` a meaning.
 
 #### `periods.ini`: the school's periods, per period schedule
 
-The full file ships in `template/config/periods.ini` (the default for every course). Each
+The full file ships in `template/course/config/periods.ini` (the default for every course). Each
 `[period schedule]` lists its periods; a period that is not listed does not exist in that schedule
 (NA), and `cancelled` means it exists but does not meet:
 
@@ -981,6 +979,12 @@ The plan:
   `course.ini` does not reveal the course's path), Markdown files, and every PHP file or PHP backup
   except `calendar/php/<name>.php`, also with a path after the script name such as
   `report.php/calendar/php/get.php` (Apache 2.4).
+- **The shipped rules name `calendar/`** (DOC-45): `template/web/.htaccess` runs PHP only under
+  `calendar/php/`, and `tests/deploy/nginx-site.conf` passes only `calendar/php/*.php` to PHP-FPM
+  and denies `calendar/lib|tests|template`. calendar6 itself accepts any name for the software's
+  directory, but if you use another one (`cal/`), change `calendar` to that name in those rules,
+  or the endpoints answer `403`. (They are not loosened to any `<directory>/php/`, so a front
+  end's own `php/` folder never runs.)
 - **nginx:** no `.htaccess`; `tests/deploy/nginx-site.conf` is a complete, tested server block
   (CI serves a course with it): deny dot files and `.ini` files everywhere
   (`location ~ /\.(?!well-known/) { deny all; }` and `location ~ \.ini$ { deny all; }`), deny every

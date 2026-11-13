@@ -81,7 +81,9 @@ A course is two directories (this is the only layout):
   directory, but only when that is a real directory (a clone serving one course), never a link.
   The root must be **outside the web directory**: a root equal to or inside it is a `500`.
   Nothing else about locations is assumed: the directories can have any names and live anywhere,
-  and the software's directory can be called anything (`calendar` by convention).
+  and the software's directory can be called anything (`calendar` by convention). The shipped
+  web-server rules (`template/web/.htaccess`, `tests/deploy/nginx-site.conf`) name `calendar/`:
+  with another name, edit them to match, or the endpoints answer `403`.
 - **The course directory must hold `config/config.ini`** (`config/` directly inside it; nothing
   moves it). Keep it **outside the web tree**: then the web server can never send `config/`,
   `auth/` or raw material, whatever its configuration. Only the endpoints read it.
@@ -803,8 +805,8 @@ the server was updated: reload the app.
 ### 10.9 Things the API does not do
 
 No search, no file listing, no uploads, no editing; no server-rendered calendar or site layout;
-no CSS or JavaScript for the front end (serve your own from the course directory or `calendar/`,
-or through `get.php` as course files).
+no CSS or JavaScript for the front end (serve your own from the web directory, e.g. `html/`, or
+through `get.php` as course files).
 
 ---
 

@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. DOC-45, DOC-46, T-31, T-32 (documentation and tests from review 25).
+1. T-31, T-32 (tests from review 25).
 2. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
@@ -34,10 +34,7 @@ None open.
 
 ## Documentation
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| DOC-45 | 25 | `template/web/.htaccess:11`; `tests/deploy/nginx-site.conf:19` | Docs say the software's directory may have any name, but the shipped Apache and nginx rules run PHP only under `/calendar/php/`: `cal -> /opt/calendar6` answers 403 on both. Reproduced. | Relax the rules to `/[^/]+/php/[a-z]+\.php$`, or document that they must be edited. |
-| DOC-46 | 25 | `README.md:30`, `:43`, `:60`; `DESIGN.md:9`, `:45`, `:139`, `:300`; `API.md:802` | Stale after the split: `template/config/` (now `template/course/config/`), "copy template/", "the course directory" for the smoke test, "serve your own from the course directory" (not served now), and the front end called `app/` where the layout says `html/`. | Correct. |
+None open.
 
 ## Testing
 
@@ -353,6 +350,8 @@ None open.
 | L-149 | 25 | `67681a9` | Written URLs and the cookie path are not percent-encoded: a web directory named `A#1 x` gives `src="/A#1 x/calendar/..."` (cut at `#`) and `path=/A#1 x/` (never matches, so login fails); in md.php a space breaks link destinations; the 303 `Location` too. Reproduced. | coursePath and softwarePath percent-encode each segment (written URLs, the cookie path, the 303). Unit test. |
 | L-150 | 25 | `67681a9` | An unreadable `course.ini` reports "[course] root is missing"; a relative root in an inner `course.ini` resolves against the linked repository's real place. | An unreadable `course.ini` says "course.ini can not be read"; relative roots documented as resolved after links. |
 | L-151 | 25 | `67681a9` | An `at`-only preview drops `valid_until` (null) although the viewer is the logged-in instructor; API.md says null only for an `as` preview. Reproduced. | `valid_until` is filled in unless an instructor previews another viewer (`as`); an `at`-only preview keeps it. Test; API.md. |
+| DOC-45 | 25 | (this commit) | Docs say the software's directory may have any name, but the shipped Apache and nginx rules run PHP only under `/calendar/php/`: `cal -> /opt/calendar6` answers 403 on both. Reproduced. | Documented instead of loosened (so a front end's own `php/` folder never runs): DESIGN "Deploying", API.md 2.1, template/README step 6 and comments in `template/web/.htaccess` and `nginx-site.conf` say the rules name `calendar/` and must be edited for another name (otherwise 403). |
+| DOC-46 | 25 | (this commit) | Stale after the split: `template/config/` (now `template/course/config/`), "copy template/", "the course directory" for the smoke test, "serve your own from the course directory" (not served now), and the front end called `app/` where the layout says `html/`. | README (front end in `html/`, the tests' course and web directories, the smoke test's arguments), DESIGN (`html/`, no `app/` in the repository layout, `template/course/config/`), API.md (CSS and JavaScript from the web directory) corrected. |
 
 ## Reviews
 

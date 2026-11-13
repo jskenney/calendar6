@@ -55,7 +55,9 @@ course into the web directory; `course.ini` is the only connection.
    `assistant.ini` unless you need it.
 6. Optional hardening: keep `.htaccess` in the web directory (Apache): it refuses dot files,
    `.ini` files (so `course.ini` does not show the course's path), Markdown files, and any PHP
-   other than the endpoints.
+   other than the endpoints in `calendar/php/`. If you name the software's directory something
+   other than `calendar`, change `calendar` in that file too (and in nginx rules), or the
+   endpoints answer 403.
 7. Check the result: `php /path/to/calendar6/tests/deploy/smoke.php https://server/~bob/AB123/
    /home/faculty/bob/public_html/AB123` checks the endpoints and that nothing protected can be
    fetched directly. Add the password of an account named `prof` to check a login too.
