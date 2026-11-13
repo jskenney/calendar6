@@ -23,11 +23,11 @@ There is **no compatibility requirement** with Calendar 4 or Calendar 5 (Decided
 material layout and tags are kept because they work, but their configuration files are not
 read. A converter is a future enhancement.
 
-One copy of the software serves many courses: each course's web directory links to it (most
-likely `calendar -> /path/to/calendar6`, or `web/calendar -> /path/to/calendar6` in the web
-layout), so a course sees `./calendar/php/get.php` (or `./web/calendar/php/get.php`), for
-example `/home/faculty/username/public_html/AB123/calendar/php/get.php`. Both layouts are
-options; see "Two course layouts".
+One copy of the software serves many courses: each course has a **web directory** in the web
+tree that links to it (`calendar -> /path/to/calendar6`, for example
+`/home/faculty/bob/public_html/AB123/calendar/php/get.php`), and a `course.ini` beside that link
+says where the **course directory** is: anywhere on the file system, outside the web tree (see
+"Course layout").
 
 ## Repository layout (Decided, with a proposed front end)
 
@@ -44,11 +44,12 @@ calendar6/                    the shared software (linked into each course as ca
 ├── tests/                    php tests/run.php (unit tests, and HTTP tests on php -S)
 ├── (proposed) app/           the static front end: index.html, app.js, app.css, vendored
 │                             libraries (MathJax, highlight.js; no Ace)
-└── template/                 a starting point for a new course: copy it, then link calendar/
+└── template/                 a starting point for a new course (see template/README.md)
     ├── README.md
-    ├── config/               a sample of every .ini file (periods.ini is the full default)
-    ├── class/, lab/          one sample event each
-    └── home.html, ...        the pages named in paths.ini
+    ├── course/               the course directory: config/ (a sample of every .ini file;
+    │                         periods.ini is the full default), class/, lab/ (one sample
+    │                         event each), pages/, shared/
+    └── web/                  the web directory: course.ini, index.html, an optional .htaccess
 ```
 
 **The template (Decided)** is kept in step with this design: when the design changes, the
@@ -57,70 +58,52 @@ template's files change with it.
 **Rule (Decided):** `get.php` and `html.php` are the only scripts that return course files.
 Everything else references them, for example `<img src="php/get.php?file=KEY">`.
 
-## Course layout (Decided)
+## Course layout (Decided, E-14)
 
-Every course has this layout; the only choice is where the software sits (see "Two course
-layouts" below); nothing else about it is configurable:
-
-```
-course_directory/             the course (AB123/); the root of everything the calendar serves
-├── calendar/                 the software: a symbolic link to the calendar6 repo anywhere on the
-│                             server, or the repo cloned right here (or web/calendar/, below)
-├── config/                   all .ini files; always this directory
-│   └── auth/                 all authentication files
-└── <event_type>/<sort>.<event title>/    the material
-```
-
-### Two course layouts (Decided, E-13)
-
-Both are supported equally; a course uses one of them, and the endpoints work out which from the
-path a request came through (nothing is configured):
-
-| | Plain layout | Web layout |
-|---|---|---|
-| the software | `course/calendar/` (a link or a clone) | `course/web/calendar/` (a link or a clone) |
-| endpoints | `course/calendar/php/<name>.php` | `course/web/calendar/php/<name>.php` |
-| the front end | files at the course root (`index.html`, the proposed `calendar/app/`) | `web/html/` (a separate repository), optionally `web/epub-reader/`; `index.html` at the root, usually a link to `web/html/index.html` |
-| `config/`, material, `pages/`, `shared/` | at the course root | at the course root |
-| closed to `get.php`, `html.php`, `md.php` | `config/`, `calendar/`, `web/` | `config/`, `calendar/`, all of `web/` |
-
-- **All of `web/` is closed** (Decided), like `config/`, in both layouts: no key, `virtual.ini`
-  line, `paths.ini` page or `<inject>` reaches into it, and the cache fingerprint skips it. The web
-  server serves `web/html/` (and `web/epub-reader/`) directly as static files. `web` can not be
-  an event type.
-- The URLs the server writes (keys' `get.php`/`html.php` links, lock forms) follow the layout of
-  the request; the session and device cookies belong to the course root in both.
-- An `index.html` at the course root (also as a link into `web/html/`) resolves relative URLs from
-  the course root: the front end uses `web/calendar/php/...` and `web/html/...` in the web layout.
-- The template ships the plain layout; `template/README.md` shows how to set up either.
-
-The plain layout in detail:
+A course is two directories, and this is the only layout:
 
 ```
-AB123/                        the course's web directory
-├── calendar -> ...           the software (a link, or a clone)
-├── config/
-│   ├── .htaccess             deny all (config/ is inside the web root)
-│   ├── config.ini            the main configuration
-│   ├── dates.ini             days that differ from the weekly schedule
-│   ├── default.ini           when things become available to anonymous users
-│   ├── paths.ini             where the course's own pages are (resources, policy, ...)
-│   ├── virtual.ini           files shown in an event but stored elsewhere
-│   ├── duplicate.ini         events that are used again (class 5 also as class 6)
-│   ├── periods.ini           the school's periods, per period schedule
-│   ├── sections.ini          the course's sections: meetings, instructors, rooms (optional)
-│   └── auth/
-│       └── <username>.ini    one file per user, instructors included
-├── pages/                    the pages named in paths.ini (home, resources, syllabus)
-├── shared/                   files used by virtual.ini
-├── index.html                opens the calendar
+/home/faculty/bob/AB123/          the COURSE DIRECTORY: anywhere, outside the web tree
+├── config/                       all .ini files; always this directory
+│   ├── config.ini                the main configuration
+│   ├── dates.ini                 days that differ from the weekly schedule
+│   ├── default.ini               when things become available to anonymous users
+│   ├── paths.ini                 where the course's own pages are (resources, policy, ...)
+│   ├── virtual.ini               files shown in an event but stored elsewhere
+│   ├── duplicate.ini             events that are used again (class 5 also as class 6)
+│   ├── periods.ini               the school's periods, per period schedule
+│   ├── sections.ini              the course's sections: meetings, instructors, rooms (optional)
+│   └── auth/<username>.ini       one file per user, instructors included
 ├── class/
-│   ├── 01.Introduction/      one directory per event, in natural order of the names
+│   ├── 01.Introduction/          one directory per event, in natural order of the names
 │   └── 02.Loops/
-├── lab/
-│   └── 01.Setup/
-└── ...                       one directory per event type (exam/, project/, review/, ...)
+├── lab/, exam/, project/, ...    one directory per event type
+├── pages/                        the pages named in paths.ini (home, resources, syllabus)
+└── shared/                       files used by virtual.ini or <inject>
+
+/home/faculty/bob/public_html/AB123/   the WEB DIRECTORY: what the web server serves
+├── calendar/                     the software: a symbolic link to the calendar6 repo, or a clone
+├── course.ini                    [course] root = /home/faculty/bob/AB123
+├── html/                         the front end (a separate repository, or a link to one)
+├── reader/                       optional: the epub reader, if the front end uses it
+└── index.html                    usually a symbolic link to html/index.html
 ```
+
+- **The course directory is outside the web tree**, so the web server can never send `config/`,
+  `auth/` or raw material directly, whatever its configuration: no `.htaccess` file is needed
+  to protect them, and none is shipped. Only calendar6's endpoints read the course.
+- **`course.ini`** (`[course] root = <path>`, absolute or relative to `course.ini`'s directory)
+  names the course directory, which must hold `config/config.ini`. calendar6 looks for it in
+  the web directory (next to `calendar/`) and, failing that, inside `calendar/` itself (a clone
+  that serves one course). Nothing else about locations is assumed: neither directory's name or
+  place matters, nor the software directory's name.
+- **The web directory holds only public things:** the software (whose own `.htaccess` refuses its
+  `lib/`, `tests/`, `template/`, documents and `.ini` files), the front end, `index.html`, and
+  `course.ini`, which reveals only a path. `template/web/.htaccess` is optional hardening (it
+  refuses `.ini`, Markdown, dot files and stray PHP in the web directory).
+- **There is no symbolic link from the web directory to the course**: a web server that follows
+  links (Apache's `SymLinksIfOwnerMatch`, the user-directory default) would serve the whole course
+  through it.
 
 **Material layout (Decided): Calendar 4's.** One directory per event type; inside it one
 directory per event, named `<sort>.<Title>` and ordered by natural sort (`01.Introduction`,
@@ -141,14 +124,15 @@ between the server and the browser.
   `realpath()` (so symbolic links are followed) and must still be inside `course_directory/`;
   a link that leads outside is treated as missing. Calendar 4's `$ALLOWED_PATHS` (shared material
   elsewhere) is **not** kept: share material by copying it in.
-- **Never served, even inside the course:** `config/` (and so `auth/`), `calendar/`, `web/`, names
-  starting with a dot, `.php` files (only run by `<calphp>`), `.ini` files.
+- **Never served, even inside the course:** `config/` (and so `auth/`), the software (also
+  through a link, under any name), a `calendar/` or `web/` directory at the course root if there
+  is one, names starting with a dot, `.php` files (only run by `<calphp>`), `.ini` files.
 - **Only known files are served:** `get.php` and `html.php` serve a key, and keys exist only for
   event files, `virtual.ini` files, `paths.ini` pages and the files their pages link to.
-- **The configuration is always `course_directory/config/`**; there is no setting or pointer that
-  moves it.
-- **The location of calendar6 does not matter.** The only assumption is that
-  `course_directory/calendar` or `course_directory/web/calendar` reaches it (a link or a clone).
+- **The configuration is always `course_directory/config/`**; `course.ini` says where the course
+  directory is, nothing moves `config/` within it.
+- **The location of calendar6 does not matter**: the web directory reaches it through a link or a
+  clone, under any name.
 
 ### Samples of every `.ini` file
 
@@ -427,9 +411,8 @@ lab_2,4,6/checklist.md = shared/checklist.md
   hidden too (R14).
 - A virtual file added to an event is also added to that event's `same` repeats and `numbered`
   copies (Decided, L-33).
-- The real file is relative to the course directory and must be inside it (never in `config/`
-  or `calendar/`); its directory (`homework/`, `shared/`, ...) needs the same `.htaccess` as the
-  material directories. Later lines win, as everywhere.
+- The real file is relative to the course directory and must be inside it (never in `config/`).
+  Later lines win, as everywhere.
 
 ### `duplicate.ini` (Decided: an event used again)
 
@@ -926,27 +909,26 @@ Keys change when the place changes: a `numbered` copy in `duplicate.ini` renumbe
 after it (directory 6 becomes class 7), so their keys (and bookmarks to them) change; changing
 the secret changes every key. Holidays do not renumber events, so they do not change keys.
 
-## Finding the course (Decided)
+## Finding the course (Decided, E-14)
 
-The software is shared by many courses through the `calendar` link, so it can not hold a
-pointer to any one course. Instead:
+The software is shared by many courses, so it can not hold a pointer to any one course. Instead:
 
-1. The course directory is found from the request: `$_SERVER['SCRIPT_FILENAME']` keeps the
-   path the script was reached by (`.../AB123/calendar/php/get.php`, or in the web layout
-   `.../AB123/web/calendar/php/get.php`), so the course is two levels above `php/`, or three when
-   the calendar sits in `web/`. This works the same for a link and for a clone (`__DIR__` would
-   resolve the link and point into the repository). The URLs the server writes (keys' `get.php`
-   and `html.php` links, lock forms) follow the layout the request came through; the session
-   cookie belongs to the course root in both.
-2. **Checked before anything else:** the `calendar` directory must resolve (`realpath`) to the
-   code that is running, and `<course>/config/config.ini` must exist (the course is the calendar's
-   parent, or the parent of `web/`, whichever holds it). Otherwise (for example a server
-   that resolves links in `SCRIPT_FILENAME`), every endpoint answers `500` with a short error and
-   reads nothing.
+1. The **web directory** is found from the request: `$_SERVER['SCRIPT_FILENAME']` keeps the path
+   the script was reached by (`.../public_html/AB123/calendar/php/get.php`), so the software's
+   directory is two levels above the script and the web directory one level above that. This
+   works the same for a link and for a clone (`__DIR__` would resolve the link and point into the
+   repository).
+2. **Checked before anything else:** the software's directory must resolve (`realpath`) to the
+   code that is running (any name). Then `course.ini` is read from the web directory, or else
+   from the software's directory, and its `[course] root` (absolute, or relative to `course.ini`)
+   must be a directory holding `config/config.ini`. Otherwise (a missing `course.ini`, a wrong
+   root, a server that resolves links in `SCRIPT_FILENAME`) every endpoint answers `500` with a
+   short error and reads nothing.
 3. Its configuration is always `<course>/config/`, and its material is in `<course>/class/`,
    `<course>/lab/`, ... (the types listed in `config.ini`).
-4. Because `config/` and the material are inside the web root, `config/.htaccess` denies all, and
-   each material directory needs the same; the template ships them (see "Deploying").
+4. The URLs the server writes (keys' `get.php` and `html.php` links, lock forms) are
+   `<web directory URL>/<software directory>/php/...` as requested; the session and device
+   cookies belong to the web directory's URL.
 
 ## The front end (Proposed; not built yet)
 
@@ -970,7 +952,7 @@ pointer to any one course. Instead:
 
 The plan:
 
-- `index.html` in the course (a link to `calendar/app/index.html`, or a two-line file) loads
+- `index.html` in the web directory (a link to the front end's `index.html`) loads
   `app.js`, which fetches `config.php` and `calendar.php` and draws the calendar, menus and
   pages. Navigation uses `#` routes (`#/lab/6`), so every view is a static page and deep links
   work.
@@ -981,44 +963,38 @@ The plan:
 
 ## Deploying (Decided)
 
-- **Both layouts** use the same server rules; where a rule names `calendar/`, read
-  `calendar/` or `web/calendar/` (the template's `.htaccess` and `tests/deploy/nginx-site.conf`
-  accept both). In the web layout, let the web server serve `web/html/` (and `web/epub-reader/`)
-  as static files, and allow following the `index.html` link (Apache: `Options FollowSymLinks`,
-  or `SymLinksIfOwnerMatch` with matching owners).
-- **Apache:** keep the `.htaccess` files the template ships: the one at the course root (it
-  refuses every name that starts with a dot, such as `.git/` when the course is kept in git,
-  every `.ini` file, and every PHP file or PHP backup except `calendar/php/<name>.php` or
-  `web/calendar/php/<name>.php`, anywhere
-  under the course, also through `calendar/` and also with a path after the script name such as
-  `report.php/calendar/php/get.php`), and the deny-all
-  files in `config/`, `pages/`, `shared/` and every event-type directory (add one to each new
-  type). They need `AllowOverride AuthConfig` (or `All`) and Apache 2.4 for the dot rule. The
-  repository's own `.htaccess` (in `calendar/`) refuses `calendar/template/` and the repository's
-  documents (`*.md`, including this file and `REVIEW.md`); `calendar/lib/` and `calendar/tests/`
-  have their own.
+- **What the web server sees** is only the web directory: `calendar/` (the software), the
+  front end, `index.html` and `course.ini`. The course directory is outside the web tree, so no
+  rule is needed for `config/` or the material. PHP must be able to read the course directory
+  (for a host with `open_basedir`, add it), and with Apache a linked `index.html` needs
+  `Options FollowSymLinks` (or `SymLinksIfOwnerMatch` with matching owners).
+- **Apache:** the repository's own `.htaccess` (in `calendar/`) refuses `calendar/template/`, the
+  repository's documents (`*.md`, including this file and `REVIEW.md`) and `.ini` files (a
+  `course.ini` in a clone); `calendar/lib/` and `calendar/tests/` have their own. They need
+  `AllowOverride AuthConfig` (or `All`). `template/web/.htaccess`, copied into the web directory,
+  is optional hardening: it refuses names that start with a dot (`.git/`), `.ini` files (so
+  `course.ini` does not reveal the course's path), Markdown files, and every PHP file or PHP backup
+  except `calendar/php/<name>.php`, also with a path after the script name such as
+  `report.php/calendar/php/get.php` (Apache 2.4).
 - **nginx:** no `.htaccess`; `tests/deploy/nginx-site.conf` is a complete, tested server block
-  (CI serves a course with it). In short: deny the same directories in the server block, for example
-  `location ~ ^/AB123/(config|pages|shared|class|lab|exam|project)/ { deny all; }`, deny dot
-  files and `.ini` files everywhere (`location ~ /\.(?!well-known/) { deny all; }` and
-  `location ~ \.ini$ { deny all; }`), deny every PHP spelling in any case
-  (`location ~* \.(php\d*|phtml?|phar|phps|pht|inc)$` and with a following `/`), and pass only
-  `calendar/php/*.php` (or `web/calendar/php/*.php`) to PHP-FPM
-  (`calendar/lib/`, `calendar/tests/` and `calendar/template/` must not be reachable).
-- **Checking a server:** `tests/deploy/smoke.php <course URL> <course directory>` checks a real
-  deployment in either layout (it works out the layout from the course directory): the endpoints, a login, and that `config/`, the material, `.git/`, `calendar/lib/`,
-  `calendar/tests/` and `calendar/template/` can not be fetched directly. CI runs it against
-  Apache + PHP-FPM and nginx + PHP-FPM with a linked course (`tests/deploy/apache-setup.sh`,
-  `nginx-setup.sh`). Those setup scripts replace `/opt/calendar6` and `/var/www/html/AB123`, so
-  they run only with `--yes` (or `CI=true`) and never replace a directory they did not make.
+  (CI serves a course with it): deny dot files and `.ini` files everywhere
+  (`location ~ /\.(?!well-known/) { deny all; }` and `location ~ \.ini$ { deny all; }`), deny every
+  PHP spelling in any case (`location ~* \.(php\d*|phtml?|phar|phps|pht|inc)$` and with a
+  following `/`), deny `calendar/lib/`, `calendar/tests/` and `calendar/template/`, and pass only
+  `calendar/php/*.php` to PHP-FPM.
+- **Checking a server:** `tests/deploy/smoke.php <web directory URL> <web directory>` checks a
+  real deployment: the endpoints, a login, and that `course.ini`, `config/` and the material (by
+  any path), `.git/`, stray PHP, `calendar/lib/`, `calendar/tests/` and `calendar/template/` can not
+  be fetched directly. CI runs it against Apache + PHP-FPM and nginx + PHP-FPM
+  (`tests/deploy/apache-setup.sh`, `nginx-setup.sh`), with the course in `/srv/cal6-test/AB123`
+  and its web directory in `/var/www/html/AB123`. Those setup scripts replace `/opt/calendar6` and
+  both directories, so they run only with `--yes` (or `CI=true`) and never replace a directory
+  they did not make.
 - **Finding the course** relies on `SCRIPT_FILENAME` keeping the linked path; with PHP-FPM set it
   from `$document_root$fastcgi_script_name` (not `$realpath_root`). If it is resolved, every
   endpoint answers `500` instead of guessing.
-- **Files at the course root are served by the web server as they are** (DOC-20): only the
-  content directories (`class/`, `lab/`, `pages/`, `shared/`, `config/`, ...) are closed. The
-  template refuses Markdown files (`README.md`) and `.ini` files everywhere, but an `.html` page
-  or any other file kept at the root next to `index.html` is sent raw, `<inst>` and all: keep
-  pages in `pages/` (through `paths.ini`) and material in the event directories.
+- **Files in the web directory are served as they are**: keep pages in the course's `pages/`
+  (through `paths.ini`) and material in its event directories, never in the web directory.
 - **Reverse proxies:** list them in `config.ini` `[server] trusted_proxies`; only then are
   `X-Forwarded-For` (the client's address, for rate limits) and `X-Forwarded-Proto` (HTTPS, for
   the `Secure` cookie flag) believed. Entries are addresses or CIDR ranges (`10.0.0.0/8`),
@@ -1048,10 +1024,11 @@ The plan:
 ## Security summary (Proposed)
 
 - The course directory is the boundary: nothing outside it is read for serving, served or run;
-  paths are resolved with `realpath()` and checked; `config/`, `calendar/`, `web/`, dot files, `.php` and
+  paths are resolved with `realpath()` and checked; `config/`, the software, dot files, `.php` and
   `.ini` files are never served.
-- Material directories and `config/` must not be reachable directly: `.htaccess` (Apache) or
-  server rules (nginx).
+- The course directory is outside the web tree (E-14), so `config/` and the material can not be
+  reached directly whatever the web server's rules; the web directory holds only the software,
+  the front end, `index.html` and `course.ini`.
 - Access is checked where files are served (`get.php`, `html.php`), not only in `calendar.php`.
 - One answer (`404`) for "no such key" and "not allowed".
 - No secrets in any JSON; JSON only from `config.php`, `calendar.php`, `auth.php`.
@@ -1066,8 +1043,8 @@ Choices the code made where the design left room (change them here if they are w
   viewers, the policy), `lib/Render` (html.php's processing, the Markdown converter from
   Calendar 4/5), `lib/Http` and `lib/Endpoint` (the endpoints).
 - **Finding the course:** the endpoints refuse to run (500) unless the script was reached as
-  `course/calendar/php/...` or `course/web/calendar/php/...` and that `calendar` resolves to the
-  running code; `config.ini`
+  `<web directory>/<software>/php/...`, the software's directory resolves to the running code, and
+  a `course.ini` names a course directory with `config/config.ini`; `config.ini`
   must have a real `secret` (32+ characters), or nothing is served.
 - **Caching:** the cache key combines a fingerprint of the course directory (the names, sizes and
   modification times of everything in it except `calendar/` and `web/`, following links only while they
@@ -1091,7 +1068,7 @@ Choices the code made where the design left room (change them here if they are w
   `config.php?csrf=1` (not cross-site), a login, and a matching `<lock>` code sent to
   `html.php` (a POST).
 - **html.php:** links to pages become `#/view/KEY`, other files the absolute path
-  `/<course>/calendar/php/get.php?file=KEY` (`/<course>/web/calendar/php/...` in the web layout); links to files the viewer may not see keep their
+  `/<web directory>/calendar/php/get.php?file=KEY`; links to files the viewer may not see keep their
   text but lose their target (`data-cal6-hidden`); links to missing files are left as written,
   and a target filled in by `<url>` resolves only to a visible file with a rule of its own (see
   the table under `html.php`, M-36). `<student>` becomes `<details>`; `<ace>` shows its text in `<pre>`; `<lock>` becomes

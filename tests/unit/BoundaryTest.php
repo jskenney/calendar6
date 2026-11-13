@@ -44,10 +44,11 @@ final class BoundaryTest extends TestCase
         $messages = implode("\n", array_map(static fn ($p): string => $p->file . ' ' . $p->message, $course->problems));
         $this->assertSame(3, substr_count($messages, 'virtual.ini the real file is missing or outside the course'));
 
+        symlink(dirname(__DIR__, 2), "$this->dir/software"); // a course root that holds a link to the software
         $boundary = new Boundary($this->dir);
         $this->assertSame(null, $boundary->resolveRelative('../etc'));
         $this->assertSame(null, $boundary->resolveRelative('class/../config/config.ini'));
-        $this->assertSame(null, $boundary->resolve("$this->dir/calendar/php/get.php"), 'the software');
+        $this->assertSame(null, $boundary->resolve("$this->dir/software/php/get.php"), 'the software, whatever its name');
         $this->assertSame(null, $boundary->resolve("$this->dir/class/.hidden"));
     }
 

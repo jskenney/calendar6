@@ -291,7 +291,7 @@ INI;
 
     public function testLockdown(): void
     {
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $course = $this->load(['config/config.ini' => str_replace(';lockdown    = 2026-12-18 17:00', 'lockdown = 2026-09-30 17:00', $config)]);
         $before = self::now($course, '2026-09-30 16:59');
         $after = self::now($course, '2026-09-30 17:00');
@@ -308,7 +308,7 @@ INI;
 
     public function testUnreadableLockdownLocks(): void
     {
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $course = $this->load(['config/config.ini' => str_replace(';lockdown    = 2026-12-18 17:00', 'lockdown = 2026-12-32', $config)]);
         $this->assertFalse(self::sees($course, Viewer::anonymous(), 'lab_1/index.html', self::now($course)), 'locked until fixed (L-10)');
         $this->assertTrue(self::sees($course, Viewer::anonymous(), 'class_1/index.html', self::now($course)), '"always" rules still show');

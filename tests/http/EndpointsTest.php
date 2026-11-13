@@ -155,7 +155,7 @@ final class EndpointsTest extends TestCase
 
     public function testNamesThatAreNotUtf8(): void
     {
-        $client = $this->start(["class/01.Introduction/caf\xe9.txt" => 'x', 'config/config.ini' => str_replace('slides            = slides.pdf, slides.pptx', "slides            = slides.pdf, slides.pptx, caf\xe9.txt", (string) file_get_contents(__DIR__ . '/../../template/config/config.ini'))]);
+        $client = $this->start(["class/01.Introduction/caf\xe9.txt" => 'x', 'config/config.ini' => str_replace('slides            = slides.pdf, slides.pptx', "slides            = slides.pdf, slides.pptx, caf\xe9.txt", (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini'))]);
         $response = $client->get('calendar/php/calendar.php');
         $this->assertSame(200, $response->status, 'one bad name does not take the calendar down (M-1)');
         $this->assertContains("caf\u{FFFD}.txt", $response->body);
@@ -522,7 +522,7 @@ HTML;
 
     public function testNotesAsWrittenAndNotABox(): void
     {
-        $config = str_replace("[boxes]\n", "[boxes]\nnotes = notes.md | Lecture notes\n", (string) file_get_contents(__DIR__ . '/../../template/config/config.ini'));
+        $config = str_replace("[boxes]\n", "[boxes]\nnotes = notes.md | Lecture notes\n", (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini'));
         $long = "\n\n\n" . str_repeat('é', 1500) . "\n";
         $client = $this->start([
             'config/config.ini' => $config,
@@ -642,7 +642,7 @@ HTML;
     {
         $client = $this->start();
         $this->assertSame(['class', 'lab', 'project'], $client->get('calendar/php/calendar.php')->json()['dropdown'] ?? null, 'the template\'s [dropdown] show');
-        $config = str_replace('show = class, lab, project', 'show = Lab, quiz, class, lab', (string) file_get_contents(__DIR__ . '/../../template/config/config.ini'));
+        $config = str_replace('show = class, lab, project', 'show = Lab, quiz, class, lab', (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini'));
         $client = $this->start(['config/config.ini' => $config]);
         $this->assertSame(['lab', 'class'], $client->get('calendar/php/calendar.php')->json()['dropdown'] ?? null, 'only [types] types, in the order given, once each (any case)');
         $this->login($client);
@@ -691,7 +691,7 @@ MD;
             'class/01.Introduction/instructor.html' => 'I',
             'class/01.Introduction/part.md' => 'INJECTED <inst>INJECTED-SECRET</inst> [back](reading.md)',
             'class/01.Introduction/Example.java' => 'class A { }',
-            'config/config.ini' => str_replace('title             = index.html, index.md', 'title             = lesson.md, index.html', (string) file_get_contents(__DIR__ . '/../../template/config/config.ini')),
+            'config/config.ini' => str_replace('title             = index.html, index.md', 'title             = lesson.md, index.html', (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini')),
         ]);
         $data = $client->get('calendar/php/calendar.php')->json();
         $box = $data['events']['class_1']['boxes'][0] ?? [];
@@ -733,35 +733,48 @@ MD;
         $this->assertSame(200, $client->get("calendar/php/html.php?file=$key")->status, 'html.php still serves Markdown pages, as HTML');
     }
 
-    public function testWebLayout(): void
+    public function testCourseIniFindsTheCourse(): void
     {
-        $this->dir = Fixture::course(array_merge(PolicyTest::files(), [
-            'class/01.Introduction/index.html' => '<img src="pic.png"><lock code="open">L</lock><a href="reading.md">r</a>',
+        $client = $this->start([
+            'class/01.Introduction/index.html' => '<img src="pic.png"><lock code="open">L</lock>',
             'class/01.Introduction/pic.png' => 'PNG',
-            'class/01.Introduction/lesson.md' => '![p](pic.png)',
-            'web/html/index.html' => '<p>the front end</p>',
-            'web/html/app.js' => 'var app = 1;',
-            'config/virtual.ini' => "class_1/stolen.js = web/html/app.js\n",
-            'class/01.Introduction/inj.html' => '<inject src="../../web/html/index.html">INJ',
-        ]), true);
-        $this->server = new Server($this->dir);
-        $client = new HttpClient($this->server);
-        $this->assertSame(404, $client->get('calendar/php/calendar.php')->status, 'nothing at calendar/ in this layout');
-        $data = $client->get('web/calendar/php/calendar.php')->json();
-        $keys = $this->keys($data);
-        $this->assertTrue(isset($keys['class_1/index.html']), 'the course is found from web/calendar (E-13)');
-        $page = $client->get('web/calendar/php/html.php?file=' . $keys['class_1/index.html'])->body;
-        $this->assertSame(1, preg_match('#<img src="/web/calendar/php/get\.php\?file=([A-Za-z0-9_-]{22})">#', $page, $m), 'links point to web/calendar/php/');
-        $this->assertSame('PNG', $client->get('web/calendar/php/get.php?file=' . $m[1])->body);
-        $this->assertContains('action="/web/calendar/php/html.php?file=', $page, 'and the lock form');
-        $this->assertContains('/web/calendar/php/get.php?file=', $client->get('web/calendar/php/md.php?file=' . ($keys['class_1/lesson.md'] ?? ''))->body);
-        $this->assertNotContains('the front end', $client->get('web/calendar/php/html.php?file=' . ($keys['class_1/inj.html'] ?? ''))->body, 'web/ can not be injected');
-        $this->assertFalse(isset($keys['class_1/stolen.js']), 'nor given a place by virtual.ini');
-        $csrf = (string) $client->get('web/calendar/php/config.php?csrf=1')->json()['csrf'];
-        $login = $client->post('web/calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf]);
-        $this->assertSame('prof', $login->json()['user'] ?? null, 'logging in works');
-        $this->assertSame(1, preg_match('/path=\/(;|$)/', (string) $login->header('set-cookie')), 'the cookies belong to the course root, not web/');
-        $this->assertContains('virtual.ini', implode("\n", array_column($client->get('web/calendar/php/calendar.php')->json()['problems'] ?? [], 'file')), 'the virtual.ini line into web/ is a problem');
+        ]);
+        $web = Fixture::webDir($this->dir);
+        $data = $client->get('calendar/php/calendar.php')->json();
+        $key = $this->keys($data)['class_1/index.html'] ?? '';
+        $page = $client->get("calendar/php/html.php?file=$key")->body;
+        $this->assertSame(1, preg_match('#<img src="/calendar/php/get\.php\?file=([A-Za-z0-9_-]{22})">#', $page, $m), 'the course is found through course.ini, outside the web directory (E-14)');
+        $this->assertSame('PNG', $client->get('calendar/php/get.php?file=' . $m[1])->body);
+        $this->assertSame(404, $client->get('config/config.ini')->status, 'the course is not in the web tree at all');
+
+        file_put_contents("$web/course.ini", "[course]\nroot = ../" . basename($this->dir) . "\n");
+        $this->assertSame(200, $client->get('calendar/php/config.php')->status, 'a root relative to course.ini');
+        rename("$web/calendar", "$web/software");
+        $renamed = $client->get('software/php/html.php?file=' . $key)->body;
+        $this->assertContains('src="/software/php/get.php?file=', $renamed, 'the software\'s directory may have any name; links follow it');
+        rename("$web/software", "$web/calendar");
+
+        file_put_contents("$web/course.ini", "[course]\nroot = /nonexistent/AB123\n");
+        $this->assertContains('holds config/config.ini', $client->get('calendar/php/config.php')->body);
+        file_put_contents("$web/course.ini", "[course]\n");
+        $this->assertContains('root is missing', $client->get('calendar/php/config.php')->body);
+        unlink("$web/course.ini");
+        $missing = $client->get('calendar/php/config.php');
+        $this->assertSame(500, $missing->status);
+        $this->assertContains('course.ini is missing', $missing->body);
+
+        // inside the software's own directory (a clone serving one course), when the web
+        // directory has none
+        $own = dirname(__DIR__, 2) . '/course.ini';
+        $this->assertFalse(file_exists($own), 'no course.ini in the repository');
+        try {
+            file_put_contents($own, "[course]\nroot = $this->dir\n");
+            $this->assertSame(200, $client->get('calendar/php/config.php')->status, 'course.ini inside the software\'s directory');
+            file_put_contents("$web/course.ini", "[course]\nroot = /nonexistent\n");
+            $this->assertSame(500, $client->get('calendar/php/config.php')->status, 'the web directory\'s course.ini comes first');
+        } finally {
+            @unlink($own);
+        }
     }
 
     public function testDayMarkers(): void
@@ -846,7 +859,7 @@ MD;
 
     public function testRateLimitsAndProxies(): void
     {
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $client = $this->start(['config/config.ini' => $config . "\n[server]\ntrusted_proxies = 127.0.0.1\n"]);
         $from = fn (string $ip): array => ['X-Forwarded-For' => "203.0.113.9, $ip"];
         $attacker = new HttpClient($this->server);
@@ -916,7 +929,7 @@ MD;
     public function testConfigShapeAndMarkdown(): void
     {
         $client = $this->start([
-            'config/dates.ini' => (string) file_get_contents(__DIR__ . '/../../template/config/dates.ini'), // the template's own
+            'config/dates.ini' => (string) file_get_contents(__DIR__ . '/../../template/course/config/dates.ini'), // the template's own
             'class/01.Introduction/reading.md' => "# Notes\n\n## First part\n\nText with **bold** and [index](index.html).\n",
         ]);
         $data = $client->get('calendar/php/config.php')->json();
@@ -962,7 +975,7 @@ MD;
 
     public function testProxyHeadersOnlyFromTrustedProxies(): void
     {
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $client = $this->start(['config/config.ini' => $config . "\n[server]\ntrusted_proxies = 127.0.0.1\n"]);
         $secure = $client->get('calendar/php/config.php?csrf=1', ['X-Forwarded-Proto' => 'https']);
         $this->assertContains('secure', strtolower($secure->header('set-cookie')), 'Secure behind a trusted proxy that says https (T-8)');
@@ -979,14 +992,9 @@ MD;
         $this->assertSame(429, $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $token], ['X-Forwarded-For' => '198.51.100.99'])->status, 'a forged X-Forwarded-For does not get around the limit');
     }
 
-    public function testCourseMustBeReachedThroughCalendarLink(): void
+    public function testNoKeysWithoutASecret(): void
     {
         $client = $this->start();
-        rename("$this->dir/calendar", "$this->dir/software");
-        $response = $client->get('software/php/config.php');
-        $this->assertSame(500, $response->status);
-        $this->assertContains('course_directory/calendar', $response->body);
-        rename("$this->dir/software", "$this->dir/calendar");
         $config = (string) file_get_contents("$this->dir/config/config.ini");
         file_put_contents("$this->dir/config/config.ini", (string) preg_replace('/^secret\s*=.*$/m', 'secret = REPLACE-WITH-64-HEX-DIGITS', $config));
         $this->assertContains('secret must be set', $client->get('calendar/php/calendar.php')->body, 'no keys without a secret');

@@ -5,30 +5,32 @@ declare(strict_types=1);
 namespace Cal6\Tests;
 
 /**
- * Test courses: a copy of template/ with a secret, the `calendar` link to this
- * repository, and any files a test adds or replaces.
+ * Test courses: a copy of template/course/ with a secret and any files a test adds or
+ * replaces, and beside it its web directory (webDir()): the `calendar` link to this
+ * repository and a course.ini naming the course.
  */
 final class Fixture
 {
     public const SECRET = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
     public const PASSWORD = 'test-password-1';
 
-    /**
-     * @param array<string, string|null> $files path => content (null removes)
-     * @param bool $web the web layout: the software at web/calendar instead of calendar
-     */
-    public static function course(array $files = [], bool $web = false): string
+    /** The web directory of a test course: what the test server serves. */
+    public static function webDir(string $dir): string
+    {
+        return $dir . '-web';
+    }
+
+    /** @param array<string, string|null> $files path => content (null removes), in the course */
+    public static function course(array $files = []): string
     {
         $repo = dirname(__DIR__, 2);
         $dir = sys_get_temp_dir() . '/cal6-test-' . bin2hex(random_bytes(6));
         mkdir($dir, 0700);
-        self::copy("$repo/template", $dir);
-        if ($web) {
-            mkdir("$dir/web");
-            symlink($repo, "$dir/web/calendar");
-        } else {
-            symlink($repo, "$dir/calendar");
-        }
+        self::copy("$repo/template/course", $dir);
+        $web = self::webDir($dir);
+        mkdir($web, 0700);
+        symlink($repo, "$web/calendar");
+        file_put_contents("$web/course.ini", "[course]\nroot = $dir\n");
         $hash = password_hash(self::PASSWORD, PASSWORD_DEFAULT);
         file_put_contents("$dir/config/auth/prof.ini", "password_hash = $hash\ninstructor = true\nvalid = always\n");
         file_put_contents("$dir/config/auth/ta.ini", "password_hash = $hash\nvalid = always\n[grants]\nlab_1 = always\n");
@@ -71,6 +73,7 @@ final class Fixture
             self::removeTree(sys_get_temp_dir() . "/cal6-$uid-" . substr(sha1($real), 0, 16));
         }
         self::removeTree($dir);
+        self::removeTree(self::webDir($dir));
     }
 
     private static function removeTree(string $dir): void

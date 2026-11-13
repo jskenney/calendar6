@@ -3,6 +3,7 @@
 # nginx-site.conf.
 #   sudo tests/deploy/nginx-setup.sh --yes           (CI sets CI=true instead)
 # Then: php tests/deploy/smoke.php http://localhost:8080/AB123/ /var/www/html/AB123 smoke-test-password
+# (the web directory; the course itself is in /srv/cal6-test/AB123, outside the web tree)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 bash "$here/course-setup.sh" "$@"
@@ -14,4 +15,4 @@ mkdir -p /run/php
 nginx -t -q
 nginx -s reload 2>/dev/null || nginx
 sleep 1
-echo "nginx serves /var/www/html/AB123 at http://localhost:8080/AB123/ (PHP-FPM $version)"
+echo "nginx serves the web directory /var/www/html/AB123 at http://localhost:8080/AB123/ (PHP-FPM $version)"

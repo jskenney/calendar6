@@ -75,7 +75,7 @@ final class TimeTest extends TestCase
 
     public function testSessionsAndAccountWindowsEnd(): void
     {
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $hash = password_hash(Fixture::PASSWORD, PASSWORD_DEFAULT);
         $client = $this->start([
             'config/config.ini' => str_replace('session        = 8h', 'session        = 1h', $config),
@@ -103,7 +103,7 @@ final class TimeTest extends TestCase
 
     public function testGuessesFromManyAddressesAreGatedButTheInstructorGetsIn(): void
     {
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $config = str_replace('login_attempts = 5 per 15m', 'login_attempts = 1 per 15m', $config) . "\n[server]\ntrusted_proxies = 127.0.0.1\n";
         $prof = $this->start(['config/config.ini' => $config], '2026-10-01 10:00');
         $post = function (HttpClient $c, string $user, string $password, string $from): int {
@@ -135,7 +135,7 @@ final class TimeTest extends TestCase
 
     public function testAPasswordChangeEndsTheDeviceCookie(): void
     {
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $config = str_replace('login_attempts = 5 per 15m', 'login_attempts = 1 per 15m', $config) . "\n[server]\ntrusted_proxies = 127.0.0.1\n";
         $prof = $this->start(['config/config.ini' => $config], '2026-10-01 10:00');
         $post = function (HttpClient $c, string $user, string $password, string $from): int {

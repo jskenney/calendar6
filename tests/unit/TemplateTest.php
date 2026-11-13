@@ -28,7 +28,7 @@ final class TemplateTest extends TestCase
         $this->assertSame(['checklist.md', 'index.html', 'lab-solution.html'], array_keys($course->events['lab_1']->files), 'with the virtual file');
         $this->assertSame(['normal', 'early', 'no_midday_break', '2_hour_delay', '4_hour_delay'], array_keys($course->config->periods->schedules));
         $this->assertSame(3, count($course->config->sections->sections));
-        foreach (glob(dirname(__DIR__, 2) . '/template/config/*.ini') ?: [] as $file) {
+        foreach (glob(dirname(__DIR__, 2) . '/template/course/config/*.ini') ?: [] as $file) {
             $this->assertNotContains("\t", (string) file_get_contents($file), basename($file) . ': no tabs');
         }
     }

@@ -15,7 +15,7 @@ use Cal6\Http\Download;
 final class Boundary
 {
     private string $real;
-    /** Top-level directories never served: the configuration, the software, and web/ (the front end and the software in the web layout) */
+    /** Top-level directories of the course never served: config/, and calendar/ or web/ if a course root holds them */
     public const CLOSED = ['config', 'calendar', 'web'];
 
     /** @var list<string> real paths that are never served: config/, calendar/ and web/ */
@@ -30,6 +30,8 @@ final class Boundary
                 $this->closed[] = $closed;
             }
         }
+        // the software itself, wherever it is (a course root that holds it, by mistake or by a link)
+        $this->closed[] = (string) realpath(__DIR__ . '/../..');
     }
 
     public function root(): string

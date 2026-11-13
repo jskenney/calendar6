@@ -14,8 +14,10 @@ final class Server
     public readonly string $log;
 
     /** @param string|null $clock a file holding the time the server should use (a Unix timestamp) */
+    /** @param string $docRoot a test course (its web directory is served) or a directory to serve */
     public function __construct(public readonly string $docRoot, public readonly ?string $clock = null)
     {
+        $served = is_dir(Fixture::webDir($docRoot)) ? Fixture::webDir($docRoot) : $docRoot;
         $this->log = (string) tempnam(sys_get_temp_dir(), 'cal6-log-');
         for ($try = 0; $try < 20; $try++) {
             $port = random_int(20000, 45000);
@@ -30,7 +32,7 @@ final class Server
             if ($clock !== null) {
                 $env['CAL6_TEST_CLOCK'] = $clock;
             }
-            $process = proc_open([PHP_BINARY, '-d', 'display_errors=0', '-d', 'log_errors=1', '-d', 'error_log=' . $this->log, '-d', 'error_reporting=-1', '-S', "127.0.0.1:$port", '-t', $docRoot], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, $env);
+            $process = proc_open([PHP_BINARY, '-d', 'display_errors=0', '-d', 'log_errors=1', '-d', 'error_log=' . $this->log, '-d', 'error_reporting=-1', '-S', "127.0.0.1:$port", '-t', $served], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, $env);
             if (!is_resource($process)) {
                 continue;
             }

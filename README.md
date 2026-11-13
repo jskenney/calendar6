@@ -4,24 +4,25 @@ A course calendar that is mostly static HTML/JS, with small PHP endpoints only w
 must be protected. See [API.md](API.md) for the endpoints (everything a front end needs), [DESIGN.md](DESIGN.md) for how it works and [template/](template/) for
 a starting point for a course.
 
-A course can use either of two layouts; both are supported:
+A course is two directories: the **course directory**, anywhere outside the web tree, and a
+**web directory** that the web server serves. `course.ini` in the web directory says where the
+course directory is:
 
 ```
-course_directory/                     course_directory/
-├── calendar/   this repository       ├── web/
-├── config/     the .ini files        │   ├── calendar/     this repository
-├── class/, lab/  the material        │   ├── html/         the front end (its own repository)
-└── index.html  the front end         │   └── epub-reader/  optional
-                                      ├── config/           the .ini files
-     the plain layout                 ├── class/, lab/      the material
-                                      └── index.html -> web/html/index.html
+/home/faculty/bob/AB123/              the course: config/ (the .ini files), class/, lab/, ...
+                                      (the material), pages/, shared/
 
-                                           the web layout
+/home/faculty/bob/public_html/AB123/  the web directory
+├── calendar/      this repository (a symbolic link to it, or a clone)
+├── course.ini     [course] root = /home/faculty/bob/AB123
+├── html/          the front end (its own repository)
+├── reader/        optional
+└── index.html  -> html/index.html
 ```
 
-`calendar` is this repository, as a symbolic link or a clone. The endpoints are at
-`calendar/php/<name>.php` (plain) or `web/calendar/php/<name>.php` (web); `config/` and the
-material are at the course root in both. See [API.md](API.md), section 2.
+The endpoints are at `calendar/php/<name>.php` in the web directory. The course is never in the
+web tree, so the web server can not send `config/` or the material directly. See
+[API.md](API.md), section 2, and [template/](template/).
 
 ## Status
 

@@ -25,7 +25,7 @@ final class CalendarTest extends TestCase
             'config/virtual.ini' => '',
             'class/01.Introduction' => null,
         ];
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $files['config/config.ini'] = str_replace('end      = 2026-12-18', 'end      = ' . $end, $config);
         for ($i = 1; $i <= 10; $i++) {
             $files[sprintf('class/%02d.Class %d/index.html', $i, $i)] = "<p>class $i</p>";
@@ -107,7 +107,7 @@ final class CalendarTest extends TestCase
 
     public function testSectionsDefaultToClass(): void
     {
-        $config = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $config = str_replace("[types]\n; event types, in menu order: directory = label\nclass   = Class\nlab     = Lab", "[types]\nlab     = Lab\nclass   = Class", $config);
         $this->dir = Fixture::course(['config/config.ini' => $config]);
         $course = Course::load($this->dir);

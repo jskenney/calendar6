@@ -2,6 +2,7 @@
 # Serves the test course (course-setup.sh) with Apache + PHP-FPM on port 80.
 #   sudo tests/deploy/apache-setup.sh --yes          (CI sets CI=true instead)
 # Then: php tests/deploy/smoke.php http://localhost/AB123/ /var/www/html/AB123 smoke-test-password
+# (the web directory; the course itself is in /srv/cal6-test/AB123, outside the web tree)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 bash "$here/course-setup.sh" "$@"
@@ -26,4 +27,4 @@ mkdir -p /run/php
 "$fpm" -D 2>/dev/null || true
 apache2ctl -k restart 2>/dev/null || apache2ctl start
 sleep 1
-echo "Apache serves /var/www/html/AB123 at http://localhost/AB123/ (PHP-FPM $version)"
+echo "Apache serves the web directory /var/www/html/AB123 at http://localhost/AB123/ (PHP-FPM $version)"

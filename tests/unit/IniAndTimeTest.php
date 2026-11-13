@@ -30,7 +30,7 @@ final class IniAndTimeTest extends TestCase
 
     public function testAMeetingMustEndAfterItStarts(): void
     {
-        $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $template = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $dir = Fixture::course(['config/config.ini' => str_replace("mon = class\n", "mon = class 22:00-00:30\n", $template)]);
         $config = CourseConfig::load($dir);
         Fixture::remove($dir);
@@ -49,7 +49,7 @@ final class IniAndTimeTest extends TestCase
         $this->assertFalse(\Cal6\Http\Context::isTrusted('11.0.0.1', ['10.0.0.0/8']));
         $this->assertTrue(\Cal6\Http\Context::isTrusted('::ffff:10.0.0.5', ['10.0.0.0/8']), 'an IPv4-mapped address (L-81)');
         $this->assertTrue(\Cal6\Http\Context::isTrusted('10.0.0.5', ['::ffff:10.0.0.5']));
-        $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $template = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $dir = Fixture::course(['config/config.ini' => $template . "\n[server]\ntrusted_proxies = 10.0.0.0/8, proxy.example\n"]);
         $config = CourseConfig::load($dir);
         Fixture::remove($dir);
@@ -59,7 +59,7 @@ final class IniAndTimeTest extends TestCase
 
     public function testForwardedForWithPortsAndUnknownHops(): void
     {
-        $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $template = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $dir = Fixture::course(['config/config.ini' => $template . "\n[server]\ntrusted_proxies = 10.0.0.1\n"]);
         $config = CourseConfig::load($dir);
         Fixture::remove($dir);
@@ -71,7 +71,7 @@ final class IniAndTimeTest extends TestCase
 
     public function testOddLoginAttemptsKeepTheDefault(): void
     {
-        $template = (string) file_get_contents(__DIR__ . '/../../template/config/config.ini');
+        $template = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         foreach (['5 per 0m' => [5, 900], '0 per 15m' => [5, 900], 'lots' => [5, 900], '3 per 2h' => [3, 7200]] as $value => $expected) {
             $dir = Fixture::course(['config/config.ini' => str_replace('login_attempts = 5 per 15m', "login_attempts = $value", $template)]);
             $config = CourseConfig::load($dir);
