@@ -1,6 +1,7 @@
 # Calendar 6 course template
 
-A starting point for a course. Every course has this layout (see `../DESIGN.md`):
+A starting point for a course. A course uses one of two layouts (see `../API.md`, section 2, and
+`../DESIGN.md`). The plain layout:
 
 ```
 course_directory/
@@ -15,6 +16,20 @@ course_directory/
                          calendar/php/ already work)
 ```
 
+The web layout keeps the software beside a separate front end, under `web/`:
+
+```
+course_directory/
+├── web/
+│   ├── calendar/        the calendar6 software: a symbolic link to the repo, or a clone
+│   ├── html/            the front end (a separate repository, or a link to one)
+│   └── epub-reader/     optional, if the front end uses it
+├── index.html           usually a symbolic link to web/html/index.html
+├── config/, class/, lab/, pages/, shared/   as in the plain layout
+```
+
+All of `web/` (like `config/`) is closed to the endpoints: nothing in it is ever course material.
+
 ## Starting a course
 
 1. Copy this directory to the course's web directory:
@@ -23,10 +38,18 @@ course_directory/
    cp -r /path/to/calendar6/template/. /home/faculty/username/public_html/AB123/
    ```
 
-2. Link the software into it (or clone the repo there as `calendar/`):
+2. Link the software into it (or clone the repo there). For the plain layout:
 
    ```bash
    ln -s /path/to/calendar6 /home/faculty/username/public_html/AB123/calendar
+   ```
+
+   For the web layout (and replace the template's `index.html` with a link to the front end's):
+
+   ```bash
+   mkdir -p /home/faculty/username/public_html/AB123/web
+   ln -s /path/to/calendar6 /home/faculty/username/public_html/AB123/web/calendar
+   ln -sf web/html/index.html /home/faculty/username/public_html/AB123/index.html
    ```
 
 3. Edit `config/config.ini`: course number and name, semester, `secret`
@@ -40,9 +63,10 @@ course_directory/
    `.ini` files), and those in `config/`, the material directories, `pages/` and `shared/`, which
    must never be reachable directly. Add the same file to each new event-type directory. `cp -r
    template/.` copies the root `.htaccess` too.
-7. Check the result: `php calendar/tests/deploy/smoke.php https://server/AB123/` checks the
-   endpoints and that nothing protected can be fetched directly. Add the course directory and the
-   password of an account named `prof` to check a login too.
+7. Check the result: `php calendar/tests/deploy/smoke.php https://server/AB123/
+   /path/to/AB123` (`web/calendar/tests/...` in the web layout) checks the endpoints and that
+   nothing protected can be fetched directly; it works out the layout from the course directory.
+   Add the password of an account named `prof` to check a login too.
 
 All paths in the `.ini` files are relative to the course directory, and nothing outside it is
 ever served.

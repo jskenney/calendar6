@@ -24,8 +24,10 @@ material layout and tags are kept because they work, but their configuration fil
 read. A converter is a future enhancement.
 
 One copy of the software serves many courses: each course's web directory links to it (most
-likely `calendar -> /path/to/calendar6`), so a course sees `./calendar/php/get.php`, for
-example `/home/faculty/username/public_html/AB123/calendar/php/get.php`.
+likely `calendar -> /path/to/calendar6`, or `web/calendar -> /path/to/calendar6` in the web
+layout), so a course sees `./calendar/php/get.php` (or `./web/calendar/php/get.php`), for
+example `/home/faculty/username/public_html/AB123/calendar/php/get.php`. Both layouts are
+options; see "Two course layouts".
 
 ## Repository layout (Decided, with a proposed front end)
 
@@ -57,7 +59,8 @@ Everything else references them, for example `<img src="php/get.php?file=KEY">`.
 
 ## Course layout (Decided)
 
-Every course has this layout, always; nothing about it is configurable:
+Every course has this layout; the only choice is where the software sits (see "Two course
+layouts" below); nothing else about it is configurable:
 
 ```
 course_directory/             the course (AB123/); the root of everything the calendar serves
@@ -68,14 +71,30 @@ course_directory/             the course (AB123/); the root of everything the ca
 └── <event_type>/<sort>.<event title>/    the material
 ```
 
-**The web layout (Decided, E-13)** puts the software beside the front end's repositories:
-`web/calendar/` (the software, a link or a clone), `web/html/` (the front end, a separate
-repository), optionally `web/epub-reader/`, and `index.html` at the course root, usually a link to
-`web/html/index.html`. `config/` and the material stay at the course root. All of `web/` is
-closed to `get.php`, `html.php` and `md.php`, like `config/`: no key, `virtual.ini` line,
-`paths.ini` page or `<inject>` can reach into it; the web server serves `web/html/` directly.
+### Two course layouts (Decided, E-13)
 
-In more detail (the plain layout):
+Both are supported equally; a course uses one of them, and the endpoints work out which from the
+path a request came through (nothing is configured):
+
+| | Plain layout | Web layout |
+|---|---|---|
+| the software | `course/calendar/` (a link or a clone) | `course/web/calendar/` (a link or a clone) |
+| endpoints | `course/calendar/php/<name>.php` | `course/web/calendar/php/<name>.php` |
+| the front end | files at the course root (`index.html`, the proposed `calendar/app/`) | `web/html/` (a separate repository), optionally `web/epub-reader/`; `index.html` at the root, usually a link to `web/html/index.html` |
+| `config/`, material, `pages/`, `shared/` | at the course root | at the course root |
+| closed to `get.php`, `html.php`, `md.php` | `config/`, `calendar/`, `web/` | `config/`, `calendar/`, all of `web/` |
+
+- **All of `web/` is closed** (Decided), like `config/`, in both layouts: no key, `virtual.ini`
+  line, `paths.ini` page or `<inject>` reaches into it, and the cache fingerprint skips it. The web
+  server serves `web/html/` (and `web/epub-reader/`) directly as static files. `web` can not be
+  an event type.
+- The URLs the server writes (keys' `get.php`/`html.php` links, lock forms) follow the layout of
+  the request; the session and device cookies belong to the course root in both.
+- An `index.html` at the course root (also as a link into `web/html/`) resolves relative URLs from
+  the course root: the front end uses `web/calendar/php/...` and `web/html/...` in the web layout.
+- The template ships the plain layout; `template/README.md` shows how to set up either.
+
+The plain layout in detail:
 
 ```
 AB123/                        the course's web directory
@@ -962,9 +981,15 @@ The plan:
 
 ## Deploying (Decided)
 
+- **Both layouts** use the same server rules; where a rule names `calendar/`, read
+  `calendar/` or `web/calendar/` (the template's `.htaccess` and `tests/deploy/nginx-site.conf`
+  accept both). In the web layout, let the web server serve `web/html/` (and `web/epub-reader/`)
+  as static files, and allow following the `index.html` link (Apache: `Options FollowSymLinks`,
+  or `SymLinksIfOwnerMatch` with matching owners).
 - **Apache:** keep the `.htaccess` files the template ships: the one at the course root (it
   refuses every name that starts with a dot, such as `.git/` when the course is kept in git,
-  every `.ini` file, and every PHP file or PHP backup except `calendar/php/<name>.php`, anywhere
+  every `.ini` file, and every PHP file or PHP backup except `calendar/php/<name>.php` or
+  `web/calendar/php/<name>.php`, anywhere
   under the course, also through `calendar/` and also with a path after the script name such as
   `report.php/calendar/php/get.php`), and the deny-all
   files in `config/`, `pages/`, `shared/` and every event-type directory (add one to each new
@@ -978,10 +1003,10 @@ The plan:
   files and `.ini` files everywhere (`location ~ /\.(?!well-known/) { deny all; }` and
   `location ~ \.ini$ { deny all; }`), deny every PHP spelling in any case
   (`location ~* \.(php\d*|phtml?|phar|phps|pht|inc)$` and with a following `/`), and pass only
-  `calendar/php/*.php` to PHP-FPM
+  `calendar/php/*.php` (or `web/calendar/php/*.php`) to PHP-FPM
   (`calendar/lib/`, `calendar/tests/` and `calendar/template/` must not be reachable).
 - **Checking a server:** `tests/deploy/smoke.php <course URL> <course directory>` checks a real
-  deployment: the endpoints, a login, and that `config/`, the material, `.git/`, `calendar/lib/`,
+  deployment in either layout (it works out the layout from the course directory): the endpoints, a login, and that `config/`, the material, `.git/`, `calendar/lib/`,
   `calendar/tests/` and `calendar/template/` can not be fetched directly. CI runs it against
   Apache + PHP-FPM and nginx + PHP-FPM with a linked course (`tests/deploy/apache-setup.sh`,
   `nginx-setup.sh`). Those setup scripts replace `/opt/calendar6` and `/var/www/html/AB123`, so
@@ -1023,7 +1048,7 @@ The plan:
 ## Security summary (Proposed)
 
 - The course directory is the boundary: nothing outside it is read for serving, served or run;
-  paths are resolved with `realpath()` and checked; `config/`, `calendar/`, dot files, `.php` and
+  paths are resolved with `realpath()` and checked; `config/`, `calendar/`, `web/`, dot files, `.php` and
   `.ini` files are never served.
 - Material directories and `config/` must not be reachable directly: `.htaccess` (Apache) or
   server rules (nginx).
@@ -1041,7 +1066,8 @@ Choices the code made where the design left room (change them here if they are w
   viewers, the policy), `lib/Render` (html.php's processing, the Markdown converter from
   Calendar 4/5), `lib/Http` and `lib/Endpoint` (the endpoints).
 - **Finding the course:** the endpoints refuse to run (500) unless the script was reached as
-  `course/calendar/php/...` and `course/calendar` resolves to the running code; `config.ini`
+  `course/calendar/php/...` or `course/web/calendar/php/...` and that `calendar` resolves to the
+  running code; `config.ini`
   must have a real `secret` (32+ characters), or nothing is served.
 - **Caching:** the cache key combines a fingerprint of the course directory (the names, sizes and
   modification times of everything in it except `calendar/` and `web/`, following links only while they
@@ -1065,7 +1091,7 @@ Choices the code made where the design left room (change them here if they are w
   `config.php?csrf=1` (not cross-site), a login, and a matching `<lock>` code sent to
   `html.php` (a POST).
 - **html.php:** links to pages become `#/view/KEY`, other files the absolute path
-  `/<course>/calendar/php/get.php?file=KEY`; links to files the viewer may not see keep their
+  `/<course>/calendar/php/get.php?file=KEY` (`/<course>/web/calendar/php/...` in the web layout); links to files the viewer may not see keep their
   text but lose their target (`data-cal6-hidden`); links to missing files are left as written,
   and a target filled in by `<url>` resolves only to a visible file with a rule of its own (see
   the table under `html.php`, M-36). `<student>` becomes `<details>`; `<ace>` shows its text in `<pre>`; `<lock>` becomes

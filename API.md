@@ -91,7 +91,18 @@ names in `config.ini` `[boxes]`; `[notes]` names a short remarks file per event.
 ### 2.2 Where calendar6 goes, and the endpoint URLs
 
 The repository is reached as a directory named `calendar`, cloned there or (usually, so one copy
-serves many courses) as a symbolic link, in one of two layouts:
+serves many courses) as a symbolic link, in **either of two layouts, both supported equally**
+(Decided). Pick one per course; nothing is configured, the endpoints work out which one a request
+came through:
+
+| | Plain layout | Web layout |
+|---|---|---|
+| the software | `<course>/calendar` | `<course>/web/calendar` |
+| the endpoints | `<course URL>/calendar/php/<name>.php` | `<course URL>/web/calendar/php/<name>.php` |
+| the front end | anywhere in the course root (e.g. `index.html`, `app/`) | `web/html/` (and optionally `web/epub-reader/`), with `index.html` usually a link to `web/html/index.html` |
+| closed to the endpoints | `config/`, `calendar/` (and `web/`, if present) | `config/`, all of `web/` |
+
+`config/` and the material are at the course root in both.
 
 **The web layout (recommended for a separate front end).** The front end's repositories and the
 software live together under `web/`:
@@ -121,7 +132,8 @@ the course root (even as a symlink into `web/html/`) resolves relative URLs from
 so it uses `web/calendar/php/calendar.php`, `web/html/app.js` and so on. With Apache, a symlinked
 `index.html` needs `Options FollowSymLinks` (or `SymLinksIfOwnerMatch` with matching owners).
 
-**The plain layout.** The software at the course root:
+**The plain layout.** The software at the course root, the front end's files wherever the course
+keeps them:
 
 ```bash
 ln -s /opt/calendar6 /home/faculty/jdoe/public_html/AB123/calendar
@@ -137,6 +149,9 @@ Either way the endpoints are:
 
 The links the server writes into processed pages (`get.php` and `html.php` URLs, lock forms) use
 the layout the request came through, and the session cookie always belongs to the course root.
+In the rest of this document, `calendar/php/` stands for the endpoints' directory: read it as
+`web/calendar/php/` in the web layout. A front end should keep that prefix in one setting
+(`const API = 'web/calendar/php/'`) so it runs in either layout.
 
 How the endpoints find the course: from the path the script was requested under
 (`SCRIPT_FILENAME`), the calendar directory is two levels above `php/`; it must be named
@@ -588,7 +603,7 @@ is `404` here.
 | In the page | In the answer |
 |---|---|
 | `<a href="other.html">` (or `<area>`) to a course page the viewer may open | `href="#/view/KEY"` (the query string goes along: `#/view/KEY?week=3`; the fragment too) |
-| `<img src>`, `<script src>`, `<link href>`, `<source src>`, `<video poster>`, `<input type=image src>`, svg `<image href>`, `background=`, `srcset` candidates, and `<a href>` to a non-page file | `get.php` URLs, absolute paths: `/~jdoe/AB123/calendar/php/get.php?file=KEY` |
+| `<img src>`, `<script src>`, `<link href>`, `<source src>`, `<video poster>`, `<input type=image src>`, svg `<image href>`, `background=`, `srcset` candidates, and `<a href>` to a non-page file | `get.php` URLs, absolute paths: `/~jdoe/AB123/calendar/php/get.php?file=KEY` (`/~jdoe/AB123/web/calendar/php/get.php?file=KEY` in the web layout) |
 | `<iframe>`, `<embed>`, `<object>` pointing at a page | `/~jdoe/AB123/calendar/php/html.php?file=KEY` (with the link's query string). Inside such a frame, `#/view/KEY` links do nothing (there is no app there) |
 | `<img src>`, `<script src>`, `<link href>` (or another resource link) pointing at a page | target removed, `data-cal6-hidden="1"`: a page is never an image, script or style sheet |
 | any link to a course file the viewer may not open, and an event page's link to a file outside its own event directory (`../../shared/style.css`; give such files a place with `virtual.ini`) | the element keeps its text, loses its target, and gets `data-cal6-hidden="1"` |
@@ -712,6 +727,8 @@ source contains hidden material. Use `html.php`.
 ## 10. Building a front end
 
 ### 10.1 Start-up
+
+(Paths below are for the plain layout; in the web layout prefix `web/`: `web/calendar/php/...`.)
 
 1. `GET calendar/php/config.php` → settings and the viewer.
 2. `GET calendar/php/calendar.php` (with `?section=` if the visitor chose one, e.g. remembered
