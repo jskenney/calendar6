@@ -54,6 +54,7 @@ final class CalendarEndpoint
         Session::close();
         $now = $c->now;
         $preview = false;
+        $asSomeoneElse = false;
         if ($viewer->instructor) {
             if ($as !== null) {
                 $other = $as === 'anonymous' ? Viewer::anonymous() : Viewer::account($c->config, $as);
@@ -63,6 +64,7 @@ final class CalendarEndpoint
                 }
                 $viewer = $other;
                 $preview = true;
+                $asSomeoneElse = true;
             }
             if ($at !== null) {
                 $moment = \DateTimeImmutable::createFromFormat('!Y-m-d H:i', $at, $c->config->zone)
@@ -88,7 +90,9 @@ final class CalendarEndpoint
                 $cache->put($cacheName, $fingerprint, $json->nextChange, $body);
             }
         }
-        if (!$preview && $c->loginEnds !== null) {
+        // the login's own end, also in an `at` preview (the viewer is still the one logged in);
+        // not in an `as` preview, whose viewer is someone else (L-151)
+        if (!$asSomeoneElse && $c->loginEnds !== null) {
             // the login's own end (E-12): per session, so never part of the cached answer
             // decoded as objects, so empty objects ({}) stay objects
             $data = json_decode($body, false, 512, JSON_THROW_ON_ERROR);

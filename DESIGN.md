@@ -93,10 +93,13 @@ A course is two directories, and this is the only layout:
   `auth/` or raw material directly, whatever its configuration: no `.htaccess` file is needed
   to protect them, and none is shipped. Only calendar6's endpoints read the course.
 - **`course.ini`** (`[course] root = <path>`, absolute or relative to `course.ini`'s directory)
-  names the course directory, which must hold `config/config.ini`. calendar6 looks for it in
-  the web directory (next to `calendar/`) and, failing that, inside `calendar/` itself (a clone
-  that serves one course). Nothing else about locations is assumed: neither directory's name or
-  place matters, nor the software directory's name.
+  names the course directory, which must hold `config/config.ini` and must be **outside the web
+  directory** (a root equal to or inside it is refused, L-148). A relative root is resolved as the
+  file system does, after links. calendar6 looks for `course.ini` in the web directory (next to
+  `calendar/`) and, failing that, inside `calendar/` itself, but only when `calendar/` is a real
+  directory (a clone that serves one course), never through a link: a shared copy must not hand
+  its `course.ini` to every web directory without one (L-147). Nothing else about locations is
+  assumed: neither directory's name or place matters, nor the software directory's name.
 - **The web directory holds only public things:** the software (whose own `.htaccess` refuses its
   `lib/`, `tests/`, `template/`, documents and `.ini` files), the front end, `index.html`, and
   `course.ini`, which reveals only a path. `template/web/.htaccess` is optional hardening (it
@@ -920,9 +923,11 @@ The software is shared by many courses, so it can not hold a pointer to any one 
    repository).
 2. **Checked before anything else:** the software's directory must resolve (`realpath`) to the
    code that is running (any name). Then `course.ini` is read from the web directory, or else
-   from the software's directory, and its `[course] root` (absolute, or relative to `course.ini`)
-   must be a directory holding `config/config.ini`. Otherwise (a missing `course.ini`, a wrong
-   root, a server that resolves links in `SCRIPT_FILENAME`) every endpoint answers `500` with a
+   from the software's directory if that is a real directory (not a link, L-147), and its
+   `[course] root` (absolute, or relative to `course.ini`) must be a directory holding
+   `config/config.ini`, outside the web directory (L-148). Otherwise (a missing or unreadable
+   `course.ini`, a wrong root, a server that resolves links in `SCRIPT_FILENAME`, which makes the
+   software's directory a real one and its parent the "web directory") every endpoint answers `500` with a
    short error and reads nothing.
 3. Its configuration is always `<course>/config/`, and its material is in `<course>/class/`,
    `<course>/lab/`, ... (the types listed in `config.ini`).

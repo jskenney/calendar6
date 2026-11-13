@@ -30,41 +30,62 @@ final class Locator
             throw new ConfigError('course.ini is missing: put it next to the calendar directory (' . basename(dirname($software)) . '/course.ini) or inside it, with [course] root = the course directory');
         }
         $file = IniFile::load($ini, 'course.ini');
+        if (!$file->readable) {
+            throw new ConfigError('course.ini can not be read'); // L-150
+        }
         $root = trim((string) $file->get('course', 'root', ''));
         if ($root === '') {
             throw new ConfigError('course.ini: [course] root is missing');
         }
         if ($root[0] !== '/') {
-            $root = dirname($ini) . '/' . $root; // relative to course.ini's own directory
+            // relative to course.ini's own directory (as the file system resolves it: after links)
+            $root = dirname($ini) . '/' . $root;
         }
         $course = realpath($root);
         if ($course === false || !is_file("$course/config/config.ini")) {
             throw new ConfigError('course.ini: [course] root must be a directory that holds config/config.ini');
         }
+        // the course must be outside the web directory, or the web server could send config/ and
+        // the material directly (L-148)
+        $web = realpath(dirname($software));
+        if ($web !== false && ($course === $web || str_starts_with($course, rtrim($web, '/') . '/'))) {
+            throw new ConfigError('course.ini: [course] root must be outside the web directory (the web server would serve the course\'s files directly)');
+        }
         return $course;
     }
 
-    /** course.ini next to the software's directory (in the web directory), else inside it. */
+    /**
+     * course.ini next to the software's directory (in the web directory), else inside it, but
+     * only when the software is a real directory (a clone for one course): a shared copy reached
+     * through a link must never hand its course.ini to every web directory without one (L-147).
+     */
     private static function courseIni(string $software): ?string
     {
-        foreach ([dirname($software) . '/course.ini', $software . '/course.ini'] as $candidate) {
-            if (is_file($candidate)) {
-                return $candidate;
-            }
+        if (is_file(dirname($software) . '/course.ini')) {
+            return dirname($software) . '/course.ini';
+        }
+        if (!is_link($software) && is_file($software . '/course.ini')) {
+            return $software . '/course.ini';
         }
         return null;
+    }
+
+    /** A URL path with each segment percent-encoded, as browsers send and compare it (L-149). */
+    private static function encodePath(string $path): string
+    {
+        return implode('/', array_map('rawurlencode', explode('/', $path)));
     }
 
     /** The URL path of the web directory (the software's parent), for the cookies: /~bob/AB123/ */
     public static function coursePath(array $server): string
     {
         $path = str_replace('\\', '/', dirname((string) ($server['SCRIPT_NAME'] ?? '/'), 3));
-        return rtrim($path, '/') . '/';
+        return self::encodePath(rtrim($path, '/')) . '/';
     }
 
     /** The software's directory under the web directory's URL, as requested: usually "calendar/". */
     public static function softwarePath(array $server): string
     {
-        return basename(dirname((string) ($server['SCRIPT_NAME'] ?? '/calendar/php/x.php'), 2)) . '/';
+        return rawurlencode(basename(dirname((string) ($server['SCRIPT_NAME'] ?? '/calendar/php/x.php'), 2))) . '/';
     }
 }

@@ -633,6 +633,7 @@ HTML;
         $this->assertSame($until, $client->get('calendar/php/config.php')->json()['viewer']['valid_until'] ?? null, 'config.php says when the login ends (E-12)');
         $this->assertSame($until, $client->get('calendar/php/calendar.php')->json()['viewer']['valid_until'] ?? null, 'and calendar.php');
         $this->assertSame($until, $client->get('calendar/php/calendar.php')->json()['viewer']['valid_until'] ?? null, 'also from the cache');
+        $this->assertSame($until, $client->get('calendar/php/calendar.php?at=2026-09-01')->json()['viewer']['valid_until'] ?? null, 'an `at` preview is still the logged-in viewer (L-151)');
         $preview = $client->get('calendar/php/calendar.php?as=anonymous')->json();
         $this->assertSame(['user' => null, 'instructor' => false, 'valid_until' => null], $preview['viewer'] ?? null, 'a preview is the previewed viewer');
         $this->assertTrue(is_array($client->get('calendar/php/calendar.php')->json()['pages'] ?? null));
@@ -713,7 +714,7 @@ MD;
         $this->assertSame(1, preg_match('#!\[a picture\]\(/calendar/php/get\.php\?file=[A-Za-z0-9_-]{22}\)#', $md), 'images become get.php URLs');
         $this->assertContains("[ref]: #/md/$reading", $md, 'reference definitions too');
         $this->assertSame(1, preg_match('#<a href="/calendar/php/get\.php\?file=[A-Za-z0-9_-]{22}">raw link</a>#', $md), 'HTML links too');
-        $this->assertContains('Hello \[x\]\(javascript:1\) &quot;q&quot;.', $md, '<url> values are escaped: no Markdown or HTML syntax');
+        $this->assertContains('Hello &#91;x&#93;&#40;javascript:1&#41; &#34;q&#34;.', $md, '<url> values are escaped: no Markdown or HTML syntax');
         $this->assertSame(1, preg_match('#\[pic\.png\]\(/calendar/php/get\.php\?file=[A-Za-z0-9_-]{22}\)#', $md), '<showlink> becomes a Markdown link');
         $this->assertContains('INJECTED', $md);
         $this->assertContains("[back](#/md/$reading)", $md, 'an injected file\'s links are rewritten');
@@ -763,18 +764,16 @@ MD;
         $this->assertSame(500, $missing->status);
         $this->assertContains('course.ini is missing', $missing->body);
 
-        // inside the software's own directory (a clone serving one course), when the web
-        // directory has none
-        $own = dirname(__DIR__, 2) . '/course.ini';
-        $this->assertFalse(file_exists($own), 'no course.ini in the repository');
-        try {
-            file_put_contents($own, "[course]\nroot = $this->dir\n");
-            $this->assertSame(200, $client->get('calendar/php/config.php')->status, 'course.ini inside the software\'s directory');
-            file_put_contents("$web/course.ini", "[course]\nroot = /nonexistent\n");
-            $this->assertSame(500, $client->get('calendar/php/config.php')->status, 'the web directory\'s course.ini comes first');
-        } finally {
-            @unlink($own);
-        }
+        // a course inside the web directory would be served raw by the web server (L-148)
+        mkdir("$web/course");
+        rename("$this->dir/config", "$web/course/config");
+        file_put_contents("$web/course.ini", "[course]\nroot = course\n");
+        $inside = $client->get('calendar/php/config.php');
+        $this->assertSame(500, $inside->status);
+        $this->assertContains('outside the web directory', $inside->body);
+        rename("$web/course/config", "$this->dir/config");
+        file_put_contents("$web/course.ini", "[course]\nroot = $this->dir\n");
+        $this->assertSame(200, $client->get('calendar/php/config.php')->status);
     }
 
     public function testDayMarkers(): void

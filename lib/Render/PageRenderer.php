@@ -285,7 +285,9 @@ final class PageRenderer
             if (isset($this->urlValues[$name]) && !self::hasUnsafeScheme($this->urlValues[$name])) {
                 $this->usedUrlValues[] = $name;
                 $value = str_replace(["\0", self::URL_MARK, "\r", "\n"], ['', '', ' ', ' '], $this->urlValues[$name]);
-                return self::URL_MARK . ($inAttribute ? htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : self::markdownText($value));
+                // one escaping for both readings (M-51): the server's lexer and the front end's
+                // converter may disagree about whether this spot is an attribute or text
+                return self::URL_MARK . self::markdownText($value);
             }
             // a default is the author's text: as written in Markdown text, HTML-escaped in a value
             $default = $this->hideValue((string) self::attribute($tag, 'default'), null);
@@ -294,12 +296,14 @@ final class PageRenderer
     }
 
     /**
-     * A value as text in Markdown: HTML-escaped (quotes too, so it can not leave an HTML
-     * attribute), then Markdown's own punctuation backslash-escaped, so it adds no syntax.
+     * A value inert in Markdown and in HTML alike (M-51): every character that is syntax in either
+     * (Markdown punctuation, <, >, &, quotes) as a numeric character reference. A browser decodes
+     * those inside an attribute, and Markdown never reads them as syntax, so the value is plain
+     * text whether a converter takes the spot for an HTML attribute or for Markdown text.
      */
     private static function markdownText(string $value): string
     {
-        return self::checked(preg_replace('/[\\\\`*_{}\[\]()!|~]/', '\\\\$0', htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')));
+        return self::checked(preg_replace_callback('/[\\\\`*_{}\[\]()!|~<>&"\']/', static fn (array $m): string => '&#' . ord($m[0]) . ';', $value));
     }
 
     /** <showlink src="file"> in Markdown: a link to that event file, or its name as text. */
@@ -1244,7 +1248,7 @@ final class PageRenderer
      *
      * @param callable(string, string): ?string $fn
      */
-    private static function editLinks(string $tag, callable $fn, bool $keepUrlTags = false): string
+    private static function editLinks(string $tag, callable $fn, bool $keepUrlTags = false, bool $markdown = false): string
     {
         $out = '';
         $pos = 0;
@@ -1263,7 +1267,9 @@ final class PageRenderer
                 $out .= $hidden ? '' : 'data-cal6-hidden="1"';
                 $hidden = true;
             } else {
-                $escaped = htmlspecialchars($new, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                // in md.php, inert under a converter's reading too (M-51): a converter that does not
+                // take this tag for HTML reads its values as Markdown text
+                $escaped = $markdown ? self::markdownText($new) : htmlspecialchars($new, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 // when rebasing an injected file (the author's text, before <url> runs), a <url>
                 // tag waiting in the value stays a tag; never later, where a visitor's value is in it
                 if ($keepUrlTags) {
@@ -1330,7 +1336,7 @@ final class PageRenderer
                     return implode(', ', $kept);
                 }
                 return $this->rewrite($value, $dir, $place, $element);
-            });
+            }, false, $this->markdownRoutes);
         });
     }
 

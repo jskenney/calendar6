@@ -102,6 +102,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/run.php' => '<?php echo "RAN";',
             'class/01.Introduction/part.md' => 'PARTTEXT',
             'class/01.Introduction/reading.md' => '# R',
+            'class/01.Introduction/odd.md' => "A <a title='<url value=\"q\">' @x>one</a>\n\nB <a_b title='<url value=\"q\">'>two</a_b>\n\nC <a title='\n\n<url value=\"q\">'>three</a>",
             'class/01.Introduction/ctx.md' => "Pick: <button onclick=\"go('<url value=w default=1>')\">go</button>\n\n<script>var v = <url value=w default=1>;</script>\n\n<img alt=<url value=w>>\n\n<a href=\"reading.md?w=<url value=w>\">x</a> text <url value=w>\n\n<a href=\"<url value=j>\">j</a>",
             'class/01.Introduction/blocks.md' => "<inst><p title=\"</inst>\">SECRET43</inst> tail\n\n<in<!-- x -->st>JOINED</inst> <inst>UNCLOSED and the rest",
             'class/01.Introduction/code.md' => "```\n<calphp src=\"run.php\">\n<inject src=\"part.md\">\n<replace value=\"course\">\n```\n\nout <replace value=\"course\"> <a href=\"reading.md\">raw</a>\n\n[gone]: instructor.html\n\n<host server=\"no-such-host\">HOSTED</host> <postmeeting>LATER</postmeeting>",
@@ -121,10 +122,14 @@ final class RendererTest extends TestCase
         $this->assertContains("onclick=\"go('<url value=w default=1>')\"", $ctx, 'never in an event handler (M-50)');
         $this->assertContains('var v = <url value=w default=1>;', $ctx, 'nor in a script body');
         $this->assertContains('alt=<url value=w>', $ctx, 'nor in an unquoted value');
-        $this->assertSame(1, preg_match('/href="#\/md\/[A-Za-z0-9_-]{22}\?w=&#039;,top\.location=&#039;javascript:alert\(1\)&#039;,&#039;a_b"/', $ctx), 'in a quoted href: HTML-escaped only, no backslashes (L-146), and a raw link to a .md page is a #/md/ route');
-        $this->assertContains('text &#039;,top.location=&#039;javascript:alert\(1\)&#039;,&#039;a\_b', $ctx, 'in text: escaped for Markdown and HTML');
+        $this->assertSame(1, preg_match('/href="#\/md\/[A-Za-z0-9_-]{22}\?w=&#39;,top\.location=&#39;javascript:alert&#40;1&#41;&#39;,&#39;a&#95;b"/', $ctx), 'in a quoted href: character references, which a browser decodes (L-146, M-51); a raw link to a .md page is a #/md/ route');
+        $this->assertContains('text &#39;,top.location=&#39;javascript:alert&#40;1&#41;&#39;,&#39;a&#95;b', $ctx, 'in text: the same references, never Markdown syntax');
         $this->assertNotContains('href="javascript', $ctx, 'an unsafe scheme is never filled in');
 
+        $odd = $md('odd.md', null, ['q' => '[t](javascript:alert(1)) ![i](https://evil.example/x)']);
+        $this->assertNotContains('[t]', $odd, 'a value is inert under both readings, whatever a converter makes of the HTML around it (M-51)');
+        $this->assertNotContains('](', $odd);
+        $this->assertContains('&#91;t&#93;&#40;javascript:alert&#40;1&#41;&#41;', $odd);
         $blocks = $md('blocks.md');
         foreach (['SECRET43', 'JOINED', 'UNCLOSED', 'the rest'] as $secret) {
             $this->assertNotContains($secret, $blocks, "hidden by either reading (L-143), after joins, unclosed: $secret");

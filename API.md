@@ -76,8 +76,10 @@ A course is two directories (this is the only layout):
 ```
 
 - **`course.ini`** names the course directory: `[course] root = <path>`, absolute or relative to
-  `course.ini`'s own directory. The endpoints look for it in the web directory (next to the
-  software) and, failing that, inside the software's directory (a clone serving one course).
+  `course.ini`'s own directory (as the file system resolves it, after links). The endpoints look
+  for it in the web directory (next to the software) and, failing that, inside the software's
+  directory, but only when that is a real directory (a clone serving one course), never a link.
+  The root must be **outside the web directory**: a root equal to or inside it is a `500`.
   Nothing else about locations is assumed: the directories can have any names and live anywhere,
   and the software's directory can be called anything (`calendar` by convention).
 - **The course directory must hold `config/config.ini`** (`config/` directly inside it; nothing
@@ -126,7 +128,9 @@ through. The session cookie belongs to the web directory's URL. With Apache, a l
 How the endpoints find the course: from the path the script was requested under
 (`SCRIPT_FILENAME`), the software's directory is two levels above the script and must resolve to
 the running code; `course.ini` is read from the directory above it (the web directory), or from
-the software's directory, and its `root` must hold `config/config.ini` with a real `secret`.
+the software's directory if that is not a link, and its `root` must hold `config/config.ini` with
+a real `secret` and lie outside the web directory. Written URLs and the cookie path are
+percent-encoded, so a directory name with spaces or `#` works.
 Otherwise every endpoint answers `500` with a short JSON error and reads nothing. (With PHP-FPM,
 `SCRIPT_FILENAME` must keep the linked path: `$document_root$fastcgi_script_name`, not
 `$realpath_root`. PHP must be allowed to read the course directory, e.g. under `open_basedir`.)
@@ -400,7 +404,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
 | Field | Type | Meaning |
 |---|---|---|
 | `generated` | moment | when the answer was built (it may come from the server's cache) |
-| `viewer` | object | `user` (string\|null), `instructor` (bool) and `valid_until` (moment\|null, when the login ends by itself, as in `config.php`); for an instructor's `as` preview, the previewed viewer, with `valid_until` `null` |
+| `viewer` | object | `user` (string\|null), `instructor` (bool) and `valid_until` (moment\|null, when the login ends by itself, as in `config.php`); for an instructor's `as` preview, the previewed viewer, with `valid_until` `null` (an `at`-only preview keeps the instructor's own `valid_until`) |
 | `section` | string | only when a section was requested |
 | `dropdown` | array | the event types (keys of `config.php` → `types`) to offer as drop-down menus in the menu bar, in order, from `config.ini` `[dropdown] show`; only types `[types]` defines; `[]` when the section is missing |
 | `pages` | object | page name → page (see below), in `paths.ini` order |
@@ -644,7 +648,7 @@ other tags and links are handled with code set aside: `<inject>`, `<calphp>`, `<
 | `<inject src="part.md">` (or another file) | that file's text, processed the same way (its own place decides its blocks; its links are rewritten from its own directory) |
 | `<codeinject src="x">` | a fenced code block with the file's source (a page's source without what the viewer may not see) |
 | `<replace value>` | the value |
-| `<url value="name" default="x">` | as in `html.php`, only in Markdown text and in quoted values of the allowed attributes (`href`, `src`, `title`, `alt`, `value`, `class`, `id`, `name`, `placeholder`, `label`, `data-*`); anywhere else (a script, an event handler, `style`, an unquoted value) the tag is left as written. In text the value is escaped for Markdown and HTML (entities, and `\` before Markdown punctuation); in an attribute it is HTML-escaped. A value with a scheme other than `http(s):` is ignored (the default is used), also when it would complete an `href` or `src`. A converter with autolinks (GFM, markdown-it's `linkify`) may still turn a value such as `www.example.com` into a link: turn autolinks off if visitors' values must stay plain text |
+| `<url value="name" default="x">` | as in `html.php`, only in Markdown text and in quoted values of the allowed attributes (`href`, `src`, `title`, `alt`, `value`, `class`, `id`, `name`, `placeholder`, `label`, `data-*`); anywhere else (a script, an event handler, `style`, an unquoted value) the tag is left as written. The value is written with every Markdown or HTML special character (`` \ ` * _ { } [ ] ( ) ! | ~ < > & " ' ``) as a numeric character reference (`&#91;` …), in text and in attributes alike, and so are link values rewritten in HTML tags: a browser decodes them in attributes, and Markdown never reads them as syntax, so the value stays plain text whether a converter takes the spot for HTML or for Markdown (M-51). A value with a scheme other than `http(s):` is ignored (the default is used), also when it would complete an `href` or `src`. A converter with autolinks (GFM, markdown-it's `linkify`) may still turn a value such as `www.example.com` into a link: turn autolinks off if visitors' values must stay plain text |
 | `<showlink src="file">` | `[file](url)`, or just the name when the viewer may not open the file |
 | `<calphp src>` | its output, which (unlike in `html.php`) is then processed like the rest of the page: `<replace>`, `<url>`, links and hiding apply to it |
 | `<ace>…</ace>` | a fenced code block |
