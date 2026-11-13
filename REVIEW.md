@@ -13,9 +13,11 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. No critical, high, medium, low, documentation or testing items are open. Review 24's fixes
-   (md.php hiding and `<url>`, L-142) would benefit from another independent review.
-2. Other **E** items; E-1 (the front end) is the next big piece of work.
+1. **M-51**: md.php `<url>` values must be inert under both readings (numeric character references).
+2. **L-148** (refuse a root inside the web directory) and **L-147** (the inner `course.ini` in a
+   shared install), with **T-32**.
+3. L-149 (percent-encoding), L-150, L-151, DOC-45, DOC-46, T-31.
+4. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -27,19 +29,33 @@ None open.
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-51 | 25 | `lib/Render/PageRenderer.php:288`, `:292` | **md.php: a visitor's `<url>` value can become a Markdown link** (incomplete fix of M-50/L-146): a value `urlTags` reads as in an attribute gets HTML escaping only, but a converter that does not accept the tag as HTML reads it as text. `A <a title='<url value="q">' @x>`, `B <a_b title='<url value="q">'>` and a quoted value spanning a blank line, with `q=[t](javascript:alert(1))`: marked 12 renders a `javascript:` link (script on click), markdown-it 14 renders `https://` links and images. Needs author HTML the lexer accepts and CommonMark does not; html.php is not affected. Reproduced by the reviewer. | Escape so the value is inert under both readings: Markdown punctuation and `<>&"'` as numeric character references (decoded in attributes, never syntax in Markdown); tests for the three cases. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-147 | 25 | `lib/Http/Locator.php:48-55` | A `course.ini` inside a shared software directory serves that course to every web directory that has none of its own; with nginx `$realpath_root` the "web directory" becomes the repository's parent and the inner file is used. DESIGN says this answers 500. Reproduced. | Drop the inner location, or use it only when the software is not reached through a link; fix DESIGN. |
+| L-148 | 25 | `lib/Http/Locator.php` | A root equal to or inside the web directory is accepted (`root = .` with `config/` in the web directory): the web server then sends `config/auth/*.ini` and raw material directly. Reproduced. | Refuse (500) a root that is the web directory or inside it. |
+| L-149 | 25 | `lib/Http/Locator.php:59-68` | Written URLs and the cookie path are not percent-encoded: a web directory named `A#1 x` gives `src="/A#1 x/calendar/..."` (cut at `#`) and `path=/A#1 x/` (never matches, so login fails); in md.php a space breaks link destinations; the 303 `Location` too. Reproduced. | `rawurlencode` each segment of coursePath and softwarePath. |
+| L-150 | 25 | `lib/Http/Locator.php:32-38` | An unreadable `course.ini` reports "[course] root is missing"; a relative root in an inner `course.ini` resolves against the linked repository's real place. | Report "course.ini can not be read"; document relative roots. |
+| L-151 | 25 | `lib/Endpoint/CalendarEndpoint.php:91` | An `at`-only preview drops `valid_until` (null) although the viewer is the logged-in instructor; API.md says null only for an `as` preview. Reproduced. | Fill it in unless `as` is given, or document it. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-45 | 25 | `template/web/.htaccess:11`; `tests/deploy/nginx-site.conf:19` | Docs say the software's directory may have any name, but the shipped Apache and nginx rules run PHP only under `/calendar/php/`: `cal -> /opt/calendar6` answers 403 on both. Reproduced. | Relax the rules to `/[^/]+/php/[a-z]+\.php$`, or document that they must be edited. |
+| DOC-46 | 25 | `README.md:30`, `:43`, `:60`; `DESIGN.md:9`, `:45`, `:139`, `:300`; `API.md:802` | Stale after the split: `template/config/` (now `template/course/config/`), "copy template/", "the course directory" for the smoke test, "serve your own from the course directory" (not served now), and the front end called `app/` where the layout says `html/`. | Correct. |
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-31 | 25 | `tests/http/EndpointsTest.php:643-650` | `testDropdownTypes` calls `start()` three times and tears down only the last: every run leaks two php -S servers, two courses with their web directories, caches and logs in /tmp. | `start()` stops and removes the previous server and course. |
+| T-32 | 25 | `tests/deploy/smoke.php`; `tests/http/EndpointsTest.php` | The smoke test checks neither the cookie path, nor that written URLs start with `<base>calendar/php/`, nor the lock 303; no tests for L-148, L-149 or an unreadable course.ini; `testCourseIniFindsTheCourse` writes `course.ini` into the repository itself (on a shared install it would briefly serve the test course everywhere, see L-147). | Add the checks; test the inner course.ini with a copy of the repository. |
 
 ## Enhancements
 
@@ -371,6 +387,7 @@ None open.
 | 22 | 2026-11-10 | `79c587e` | an **independent** full review after API.md was written: API.md checked line by line against the code and ~60 live probes (sections and previews by GET/POST/JSON, lists, auth error shapes, HEAD/PUT, the link and markup tables) on a course with cancel windows, duplicates and 21 extra events; 7 Chromium flows for the front-end advice (srcdoc, blob frames, innerHTML, scripts, the lock form through the 303, GET logout); 12,139 fuzz cases (8,625 HTML, 3,510 Markdown) against the doctype exception, every output holding the secret rendered in Chromium (no leak through the doctype). Logout by GET creates or fixes no session. | L-132..L-137, DOC-30..DOC-36, T-28, E-12 |
 | 23 | 2026-11-10 | `5f134d8` | an **independent** review of the review-22 fixes (`de1d3cc..5f134d8` read line by line): ~45 live probes (headers on all endpoints, auth errors logged in and out, the lock form and 303 with hostile query names and values, JSON lists and objects, `at` forms, problems, sections); 6,000 differential fuzz cases of block tags opened in attribute values rendered by Chromium for anonymous and instructor (3,000 at `5f134d8`: 474 leak, all of them also at `de1d3cc`, which leaked 1,636; 925 duplicate text); inject/codeinject variants; scaling runs; API.md read end to end against the code ("a capable AI could build a working front end from it"). L-132, L-133, L-134, L-135, L-137 and the Context change verified | L-138..L-141, DOC-37..DOC-40 |
 | 24 | 2026-11-11 | `e7c55fc` | an **independent** review of the new `md.php` (`87b16f2`) and the L-138..L-141 rework (`44998f4`): 2,100 differential md.php fuzz cases converted by marked and markdown-it (`html:true`) and checked in Chromium against html.php; 34 hand cases and inject/codeinject probes (config/, auth/, .php, dot files, /etc, calendar/lib, hidden boxes: all refused or hidden); 23 adversarial 0.2-1.2 MB pages (linear); 6,300 hideInAttributes cases against Chromium and 16 scaling runs up to 1.8 MB (linear, no duplicated text). M-50 reproduced over HTTP and in Chromium. Nothing reads config/, auth/, code or files outside the course | M-50, L-142..L-146, DOC-43, T-30 |
+| 25 | 2026-11-13 | `522b4d1` | an **independent** full review after the `course.ini` layout (E-14, `a04ca1f`) and the review-24 fixes (`4ca75df`): Locator, Boundary, Session and the endpoints read line by line; 142 tests; Apache+FPM and nginx+FPM deployments built and smoke-tested (all pass) and probed with ~25 path variants each (no way found to make the server write URLs or set cookies elsewhere); ~20 php -S layout probes (relative, renamed, missing and unreadable course.ini, root = web directory, a shared repository with an inner course.ini, special characters); md.php `<url>` contexts converted with marked 12 and markdown-it 14; previews and `valid_until` live; API.md 2 and 8a, DESIGN, README and template docs against the code. Nothing reads config/, auth/, code or files outside the course in a correct deployment | M-51, L-147..L-151, DOC-45, DOC-46, T-31, T-32 |
 
 ## CI notes
 
