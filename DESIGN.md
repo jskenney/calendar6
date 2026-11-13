@@ -62,13 +62,20 @@ Every course has this layout, always; nothing about it is configurable:
 ```
 course_directory/             the course (AB123/); the root of everything the calendar serves
 ├── calendar/                 the software: a symbolic link to the calendar6 repo anywhere on the
-│                             server, or the repo cloned right here
+│                             server, or the repo cloned right here (or web/calendar/, below)
 ├── config/                   all .ini files; always this directory
 │   └── auth/                 all authentication files
 └── <event_type>/<sort>.<event title>/    the material
 ```
 
-In more detail:
+**The web layout (Decided, E-13)** puts the software beside the front end's repositories:
+`web/calendar/` (the software, a link or a clone), `web/html/` (the front end, a separate
+repository), optionally `web/epub-reader/`, and `index.html` at the course root, usually a link to
+`web/html/index.html`. `config/` and the material stay at the course root. All of `web/` is
+closed to `get.php`, `html.php` and `md.php`, like `config/`: no key, `virtual.ini` line,
+`paths.ini` page or `<inject>` can reach into it; the web server serves `web/html/` directly.
+
+In more detail (the plain layout):
 
 ```
 AB123/                        the course's web directory
@@ -115,14 +122,14 @@ between the server and the browser.
   `realpath()` (so symbolic links are followed) and must still be inside `course_directory/`;
   a link that leads outside is treated as missing. Calendar 4's `$ALLOWED_PATHS` (shared material
   elsewhere) is **not** kept: share material by copying it in.
-- **Never served, even inside the course:** `config/` (and so `auth/`), `calendar/`, names
+- **Never served, even inside the course:** `config/` (and so `auth/`), `calendar/`, `web/`, names
   starting with a dot, `.php` files (only run by `<calphp>`), `.ini` files.
 - **Only known files are served:** `get.php` and `html.php` serve a key, and keys exist only for
   event files, `virtual.ini` files, `paths.ini` pages and the files their pages link to.
 - **The configuration is always `course_directory/config/`**; there is no setting or pointer that
   moves it.
 - **The location of calendar6 does not matter.** The only assumption is that
-  `course_directory/calendar` reaches it (a link or a clone).
+  `course_directory/calendar` or `course_directory/web/calendar` reaches it (a link or a clone).
 
 ### Samples of every `.ini` file
 
@@ -906,11 +913,15 @@ The software is shared by many courses through the `calendar` link, so it can no
 pointer to any one course. Instead:
 
 1. The course directory is found from the request: `$_SERVER['SCRIPT_FILENAME']` keeps the
-   path the script was reached by (`.../AB123/calendar/php/get.php`), so the course is two levels
-   above `php/`. This works the same for a link and for a clone (`__DIR__` would resolve the
-   link and point into the repository).
-2. **Checked before anything else:** `<course>/calendar` must resolve (`realpath`) to the code
-   that is running, and `<course>/config/config.ini` must exist. Otherwise (for example a server
+   path the script was reached by (`.../AB123/calendar/php/get.php`, or in the web layout
+   `.../AB123/web/calendar/php/get.php`), so the course is two levels above `php/`, or three when
+   the calendar sits in `web/`. This works the same for a link and for a clone (`__DIR__` would
+   resolve the link and point into the repository). The URLs the server writes (keys' `get.php`
+   and `html.php` links, lock forms) follow the layout the request came through; the session
+   cookie belongs to the course root in both.
+2. **Checked before anything else:** the `calendar` directory must resolve (`realpath`) to the
+   code that is running, and `<course>/config/config.ini` must exist (the course is the calendar's
+   parent, or the parent of `web/`, whichever holds it). Otherwise (for example a server
    that resolves links in `SCRIPT_FILENAME`), every endpoint answers `500` with a short error and
    reads nothing.
 3. Its configuration is always `<course>/config/`, and its material is in `<course>/class/`,
@@ -1033,7 +1044,7 @@ Choices the code made where the design left room (change them here if they are w
   `course/calendar/php/...` and `course/calendar` resolves to the running code; `config.ini`
   must have a real `secret` (32+ characters), or nothing is served.
 - **Caching:** the cache key combines a fingerprint of the course directory (the names, sizes and
-  modification times of everything in it except `calendar/`, following links only while they
+  modification times of everything in it except `calendar/` and `web/`, following links only while they
   stay inside) with the software's version (a hash of the contents of its `lib/` and `php/`
   files, so an update never serves what older code built). It keys two caches: the built course model (shared by every endpoint, signed with the course secret) and
   `calendar.php`'s answer per viewer (valid until the next moment a rule changes it; that moment

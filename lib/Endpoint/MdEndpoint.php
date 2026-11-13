@@ -42,7 +42,7 @@ final class MdEndpoint
             $urlValues[$name] = $value;
         }
         $renderer = new PageRenderer($course, $policy, $viewer, $c->now, Locator::coursePath($c->server),
-            [], array_map('strval', $urlValues), hostNames: PageRenderer::serverNames($c->server));
+            [], array_map('strval', $urlValues), hostNames: PageRenderer::serverNames($c->server), softwarePath: Locator::softwarePath($c->server));
         $markdown = $renderer->renderMarkdown($place);
         if ($renderer->usedUrlValues !== [] && Session::isOpen()) { // remembered only in an existing session (L-41)
             $remember = (array) Session::get('url', []);

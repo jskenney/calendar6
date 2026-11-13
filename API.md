@@ -50,7 +50,8 @@ Each course is one directory, the **course directory** (for example
 
 ```
 AB123/                         the course directory: the boundary of everything that is served
-├── calendar/                  this repository (calendar6), as a symbolic link or a clone (see 2.2)
+├── calendar/                  this repository (calendar6), as a symbolic link or a clone; or
+│                              web/calendar/ in the web layout (see 2.2)
 ├── config/                    REQUIRED: all configuration (.ini files); never served
 │   ├── config.ini             REQUIRED: course name, semester, schedule, types, boxes, secret, ...
 │   ├── dates.ini              special days (holidays, swapped weekdays, delays)
@@ -76,7 +77,7 @@ AB123/                         the course directory: the boundary of everything 
 - **Nothing outside the course directory is ever served or run.** Every path (in `.ini` files,
   and links inside pages) is resolved with symbolic links followed and must still lie inside the
   course directory; anything that leads outside is treated as missing.
-- **Never served even inside the course:** `config/` (so `auth/` too), `calendar/`, names
+- **Never served even inside the course:** `config/` (so `auth/` too), `calendar/`, `web/`, names
   starting with a dot, `.ini` files, PHP files under any spelling (`.php`, `.php5`, `.phtml`,
   `.phar`, ...), and editors' backups of pages (`index.html~`, `notes.md.bak`, `#index.html#`, ...).
 - **Only known files get keys:** event files, `virtual.ini` files, `paths.ini` pages, and the
@@ -89,39 +90,70 @@ names in `config.ini` `[boxes]`; `[notes]` names a short remarks file per event.
 
 ### 2.2 Where calendar6 goes, and the endpoint URLs
 
-The repository is meant to sit at **`<course>/calendar`**, either cloned there or (usually, so
-one copy serves many courses) as a symbolic link:
+The repository is reached as a directory named `calendar`, cloned there or (usually, so one copy
+serves many courses) as a symbolic link, in one of two layouts:
+
+**The web layout (recommended for a separate front end).** The front end's repositories and the
+software live together under `web/`:
+
+```
+AB123/
+├── config/              calendar6's configuration
+├── web/                 never served by get.php, html.php or md.php (like config/)
+│   ├── calendar/        this repository (clone or symlink)
+│   ├── html/            the front end (a separate repository or a symlink): static files the
+│   │                    web server serves directly
+│   └── epub-reader/     optional: another front-end repository, if the front end uses it
+├── index.html           usually a symlink to web/html/index.html
+├── class/, lab/, ...    the material, each with a deny-all .htaccess
+└── pages/, shared/      as needed
+```
+
+```bash
+mkdir -p /home/faculty/jdoe/public_html/AB123/web
+ln -s /opt/calendar6 /home/faculty/jdoe/public_html/AB123/web/calendar
+ln -s web/html/index.html /home/faculty/jdoe/public_html/AB123/index.html
+```
+
+The endpoints are then at `<course URL>/web/calendar/php/<name>.php`, e.g.
+`https://www.example.edu/~jdoe/AB123/web/calendar/php/calendar.php`. An `index.html` served at
+the course root (even as a symlink into `web/html/`) resolves relative URLs from the course root,
+so it uses `web/calendar/php/calendar.php`, `web/html/app.js` and so on. With Apache, a symlinked
+`index.html` needs `Options FollowSymLinks` (or `SymLinksIfOwnerMatch` with matching owners).
+
+**The plain layout.** The software at the course root:
 
 ```bash
 ln -s /opt/calendar6 /home/faculty/jdoe/public_html/AB123/calendar
 ```
 
-Then the endpoints are at:
+with the endpoints at `<course URL>/calendar/php/<name>.php`.
+
+Either way the endpoints are:
 
 ```
-<course URL>/calendar/php/config.php
-<course URL>/calendar/php/calendar.php
-<course URL>/calendar/php/auth.php
-<course URL>/calendar/php/html.php
-<course URL>/calendar/php/get.php
+…/php/config.php   …/php/calendar.php   …/php/auth.php   …/php/html.php   …/php/md.php   …/php/get.php
 ```
 
-for example `https://www.example.edu/~jdoe/AB123/calendar/php/calendar.php`. A front end whose
-`index.html` sits in the course directory reaches them with the relative URLs
-`calendar/php/config.php` and so on.
+The links the server writes into processed pages (`get.php` and `html.php` URLs, lock forms) use
+the layout the request came through, and the session cookie always belongs to the course root.
 
 How the endpoints find the course: from the path the script was requested under
-(`SCRIPT_FILENAME`), the course directory is two levels above `php/`. That
-directory must be named `calendar` (Decided: kept for simplicity) and must resolve to the running code, and
-`<course>/config/config.ini` must exist with a real `secret`; otherwise every endpoint answers
-`500` with a short JSON error and reads nothing. (With PHP-FPM, `SCRIPT_FILENAME` must keep the
-linked path: `$document_root$fastcgi_script_name`, not `$realpath_root`.)
+(`SCRIPT_FILENAME`), the calendar directory is two levels above `php/`; it must be named
+`calendar` (Decided: kept for simplicity) and resolve to the running code. The course directory is
+its parent, or, when the parent is `web/`, the directory above that: whichever holds
+`config/config.ini` (with a real `secret`). Otherwise every endpoint answers `500` with a short JSON
+error and reads nothing. (With PHP-FPM, `SCRIPT_FILENAME` must keep the linked path:
+`$document_root$fastcgi_script_name`, not `$realpath_root`.)
 
 ### 2.3 The web server
 
 `config/`, the material directories (`class/`, `lab/`, `pages/`, `shared/`, ...), dot files,
-`.ini` files and every PHP file other than `calendar/php/<name>.php` must not be reachable
-directly; only the endpoints hand out course files. The template course ships `.htaccess` files
+`.ini` files and every PHP file other than `calendar/php/<name>.php` (or `web/calendar/php/<name>.php`)
+must not be reachable directly; only the endpoints hand out course files. In the web layout,
+`web/html/` (and `web/epub-reader/`) are served by the web server as static files, while
+`web/calendar/` stays closed except `php/` (the repository's own `.htaccess` refuses its `lib/`,
+`tests/`, `template/` and documents). The template course ships `.htaccess` files
 for Apache; for nginx see `tests/deploy/nginx-site.conf`. `tests/deploy/smoke.php <course URL>
 <course directory>` checks a real deployment. Files at the course root (next to `index.html`)
 *are* served as they are by the web server, so keep material in the event directories and pages

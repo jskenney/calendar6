@@ -13,14 +13,22 @@ final class Fixture
     public const SECRET = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
     public const PASSWORD = 'test-password-1';
 
-    /** @param array<string, string|null> $files path => content (null removes) */
-    public static function course(array $files = []): string
+    /**
+     * @param array<string, string|null> $files path => content (null removes)
+     * @param bool $web the web layout: the software at web/calendar instead of calendar
+     */
+    public static function course(array $files = [], bool $web = false): string
     {
         $repo = dirname(__DIR__, 2);
         $dir = sys_get_temp_dir() . '/cal6-test-' . bin2hex(random_bytes(6));
         mkdir($dir, 0700);
         self::copy("$repo/template", $dir);
-        symlink($repo, "$dir/calendar");
+        if ($web) {
+            mkdir("$dir/web");
+            symlink($repo, "$dir/web/calendar");
+        } else {
+            symlink($repo, "$dir/calendar");
+        }
         $hash = password_hash(self::PASSWORD, PASSWORD_DEFAULT);
         file_put_contents("$dir/config/auth/prof.ini", "password_hash = $hash\ninstructor = true\nvalid = always\n");
         file_put_contents("$dir/config/auth/ta.ini", "password_hash = $hash\nvalid = always\n[grants]\nlab_1 = always\n");

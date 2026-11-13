@@ -15,13 +15,16 @@ use Cal6\Http\Download;
 final class Boundary
 {
     private string $real;
-    /** @var list<string> real paths that are never served: config/ and calendar/ */
+    /** Top-level directories never served: the configuration, the software, and web/ (the front end and the software in the web layout) */
+    public const CLOSED = ['config', 'calendar', 'web'];
+
+    /** @var list<string> real paths that are never served: config/, calendar/ and web/ */
     private array $closed = [];
 
     public function __construct(string $courseDir)
     {
         $this->real = rtrim((string) realpath($courseDir), '/');
-        foreach (['config', 'calendar'] as $name) {
+        foreach (self::CLOSED as $name) {
             $closed = realpath($this->real . '/' . $name);
             if ($closed !== false) {
                 $this->closed[] = $closed;
@@ -43,7 +46,7 @@ final class Boundary
         }
         $relative = substr($real, strlen($this->real) + 1);
         $first = strtolower(explode('/', $relative)[0]);
-        if ($first === 'config' || $first === 'calendar') {
+        if (in_array($first, self::CLOSED, true)) {
             return null; // also Config/ on case-insensitive file systems (L-11)
         }
         foreach ($this->closed as $closed) {

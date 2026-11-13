@@ -54,6 +54,8 @@ final class PageRenderer
         private readonly array $hostNames = [],
         /** the page's own query (its <url> values), kept by the lock form (L-132) */
         private readonly string $lockQuery = '',
+        /** where the software is under the course's URL: calendar/ or web/calendar/ */
+        private readonly string $softwarePath = 'calendar/',
     ) {
     }
 
@@ -981,7 +983,7 @@ final class PageRenderer
             if ($this->viewer->instructor) {
                 return $inner;
             }
-            return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($this->lockKey) . ($this->lockQuery !== '' ? '&' . $this->lockQuery : '')) . '">'
+            return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . $this->softwarePath . 'php/html.php?file=' . rawurlencode($this->lockKey) . ($this->lockQuery !== '' ? '&' . $this->lockQuery : '')) . '">'
                 . '<input type="hidden" name="csrf" value="' . htmlspecialchars($this->csrf) . '">'
                 . '<label>Enter the code to see this section <input type="password" name="lock" autocomplete="off"></label>'
                 . '<button type="submit">Unlock</button></form>';
@@ -1424,9 +1426,9 @@ final class PageRenderer
             $route = $this->markdownRoutes && self::isMarkdown($target->file->realPath) ? '#/md/' : '#/view/';
             return in_array($element, ['a', 'area'], true)
                 ? $route . rawurlencode($target->key) . ($query !== '' ? '?' . $query : '')
-                : $this->baseUrl . 'calendar/php/html.php?file=' . rawurlencode($target->key) . ($query !== '' ? '&' . $query : '');
+                : $this->baseUrl . $this->softwarePath . 'php/html.php?file=' . rawurlencode($target->key) . ($query !== '' ? '&' . $query : '');
         }
-        return $this->baseUrl . 'calendar/php/get.php?file=' . rawurlencode($target->key);
+        return $this->baseUrl . $this->softwarePath . 'php/get.php?file=' . rawurlencode($target->key);
     }
 
     /** <a name="X"> gets id="X", so the front end can build the page's menu. */

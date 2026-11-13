@@ -67,7 +67,8 @@ final class Fingerprint
     {
         $entries = @scandir($dir) ?: [];
         foreach ($entries as $name) {
-            if ($name[0] === '.' || ($depth === 0 && $name === 'calendar')) {
+            // not the software, nor web/ (the front end's repositories: never course material)
+            if ($name[0] === '.' || ($depth === 0 && in_array($name, ['calendar', 'web'], true))) {
                 continue;
             }
             $path = "$dir/$name";

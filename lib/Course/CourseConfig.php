@@ -110,7 +110,7 @@ final class CourseConfig
         $config->weekends = in_array(strtolower((string) $ini->get('semester', 'weekends', 'no')), ['yes', 'true', '1', 'on'], true);
 
         foreach ($ini->section('types') as $line) {
-            if (!preg_match('/^[A-Za-z][A-Za-z0-9-]*$/', $line->key) || in_array(strtolower($line->key), ['config', 'calendar', 'page'], true)) {
+            if (!preg_match('/^[A-Za-z][A-Za-z0-9-]*$/', $line->key) || in_array(strtolower($line->key), ['config', 'calendar', 'web', 'page'], true)) {
                 $config->problems[] = new Problem("not a usable type directory name: $line->key", 'config.ini', $line->line);
                 continue;
             }

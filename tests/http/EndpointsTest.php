@@ -733,6 +733,37 @@ MD;
         $this->assertSame(200, $client->get("calendar/php/html.php?file=$key")->status, 'html.php still serves Markdown pages, as HTML');
     }
 
+    public function testWebLayout(): void
+    {
+        $this->dir = Fixture::course(array_merge(PolicyTest::files(), [
+            'class/01.Introduction/index.html' => '<img src="pic.png"><lock code="open">L</lock><a href="reading.md">r</a>',
+            'class/01.Introduction/pic.png' => 'PNG',
+            'class/01.Introduction/lesson.md' => '![p](pic.png)',
+            'web/html/index.html' => '<p>the front end</p>',
+            'web/html/app.js' => 'var app = 1;',
+            'config/virtual.ini' => "class_1/stolen.js = web/html/app.js\n",
+            'class/01.Introduction/inj.html' => '<inject src="../../web/html/index.html">INJ',
+        ]), true);
+        $this->server = new Server($this->dir);
+        $client = new HttpClient($this->server);
+        $this->assertSame(404, $client->get('calendar/php/calendar.php')->status, 'nothing at calendar/ in this layout');
+        $data = $client->get('web/calendar/php/calendar.php')->json();
+        $keys = $this->keys($data);
+        $this->assertTrue(isset($keys['class_1/index.html']), 'the course is found from web/calendar (E-13)');
+        $page = $client->get('web/calendar/php/html.php?file=' . $keys['class_1/index.html'])->body;
+        $this->assertSame(1, preg_match('#<img src="/web/calendar/php/get\.php\?file=([A-Za-z0-9_-]{22})">#', $page, $m), 'links point to web/calendar/php/');
+        $this->assertSame('PNG', $client->get('web/calendar/php/get.php?file=' . $m[1])->body);
+        $this->assertContains('action="/web/calendar/php/html.php?file=', $page, 'and the lock form');
+        $this->assertContains('/web/calendar/php/get.php?file=', $client->get('web/calendar/php/md.php?file=' . ($keys['class_1/lesson.md'] ?? ''))->body);
+        $this->assertNotContains('the front end', $client->get('web/calendar/php/html.php?file=' . ($keys['class_1/inj.html'] ?? ''))->body, 'web/ can not be injected');
+        $this->assertFalse(isset($keys['class_1/stolen.js']), 'nor given a place by virtual.ini');
+        $csrf = (string) $client->get('web/calendar/php/config.php?csrf=1')->json()['csrf'];
+        $login = $client->post('web/calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf]);
+        $this->assertSame('prof', $login->json()['user'] ?? null, 'logging in works');
+        $this->assertSame(1, preg_match('/path=\/(;|$)/', (string) $login->header('set-cookie')), 'the cookies belong to the course root, not web/');
+        $this->assertContains('virtual.ini', implode("\n", array_column($client->get('web/calendar/php/calendar.php')->json()['problems'] ?? [], 'file')), 'the virtual.ini line into web/ is a problem');
+    }
+
     public function testDayMarkers(): void
     {
         $client = $this->start(['config/dates.ini' => "2026-08-27 = lab\n2026-08-31 = none\n"]);

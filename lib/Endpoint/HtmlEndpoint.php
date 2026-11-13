@@ -140,7 +140,7 @@ final class HtmlEndpoint
             Session::close();
             Response::common();
             http_response_code(303);
-            header('Location: ' . Locator::coursePath($c->server) . 'calendar/php/html.php?file=' . rawurlencode($place->key) . (($query = http_build_query(self::pageQuery($c), '', '&', PHP_QUERY_RFC3986)) !== '' ? '&' . $query : ''));
+            header('Location: ' . Locator::coursePath($c->server) . Locator::softwarePath($c->server) . 'php/html.php?file=' . rawurlencode($place->key) . (($query = http_build_query(self::pageQuery($c), '', '&', PHP_QUERY_RFC3986)) !== '' ? '&' . $query : ''));
             header('Cache-Control: no-store');
             return;
         }
@@ -156,7 +156,7 @@ final class HtmlEndpoint
         $renderer = new PageRenderer($course, $policy, $viewer, $c->now, Locator::coursePath($c->server),
             array_map('strval', (array) Session::get('unlocked', [])), array_map('strval', $urlValues),
             $place->key, $hasLock ? self::lockToken($c, $place->key, intdiv($c->now, 3600)) : '', PageRenderer::serverNames($c->server),
-            http_build_query(self::pageQuery($c), '', '&', PHP_QUERY_RFC3986));
+            http_build_query(self::pageQuery($c), '', '&', PHP_QUERY_RFC3986), Locator::softwarePath($c->server));
         $html = $renderer->render($place);
         if ($renderer->usedUrlValues !== [] && Session::isOpen()) { // remembered only in an existing session (L-41)
             $remember = (array) Session::get('url', []);
