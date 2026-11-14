@@ -764,13 +764,11 @@ MD;
         $this->assertSame(500, $missing->status);
         $this->assertContains('course.ini is missing', $missing->body);
 
-        // a course inside the web directory would be served raw by the web server (L-148)
+        // the course may be anywhere, also inside the web directory: only config/ is required
         mkdir("$web/course");
         rename("$this->dir/config", "$web/course/config");
         file_put_contents("$web/course.ini", "[course]\nroot = course\n");
-        $inside = $client->get('calendar/php/config.php');
-        $this->assertSame(500, $inside->status);
-        $this->assertContains('outside the web directory', $inside->body);
+        $this->assertSame(200, $client->get('calendar/php/config.php')->status, 'a course inside the web directory is accepted (the instructor\'s choice)');
         rename("$web/course/config", "$this->dir/config");
         file_put_contents("$web/course.ini", "[course]\nroot = $this->dir\n");
         $this->assertSame(200, $client->get('calendar/php/config.php')->status);

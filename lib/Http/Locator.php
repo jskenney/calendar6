@@ -45,12 +45,8 @@ final class Locator
         if ($course === false || !is_file("$course/config/config.ini")) {
             throw new ConfigError('course.ini: [course] root must be a directory that holds config/config.ini');
         }
-        // the course must be outside the web directory, or the web server could send config/ and
-        // the material directly (L-148)
-        $web = realpath(dirname($software));
-        if ($web !== false && ($course === $web || str_starts_with($course, rtrim($web, '/') . '/'))) {
-            throw new ConfigError('course.ini: [course] root must be outside the web directory (the web server would serve the course\'s files directly)');
-        }
+        // anywhere at all (Decided): only config/config.ini is required. A course inside the web
+        // tree is the instructor's choice (the web server then needs its own rules for it)
         return $course;
     }
 

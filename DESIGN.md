@@ -91,8 +91,9 @@ A course is two directories, and this is the only layout:
   `auth/` or raw material directly, whatever its configuration: no `.htaccess` file is needed
   to protect them, and none is shipped. Only calendar6's endpoints read the course.
 - **`course.ini`** (`[course] root = <path>`, absolute or relative to `course.ini`'s directory)
-  names the course directory, which must hold `config/config.ini` and must be **outside the web
-  directory** (a root equal to or inside it is refused, L-148). A relative root is resolved as the
+  names the course directory, which must hold `config/config.ini`; that is the only requirement
+  (Decided): it can be anywhere, also inside the web tree, though keeping it outside is
+  recommended (then the web server can never send its files directly). A relative root is resolved as the
   file system does, after links. calendar6 looks for `course.ini` in the web directory (next to
   `calendar/`) and, failing that, inside `calendar/` itself, but only when `calendar/` is a real
   directory (a clone that serves one course), never through a link: a shared copy must not hand
@@ -935,7 +936,7 @@ The software is shared by many courses, so it can not hold a pointer to any one 
    code that is running (any name). Then `course.ini` is read from the web directory, or else
    from the software's directory if that is a real directory (not a link, L-147), and its
    `[course] root` (absolute, or relative to `course.ini`) must be a directory holding
-   `config/config.ini`, outside the web directory (L-148). Otherwise (a missing or unreadable
+   `config/config.ini` (anywhere). Otherwise (a missing or unreadable
    `course.ini`, a wrong root, a server that resolves links in `SCRIPT_FILENAME`, which makes the
    software's directory a real one and its parent the "web directory") every endpoint answers `500` with a
    short error and reads nothing.

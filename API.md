@@ -79,7 +79,9 @@ A course is two directories (this is the only layout):
   `course.ini`'s own directory (as the file system resolves it, after links). The endpoints look
   for it in the web directory (next to the software) and, failing that, inside the software's
   directory, but only when that is a real directory (a clone serving one course), never a link.
-  The root must be **outside the web directory**: a root equal to or inside it is a `500`.
+  The root can be anywhere, also inside the web directory; only `config/config.ini` in it is
+  required. Keeping it outside the web tree is recommended (see below); a course inside it needs
+  web-server rules that keep `config/` and the material from being sent directly.
   Nothing else about locations is assumed: the directories can have any names and live anywhere,
   and the software's directory can be called anything (`calendar` by convention). The shipped
   web-server rules (`template/web/.htaccess`, `tests/deploy/nginx-site.conf`) name `calendar/`:
@@ -131,7 +133,7 @@ How the endpoints find the course: from the path the script was requested under
 (`SCRIPT_FILENAME`), the software's directory is two levels above the script and must resolve to
 the running code; `course.ini` is read from the directory above it (the web directory), or from
 the software's directory if that is not a link, and its `root` must hold `config/config.ini` with
-a real `secret` and lie outside the web directory. Written URLs and the cookie path are
+a real `secret`. Written URLs and the cookie path are
 percent-encoded, so a directory name with spaces or `#` works.
 Otherwise every endpoint answers `500` with a short JSON error and reads nothing. (With PHP-FPM,
 `SCRIPT_FILENAME` must keep the linked path: `$document_root$fastcgi_script_name`, not
