@@ -26,6 +26,7 @@ function request(string $url, ?array $post = null): array
         CURLOPT_HEADERFUNCTION => function ($c, string $line) use (&$headers): int {
             if (stripos($line, 'set-cookie:') === 0) {
                 $GLOBALS['cookies'] = trim(explode(';', substr($line, 11), 2)[0]);
+                $GLOBALS['setCookies'][] = trim(substr($line, 11));
             }
             if (str_contains($line, ':')) {
                 [$k, $v] = explode(':', $line, 2);
@@ -64,6 +65,16 @@ foreach ($calendar['events'] ?? [] as $event) {
 check($status === 200 && $key !== '', 'calendar.php lists a visible page with a key');
 [$status, $body] = request($base . $sw . 'php/html.php?file=' . rawurlencode($key));
 check($status === 200 && $body !== '', 'html.php serves the page');
+// URLs the server writes point into this web directory's software (T-32)
+$path = (string) parse_url($base, PHP_URL_PATH);
+preg_match_all('#(?:src|action)="([^"]*(?:get|html)\.php[^"]*)"#', $body, $written);
+check($written[1] !== [] && array_filter($written[1], static fn (string $u): bool => !str_starts_with(html_entity_decode($u), $path . $sw . 'php/')) === [], 'written URLs start with ' . $path . $sw . 'php/ (' . count($written[1]) . ')');
+if (preg_match('/<form class="cal6-lock" method="post" action="([^"]+)">.*?name="csrf" value="([^"]+)"/s', $body, $form)) {
+    $lock = curl_init((str_starts_with($base, 'https') ? 'https://' : 'http://') . parse_url($base, PHP_URL_HOST) . (($p = parse_url($base, PHP_URL_PORT)) ? ":$p" : '') . html_entity_decode($form[1]));
+    curl_setopt_array($lock, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_PROXY => '', CURLOPT_NOPROXY => '*', CURLOPT_POSTFIELDS => http_build_query(['lock' => 'wrong', 'csrf' => $form[2]])]);
+    $answer = (string) curl_exec($lock);
+    check(curl_getinfo($lock, CURLINFO_RESPONSE_CODE) === 303 && preg_match('#^Location: ' . preg_quote($path . $sw . 'php/html.php?file=', '#') . '#mi', $answer) === 1, 'the lock form answers 303 back to the page in this web directory');
+}
 check(request($base . $sw . 'php/get.php?file=' . rawurlencode($key))[0] === 404, "get.php never sends a page's source");
 check(request($base . $sw . 'php/get.php?file=AAAAAAAAAAAAAAAAAAAAAA')[0] === 404, 'an unknown key is 404');
 
@@ -72,6 +83,8 @@ if ($password !== '') {
     $csrf = json_decode($body, true)['csrf'] ?? '';
     [$status, $body] = request($base . $sw . 'php/auth.php', ['username' => 'prof', 'password' => $password, 'csrf' => $csrf]);
     check($status === 200 && (json_decode($body, true)['user'] ?? '') === 'prof', "logging in works ($status)");
+    $paths = array_map(static fn (string $c): string => preg_match('/;\s*path=([^;]+)/i', $c, $m) ? $m[1] : '', $GLOBALS['setCookies'] ?? []);
+    check($paths !== [] && array_unique($paths) === [(string) parse_url($base, PHP_URL_PATH)], 'cookies belong to the web directory (' . implode(', ', array_unique($paths)) . ')');
     [$status, $body] = request($base . $sw . 'php/calendar.php');
     check(str_contains($body, '"instructor": true'), 'the session is kept (instructor view)');
 }

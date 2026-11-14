@@ -72,8 +72,15 @@ final class Server
         return array_values(array_filter($lines, static fn (string $l): bool => (bool) preg_match('/(Warning|Notice|Deprecated|Fatal error|Parse error|calendar6:)/', $l)));
     }
 
+    private bool $stopped = false;
+
+    /** Stops the server (once; a second call does nothing). */
     public function stop(): void
     {
+        if ($this->stopped) {
+            return;
+        }
+        $this->stopped = true;
         proc_terminate($this->process);
         proc_close($this->process);
         @unlink($this->log);

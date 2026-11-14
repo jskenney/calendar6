@@ -342,8 +342,8 @@ instructor = JONES
 room       = HP132, HP301    ; one room per entry of meets: Thursday's R34 meets in HP301
 ```
 
-- Periods are read greedily as `X`, `10`, then single digits (there is no period 0, so `T910`
-  is 9 and 10).
+- Periods are read greedily as `X`, `10`, then single digits, `0` too when `periods.ini` has a
+  period 0 (`T910` is 9 and 10; L-153).
 - `room`: one room for every meeting, or one per entry of `meets`, in order (Decided). A count
   that matches neither is listed as a problem for the instructor.
 - `instructor` is a display name (several: `SMITH, LEE`); it does not have to be a user in
@@ -410,8 +410,8 @@ start     = home
 
 ### `announcements.ini` (Decided: course-wide announcements, DOC-50)
 
-One section per announcement; its name is the identifier a front end remembers when a visitor
-dismisses it (so it is not shown again in that browser). `text` (plain text) is required; `show`
+One section per announcement; its name (lower-cased, as every section name) is the identifier a
+front end remembers when a visitor dismisses it (so it is not shown again in that browser). `text` (plain text) is required; `show`
 is a window as in `security.ini` (a date, or `from until to`; no relative times), always when left
 out. `calendar.php` sends the ones shown now, to every viewer, as `announcements`
 (`[{"id", "text"}]`), and its cached answer ends when a window opens or closes. An announcement
@@ -564,8 +564,9 @@ a plain file, never a page and never listed by `calendar.php`: its key is seen o
 links to it (`<a href="notes.md2">`), and not through a `<url>` value (Decided, L-92). Editors'
 backups of pages (`index.html~`, `notes.md.bak`,
 `x.html.orig`, `index.html.~1~`, `x.html_bak`, `x.html,v`, `#index.html#`: any name with `.html`,
-`.htm` or `.md` followed by something other than a letter or digit, unless it ends in a type that
-is served as such, like `report.html.pdf`; also `index.html2` and a page extension followed by
+`.htm` or `.md` followed by something other than a letter or digit, unless it ends in a page type
+(`notes.html.md`) or a served type that is not text, like `report.html.pdf` (a text type such as
+`index.html.log`, `notes.md.txt` or `x.html.diff` would show the source as it is, L-152); also `index.html2` and a page extension followed by
 `old`, `bak`, `orig`, `save`, `copy`, `prev`, `new`, `tmp`, `swp`, as in `notes.mdold`) are raw page source too: they are never listed or
 served by either endpoint, and are listed as problems for instructors. PHP files are refused the
 same way under every spelling and as backups (`.php5`, `.phtml`, `.phtm`, `.phar`, `.pht`, `.phps`,
@@ -1058,7 +1059,8 @@ The plan:
   to match and keeps the course's sessions in its private directory
   (`<temp>/cal6-<uid>-<hash>/sessions`) when it can, so another application's cleanup does not
   end them early. Calendar 6 sweeps that directory itself (expired files, and the oldest beyond
-  20000), since PHP's own cleanup is often off, and a read-only request with an unknown session
+  20000 that hold no login: anyone can create anonymous sessions, and must not push real logins
+  out, L-157), since PHP's own cleanup is often off, and a read-only request with an unknown session
   id creates no new session (L-72).
 - **One origin, many courses:** courses on one host (`/~bob/AB123/`, `/~ann/CD456/`) each have
   their own login: the session cookie is named after the course directory and limited to its

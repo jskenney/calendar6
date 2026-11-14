@@ -84,9 +84,19 @@ final class Session
             }
         }
         if (count($files) > self::MAX_FILES) {
+            // the oldest first, but never a session that holds a login: anyone can create
+            // anonymous sessions (config.php?csrf=1), and must not push real logins out (L-157)
             asort($files);
-            foreach (array_slice(array_keys($files), 0, count($files) - self::MAX_FILES) as $file) {
+            $excess = count($files) - self::MAX_FILES;
+            foreach (array_keys($files) as $file) {
+                if ($excess <= 0) {
+                    break;
+                }
+                if (str_contains((string) @file_get_contents($file, false, null, 0, 65536), '"user";s:')) {
+                    continue;
+                }
                 @unlink($file);
+                $excess--;
             }
         }
     }

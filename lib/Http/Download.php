@@ -118,6 +118,13 @@ final class Download
         return isset(self::TYPES[strtolower($extension)]);
     }
 
+    /** A type sent as text a reader sees as it is (text/*, JSON, XML, JavaScript): a page's source would show (L-152). */
+    public static function isText(string $extension): bool
+    {
+        $type = self::TYPES[strtolower($extension)][0] ?? '';
+        return str_starts_with($type, 'text/') || (bool) preg_match('#(json|xml|javascript)#', $type);
+    }
+
     /** @return array{0: string, 1: bool} content type and whether it is shown inline */
     public static function typeOf(string $name): array
     {

@@ -164,7 +164,7 @@ final class IniAndTimeTest extends TestCase
         $this->assertSame(['X', '1'], Sections::meeting('MWX1', $types, 'class')['periods'] ?? null);
         $this->assertSame([1, 3], Sections::meeting('MWX1', $types, 'class')['days'] ?? null);
         $this->assertSame('lab', Sections::meeting('T12 lab', $types, 'class')['type'] ?? null);
-        $this->assertSame(null, Sections::meeting('T0', $types, 'class'), 'there is no period 0');
+        $this->assertSame(['0'], Sections::meeting('T0', $types, 'class')['periods'] ?? null, 'period 0, as periods.ini allows it (L-153)');
         $this->assertSame(null, Sections::meeting('Q1', $types, 'class'));
         $sections = Sections::fromIni(IniFile::parse("[4345]\nmeets = MF4, R34\ninstructor = JONES\nroom = HP132, HP301\n[1]\nmeets = M1, T1, W1\nroom = A, B\n"), $types);
         $this->assertSame('HP132', $sections->sections['4345']['meetings'][0]['room']);

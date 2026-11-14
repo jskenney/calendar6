@@ -25,33 +25,34 @@ final class AuthEndpoint
     }
 
     /** Whether this browser carries a device cookie from an earlier login as $user. */
-    private static function knownDevice(Context $c, string $user): bool
+    private static function knownDevice(Context $c, string $user, string $username): bool
     {
         $value = $_COOKIE[self::deviceCookie($c)] ?? '';
         if (!is_string($value) || substr_count($value, '.') !== 2) {
             return false;
         }
         [$who, $nonce, $mac] = explode('.', $value);
-        return hash_equals(hash_hmac('sha256', "device|$who|$nonce|" . self::passwordMark($c, $user), $c->config->secret), $mac)
+        return hash_equals(hash_hmac('sha256', "device|$who|$nonce|" . self::passwordMark($c, $username), $c->config->secret), $mac)
             && hash_equals(bin2hex($user), $who);
     }
 
     /**
      * The device cookie is bound to the account's password: a reset after a leak ends the
-     * cookies made with the old one too (L-126).
+     * cookies made with the old one too (L-126). The account by its name as written (auth/JDoe.ini
+     * on a case-sensitive file system), never a lower-cased copy that finds no file (L-156).
      */
-    private static function passwordMark(Context $c, string $user): string
+    private static function passwordMark(Context $c, string $username): string
     {
-        $account = Viewer::account($c->config, $user);
+        $account = Viewer::account($c->config, $username);
         return Context::secretMark($account?->passwordHash ?? '');
     }
 
     /** After a successful login: a signed cookie that lets this browser past the per-user gate. */
-    private static function rememberDevice(Context $c, string $user): void
+    private static function rememberDevice(Context $c, string $user, string $username): void
     {
         $who = bin2hex($user);
         $nonce = bin2hex(random_bytes(12));
-        $value = "$who.$nonce." . hash_hmac('sha256', "device|$who|$nonce|" . self::passwordMark($c, $user), $c->config->secret);
+        $value = "$who.$nonce." . hash_hmac('sha256', "device|$who|$nonce|" . self::passwordMark($c, $username), $c->config->secret);
         if (!headers_sent()) {
             setcookie(self::deviceCookie($c), $value, [
                 'expires' => $c->now + self::DEVICE_DAYS * 86400,
@@ -160,7 +161,7 @@ final class AuthEndpoint
         }
         $user = strtolower($username);
         $address = RateLimiter::addressKey($c->address());
-        $known = self::knownDevice($c, $user);
+        $known = self::knownDevice($c, $user, $username);
         $keys = ['pair:' . $address . '|' . $user => $limit] + ($known ? [] : ['address:' . $address => $limit * 4]);
         $recorded = [];
         foreach ($keys as $key => $max) {
@@ -208,7 +209,7 @@ final class AuthEndpoint
         foreach ($recorded as $done) {
             $limiter->forgive($done);
         }
-        self::rememberDevice($c, $user);
+        self::rememberDevice($c, $user, $account->user);
         Session::regenerate();
         Session::set('user', $account->user);
         Session::set('login', $c->now);

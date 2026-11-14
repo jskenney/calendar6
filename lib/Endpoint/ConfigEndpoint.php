@@ -87,10 +87,10 @@ final class ConfigEndpoint
         return [
             'course' => ['number' => $config->number, 'name' => $config->name, 'timezone' => $config->zone->getName()],
             'semester' => ['start' => $config->start->format('Y-m-d'), 'end' => $config->end->format('Y-m-d'), 'weekends' => $config->weekends],
-            'schedule' => $schedule,
+            'schedule' => (object) $schedule, // a JSON object, also when empty (L-153)
             'days' => $days,
             'period' => $config->defaultPeriod,
-            'periods' => $config->periods->toArray(),
+            'periods' => (object) $config->periods->toArray(),
             'sections' => $config->sections->toArray(),
             'types' => array_map(static fn (string $label): array => ['label' => $label], $config->types),
             'boxes' => array_values(array_map(static fn (array $b): array => ['box' => $b['box'], 'label' => $b['label']], array_filter($config->boxes, static fn (array $b): bool => !($b['notes'] ?? false)))),

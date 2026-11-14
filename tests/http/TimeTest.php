@@ -62,6 +62,17 @@ final class TimeTest extends TestCase
         $this->assertTrue(self::hasFile($client->get('calendar/php/calendar.php')->json(), 'lab_1', 'lab-solution.html'), 'the cached answer expires when the next rule changes');
     }
 
+    public function testAnnouncementWindowsThroughTheCache(): void
+    {
+        $client = $this->start(['config/announcements.ini' => "[friday]\ntext = No class on Friday.\nshow = 2026-09-02 17:00 until 2026-09-02 23:00\n"], '2026-09-02 16:59');
+        $this->assertSame([], $client->get('calendar/php/calendar.php')->json()['announcements'] ?? null, 'not yet');
+        $this->assertSame([], $client->get('calendar/php/calendar.php')->json()['announcements'] ?? null, 'cached');
+        $this->at('2026-09-02 17:00');
+        $this->assertSame(['friday'], array_column($client->get('calendar/php/calendar.php')->json()['announcements'] ?? [], 'id'), 'the cached answer ends when a window opens (T-33)');
+        $this->at('2026-09-02 23:00');
+        $this->assertSame([], $client->get('calendar/php/calendar.php')->json()['announcements'] ?? null, 'and when it closes');
+    }
+
     public function testPostmeetingOpensWhenTheLastSectionEnds(): void
     {
         $client = $this->start([

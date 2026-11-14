@@ -73,7 +73,7 @@ final class Periods
         return $start === null ? null : [$start, (string) $end];
     }
 
-    /** @return array<string, array{label: string, times: array<string, string>}> for config.php */
+    /** @return array<string, array{label: string, times: object}> for config.php: times always a JSON object (L-153) */
     public function toArray(): array
     {
         $out = [];
@@ -82,7 +82,7 @@ final class Periods
             foreach ($schedule['periods'] as $period => $t) {
                 $times[$period] = $t === null ? 'cancelled' : "$t[0]-$t[1]";
             }
-            $out[$name] = ['label' => $schedule['label'], 'times' => $times];
+            $out[$name] = ['label' => $schedule['label'], 'times' => (object) $times];
         }
         return $out;
     }

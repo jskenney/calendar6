@@ -102,13 +102,6 @@ final class Boundary
     }
 
     /**
-     * An editor's or version tool's copy of a page (index.html~, notes.md.bak, x.html.orig,
-     * index.html.~1~, x.html_bak, x.html,v, #index.html#): raw page source, so never served by
-     * either endpoint (M-22, M-29).  Any name with .html, .htm or .md followed by something that
-     * is not a letter or digit, unless it ends in a file type that is served as such
-     * (report.html.pdf, slides.md.zip, notes.html.md).
-     */
-    /**
      * A Markdown copy with a number (notes.md2, notes.md1; not a .md5 checksum): a plain file,
      * never a page, never listed by calendar.php, so its key is seen only where a page links to
      * it (Decided, L-92).
@@ -118,6 +111,14 @@ final class Boundary
         return (bool) preg_match('/\.md\d+$/i', basename($name)) && !preg_match('/\.md5$/i', $name);
     }
 
+    /**
+     * An editor's or version tool's copy of a page (index.html~, notes.md.bak, x.html.orig,
+     * index.html.~1~, x.html_bak, x.html,v, #index.html#): raw page source, so never served by
+     * either endpoint (M-22, M-29).  Any name with .html, .htm or .md followed by something that
+     * is not a letter or digit, unless it ends in a page type (notes.html.md is a page) or a
+     * served type that is not text (report.html.pdf, slides.md.zip): a text type after it
+     * (index.html.log, notes.md.txt, x.html.diff) would send the source as it is (L-152).
+     */
     public static function isPageBackup(string $name): bool
     {
         $base = basename($name);
@@ -132,7 +133,10 @@ final class Boundary
             return false;
         }
         $extension = strtolower(pathinfo($base, PATHINFO_EXTENSION));
-        // a name that ends in a page or another served type is that (x.html.md is a page)
-        return !Download::isKnownType($extension);
+        if (in_array($extension, ['html', 'htm', 'md'], true)) {
+            return false; // x.html.md is a page, processed by html.php
+        }
+        // a served type that is not text is that (report.html.pdf); a text one is the source
+        return !Download::isKnownType($extension) || Download::isText($extension);
     }
 }

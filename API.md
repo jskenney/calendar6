@@ -230,7 +230,8 @@ timezone is `config.php` → `course.timezone`.
   cookie goes along.
 - **Headers on every answer:** `X-Content-Type-Options: nosniff`, `Referrer-Policy:
   same-origin`, `X-Frame-Options: SAMEORIGIN`.
-- **Caching.** `config.php`, `auth.php` and `html.php`: `Cache-Control: private, no-store`.
+- **Caching.** `config.php`, `auth.php` and `html.php`: `Cache-Control: private, no-store` (the
+  `303` after a lock code: `Cache-Control: no-store`).
   `calendar.php` and `get.php`: `Cache-Control: private, no-cache` with an `ETag`; send
   `If-None-Match` and you get `304 Not Modified` when nothing changed (browsers do this for you).
 - **JSON** is `application/json; charset=utf-8`, UTF-8, with slashes and Unicode unescaped.
@@ -415,7 +416,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
 | `generated` | moment | when the answer was built (it may come from the server's cache) |
 | `viewer` | object | `user` (string\|null), `instructor` (bool) and `valid_until` (moment\|null, when the login ends by itself, as in `config.php`); for an instructor's `as` preview, the previewed viewer, with `valid_until` `null` (an `at`-only preview keeps the instructor's own `valid_until`) |
 | `section` | string | only when a section was requested |
-| `announcements` | array | course-wide announcements shown now (`announcements.ini`), to every viewer, in file order: `id` (string, the announcement's identifier) and `text` (plain text). An announcement with a `show` window appears only inside it. Show them as a banner; remember the `id`s a visitor dismissed (e.g. in `localStorage`, or `sessionStorage` for once per visit) and do not show those again. A new or changed announcement that should be seen again gets a new `id` from the instructor |
+| `announcements` | array | course-wide announcements shown now (`announcements.ini`), to every viewer, in file order: `id` (string, the announcement's identifier: its section name in `announcements.ini`, **lower-cased**, so `[News]` and `[news]` are one announcement) and `text` (plain text). An announcement with a `show` window appears only inside it. Show them as a banner; remember the `id`s a visitor dismissed (e.g. in `localStorage`, or `sessionStorage` for once per visit) and do not show those again. A new or changed announcement that should be seen again gets a new `id` from the instructor |
 | `dropdown` | array | the event types (keys of `config.php` → `types`) to offer as drop-down menus in the menu bar, in order, from `config.ini` `[dropdown] show`; only types `[types]` defines; `[]` when the section is missing |
 | `pages` | object | page name → page (see below), in `pages.ini` order |
 | `days` | object | **every** date from `semester.start` to `semester.end` → list of items (see below), in date order; `[]` for a day with nothing on it |
@@ -612,7 +613,7 @@ Math (`\( \)`, `\[ \]`, `$$ $$`) is left as written for MathJax; code blocks for
 |---|---|
 | right or wrong code, valid token | `303 See Other`, `Location: …/calendar/php/html.php?file=KEY&…` (the page's own query, its `<url>` values, is kept in the form's `action` and in `Location`; fetch it to get the page, now unlocked if the code was right) |
 | missing or expired token (tokens last 1–2 hours), or a cross-site POST | 403 |
-| too many wrong codes | 429 with `Retry-After` (503 if attempts can not be counted) |
+| too many wrong codes (per address and page, per address, and, once a page has had many wrong codes from anywhere, one attempt per second on that page) | 429 with `Retry-After` (503 if attempts can not be counted) |
 
 A right code is remembered in the session (one is created then) and opens every `<lock>` with
 that code on every page until logout or the session ends.

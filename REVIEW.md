@@ -13,7 +13,7 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. M-52, then L-152..L-158, DOC-52, DOC-53, T-31, T-32, T-33 (being fixed).
+1. Review 26's items are fixed; review 27 checks them.
 2. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
@@ -26,36 +26,19 @@ None open.
 
 ## Medium
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| M-52 | 26 | `lib/Render/PageRenderer.php:192-236` (`hideMarkdown`, `plainComments`) | **md.php: comment removal can eat a hidden block's opening tag**, and the block's content goes to everyone: ``Use `<!--` to open a comment.`` then `<inst>` … `` `-->` `` … `the answer is 42.` `</inst>` gives "the quiz answer is 42." to anonymous viewers (also `<lock>`, and through `<inject>`); html.php hides it. Reproduced over php -S and Apache+FPM by the reviewer. | End a plain comment before an opening block tag inside it, or hide blocks (both readings) before removing comments; test. |
+None open.
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-152 | 26 | `lib/Course/Boundary.php:121-137` | The editors'-backup rule exempts `x.html.<ext>` when `<ext>` is a known type; the new MIME table makes `log`, `text`, `diff`, `patch`, `sh`, `m`, `r`, ... known, so `index.html.log` or `index.html.diff` linked from a page get keys and are sent as `text/plain` with `<inst>` in them. Reproduced. | Exempt only non-text derived types; a text type after `.html`/`.htm`/`.md` is a backup. |
-| L-153 | 26 | `lib/Schedule/Periods.php:77-87`; `lib/Endpoint/ConfigEndpoint.php:90`, `:93` | Empty or 0-based maps come out as JSON arrays: periods `0,1,2` give `"times": [...]`, a schedule with only a label `"times": []`, no periods.ini `"periods": []`, an empty `[schedule]` `"schedule": []`; API.md promises objects. Reproduced. | Cast to objects. |
-| L-154 | 26 | `PageRenderer.php:113-116`, `:710`, `block()` | Block tags in some attribute values escape the fail-closed rule: `<postmeeting title="<inst>">S</inst></postmeeting>`, a visible `<host title="<inst>">`, an unlocked `<lock title="<inst>">`, and `<iframe srcdoc="<inst>">S</inst>` send `S` (the visible block's opening tag is removed before `hideInAttributes` sees it; srcdoc gets no continuation). Author mistakes only. | Run attribute hiding on block tags' own openings first; give srcdoc the continuation. |
-| L-155 | 26 | `PageRenderer.php:231` (`plainComments`) | Quadratic: each comment searches to the end for `--!>`; 40,000 `<!--a-->` (360 KB) take 21.8 s per md.php request (html.php 0.06 s). | One regex search per comment end. |
-| L-156 | 26 | `lib/Endpoint/AuthEndpoint.php:43-46`, `:211` | The device cookie is not bound to the password for usernames with capitals: `strtolower($username)` finds no `auth/JDoe.ini` on Linux, so the mark is of an empty hash and a password change does not end old device cookies (L-126 incomplete). | Use the account's own name. |
-| L-157 | 26 | `lib/Http/Session.php:47-48`, `:86-90` | Anyone can flood out logged-in sessions: `config.php?csrf=1` is unlimited, and past 20,000 files the sweep deletes the oldest, which are idle real logins. | Never evict sessions that hold a user, or limit creation per address. |
-| L-158 | 26 | `lib/Endpoint/HtmlEndpoint.php:115` | Lock codes have per-address and per-address-and-page limits only; a botnet or an IPv6 /48 (65,536 /64s × 20 tries per 15 min) can brute-force a short code. | A per-page gate (one failure per second after N from anywhere), like the login's per-user gate. |
+None open.
 
 ## Documentation
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| DOC-52 | 26 | `lib/Ini/IniFile.php:66`; API.md 6, 10.8; template `announcements.ini` | Announcement ids are lower-cased (`[Closed-Friday]` gives `closed-friday`; `[News]` and `[news]` merge), and ` ;` cuts `text`; not documented. | Document (or keep the case). |
-| DOC-53 | 26 | API.md 4; `lib/Course/Boundary.php` | The lock form's 303 sends `Cache-Control: no-store`, not `private, no-store`; `isPageBackup`'s doc comment sits above `isUnlisted`. | Correct. |
+None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-33 | 26 | `tests/` | No tests for M-52, backups with text extensions, svg/html/xhtml attachments and extensionless `text/plain`, the JSON shape of empty or 0-based maps, `plainComments` linearity, announcement windows through the cache (the test uses `at=` previews, which skip it). | Tests with the fixes. |
-| T-31 | 25 | `tests/http/EndpointsTest.php:643-650` | `testDropdownTypes` calls `start()` three times and tears down only the last: every run leaks two php -S servers, two courses with their web directories, caches and logs in /tmp. | `start()` stops and removes the previous server and course. |
-| T-32 | 25 | `tests/deploy/smoke.php`; `tests/http/EndpointsTest.php` | The smoke test checks neither the cookie path, nor that written URLs start with `<base>calendar/php/`, nor the lock 303; no tests for L-148, L-149 or an unreadable course.ini; `testCourseIniFindsTheCourse` writes `course.ini` into the repository itself (on a shared install it would briefly serve the test course everywhere, see L-147). | Add the checks; test the inner course.ini with a copy of the repository. |
+None open.
 
 ## Enhancements
 
@@ -372,6 +355,19 @@ None open.
 | DOC-49 | owner | `bbd0597` | The words html.php writes into pages ("Enter the code to see this section", "Unlock", "Show answer") were fixed English. | Decided (owner): `config/language.ini` `[text]` (`lock_prompt`, `lock_button`, `show_answer`), plain text written HTML-escaped; missing keys keep their defaults, unknown keys are problems; kept out of config.ini. Template, DESIGN, API.md and tests. |
 | DOC-50 | owner | `bbd0597` | No way to show a course-wide announcement. | Decided (owner): `config/announcements.ini`, one section per announcement (the section name is its identifier), `text` required, optional `show` window; calendar.php sends those shown now as `announcements: [{id, text}]` to everyone, and its cache ends when a window opens or closes; a front end keeps dismissed ids so a browser does not see one again. Template, DESIGN, API.md (field and front-end guide) and tests. |
 | DOC-51 | owner | `bbd0597` | get.php knew about 40 extensions; `.epub`, fonts, notebooks, `.mov`, office and archive formats were sent as `application/octet-stream`. | get.php knows the standard types (about 200): text and code as `text/plain`, images, audio, video, fonts, PDF, epub, office documents, archives, 3-D models; inline only for types a browser shows safely, and HTML, XHTML, SVG, XML and XSLT always attachments. API.md and tests. |
+| M-52 | 26 | (this commit) | **md.php: comment removal can eat a hidden block's opening tag**, and the block's content goes to everyone: ``Use `<!--` to open a comment.`` then `<inst>` … `` `-->` `` … `the answer is 42.` `</inst>` gives "the quiz answer is 42." to anonymous viewers (also `<lock>`, and through `<inject>`); html.php hides it. Reproduced over php -S and Apache+FPM by the reviewer. | md.php's comment scan ends a comment before an opening block tag written in it (the tag stays and its block is hidden). Test (with `<inst>` and `<lock>`). |
+| L-152 | 26 | (this commit) | The editors'-backup rule exempts `x.html.<ext>` when `<ext>` is a known type; the new MIME table makes `log`, `text`, `diff`, `patch`, `sh`, `m`, `r`, ... known, so `index.html.log` or `index.html.diff` linked from a page get keys and are sent as `text/plain` with `<inst>` in them. Reproduced. | A `.html`/`.htm`/`.md` name followed by a text type (`text/*`, JSON, XML, JavaScript) is a backup; only page types and non-text types are exempt. Test. |
+| L-153 | 26 | (this commit) | Empty or 0-based maps come out as JSON arrays: periods `0,1,2` give `"times": [...]`, a schedule with only a label `"times": []`, no periods.ini `"periods": []`, an empty `[schedule]` `"schedule": []`; API.md promises objects. Reproduced. | config.php's `schedule`, `periods` and every `times` are JSON objects, also empty or 0-based; sections accept period 0 as periods.ini does. Test. |
+| L-154 | 26 | (this commit) | Block tags in some attribute values escape the fail-closed rule: `<postmeeting title="<inst>">S</inst></postmeeting>`, a visible `<host title="<inst>">`, an unlocked `<lock title="<inst>">`, and `<iframe srcdoc="<inst>">S</inst>` send `S` (the visible block's opening tag is removed before `hideInAttributes` sees it; srcdoc gets no continuation). Author mistakes only. | Attribute hiding runs at the start of every hiding round (html.php and md.php), while block tags still carry their values; a block left open in a srcdoc continues through the iframe's own content (to `</iframe>`). Test. |
+| L-155 | 26 | (this commit) | Quadratic: each comment searches to the end for `--!>`; 40,000 `<!--a-->` (360 KB) take 21.8 s per md.php request (html.php 0.06 s). | The comment scan is one forward search per comment (linear): 40,000 comments in well under a second. Test. |
+| L-156 | 26 | (this commit) | The device cookie is not bound to the password for usernames with capitals: `strtolower($username)` finds no `auth/JDoe.ini` on Linux, so the mark is of an empty hash and a password change does not end old device cookies (L-126 incomplete). | The device cookie's password mark looks the account up by its name as written (`auth/JDoe.ini`). Test. |
+| L-157 | 26 | (this commit) | Anyone can flood out logged-in sessions: `config.php?csrf=1` is unlimited, and past 20,000 files the sweep deletes the oldest, which are idle real logins. | The sweep never evicts a session that holds a login. Test (20,005 anonymous sessions and an older login). |
+| L-158 | 26 | (this commit) | Lock codes have per-address and per-address-and-page limits only; a botnet or an IPv6 /48 (65,536 /64s × 20 tries per 15 min) can brute-force a short code. | A per-page gate: once a page has had twenty times the login limit of wrong codes from anywhere, its attempts pass one per second. Test (100 networks, then 429). |
+| DOC-52 | 26 | (this commit) | Announcement ids are lower-cased (`[Closed-Friday]` gives `closed-friday`; `[News]` and `[news]` merge), and ` ;` cuts `text`; not documented. | API.md, DESIGN and the template's `announcements.ini` say identifiers are lower-cased and that ` ;` starts a comment. |
+| DOC-53 | 26 | (this commit) | The lock form's 303 sends `Cache-Control: no-store`, not `private, no-store`; `isPageBackup`'s doc comment sits above `isUnlisted`. | API.md gives the lock 303's `Cache-Control: no-store`; `isPageBackup`'s doc comment is above it again. |
+| T-31 | 25 | (this commit) | `testDropdownTypes` calls `start()` three times and tears down only the last: every run leaks two php -S servers, two courses with their web directories, caches and logs in /tmp. | `start()` stops the previous server and removes the previous course (checking its PHP errors); `Server::stop()` is idempotent. No more leaks per run. |
+| T-32 | 25 | (this commit) | The smoke test checks neither the cookie path, nor that written URLs start with `<base>calendar/php/`, nor the lock 303; no tests for L-148, L-149 or an unreadable course.ini; `testCourseIniFindsTheCourse` writes `course.ini` into the repository itself (on a shared install it would briefly serve the test course everywhere, see L-147). | The smoke test checks the cookie path, that written URLs start with the web directory's software path, and the lock form's 303 (passes on Apache); the inner-course.ini test no longer writes into the repository (L-147, unit test with temporary directories). |
+| T-33 | 26 | (this commit) | No tests for M-52, backups with text extensions, svg/html/xhtml attachments and extensionless `text/plain`, the JSON shape of empty or 0-based maps, `plainComments` linearity, announcement windows through the cache (the test uses `at=` previews, which skip it). | Tests for M-52, text-type backups, svg/html/xhtml/xml attachments and extensionless text/plain, JSON shapes of empty and 0-based maps, comment-scan linearity, announcement windows through the cache, and the fixes above. |
 
 ## Reviews
 

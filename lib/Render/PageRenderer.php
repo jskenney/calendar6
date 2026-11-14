@@ -110,6 +110,9 @@ final class PageRenderer
         // around it into a new comment or block (A<<inst>x</inst>!-- ... -->), L-61
         for ($round = 0; ; $round++) {
             $before = $html;
+            // blocks written in attribute values first, while every tag that carries one is still
+            // there: a visible block's own opening tag can carry one too (L-154)
+            $html = $this->hideInAttributes($html, $place);
             $html = $this->postmeeting($html, $place);
             $html = self::block($html, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
             $html = $this->host($html);
@@ -194,6 +197,7 @@ final class PageRenderer
         for ($round = 0; ; $round++) {
             $before = $text;
             $text = self::plainComments($text);
+            $text = $this->hideInAttributes($text, $place); // values first, also in block tags (L-154)
             $text = self::textBlock(self::block($text, 'lock', static fn (): string => ''), 'lock', static fn (): string => '');
             $text = $this->postmeeting($text, $place);
             $text = self::block($text, 'inst', fn (string $inner): string => $this->viewer->instructor ? $inner : '');
@@ -213,27 +217,35 @@ final class PageRenderer
         }
     }
 
-    /** HTML comments by plain scan (no regex: any length), code included; one never closed runs to the end. */
+    /**
+     * HTML comments by plain scan, code included; one never closed runs to the end. A comment
+     * also ends before an opening block tag written in it, so removing a comment can never take
+     * a hidden block's opening tag with it (M-52). One forward search per comment: linear (L-155).
+     */
     private static function plainComments(string $text): string
     {
         $out = '';
         $pos = 0;
+        $length = strlen($text);
         while (($start = strpos($text, '<!--', $pos)) !== false) {
             $out .= substr($text, $pos, $start - $pos);
-            if (substr($text, $start + 4, 1) === '>') {
-                $pos = $start + 5; // <!-->
+            $from = $start + 4;
+            if (substr($text, $from, 1) === '>' || substr($text, $from, 2) === '->') {
+                $pos = $from + (substr($text, $from, 1) === '>' ? 1 : 2); // <!--> and <!--->
                 continue;
             }
-            if (substr($text, $start + 4, 2) === '->') {
-                $pos = $start + 6; // <!--->
-                continue;
+            if (!preg_match('/--!?>|<(?:inst|lock|postmeeting|host)(?=[\t\n\f\r \/>]|$)/i', $text, $m, PREG_OFFSET_CAPTURE, $from)) {
+                if (preg_last_error() !== PREG_NO_ERROR) {
+                    self::failed();
+                }
+                return $out; // never closed: to the end
             }
-            $ends = array_filter([strpos($text, '-->', $start + 4), strpos($text, '--!>', $start + 4)], static fn ($e): bool => $e !== false);
-            if ($ends === []) {
+            [$found, $at] = $m[0];
+            // a block tag ends the comment just before it, and stays; a comment end is removed
+            $pos = $found[0] === '<' ? $at : $at + strlen($found);
+            if ($pos >= $length) {
                 return $out;
             }
-            $end = min($ends);
-            $pos = $end + (substr($text, $end, 3) === '-->' ? 3 : 4);
         }
         return $out . substr($text, $pos);
     }
@@ -702,12 +714,17 @@ final class PageRenderer
             $new = '';
             $at = 0;
             $open = [];
+            $openInSrcdoc = [];
             foreach (HtmlLexer::attributes($tag) as [$name, $start, $end]) {
                 if ($start < 0) {
                     continue;
                 }
                 $value = substr($tag, $start, $end - $start);
-                if ($name !== 'srcdoc') {
+                if ($name === 'srcdoc') {
+                    // a srcdoc as the browser decodes it: a block it leaves open goes on through
+                    // the iframe's own content, which is raw text up to </iframe> (L-154)
+                    array_push($openInSrcdoc, ...self::unclosedBlocks(self::browserDecode($value)));
+                } else {
                     array_push($open, ...self::unclosedBlocks($value));
                 }
                 if ($name === 'srcdoc') {
@@ -725,6 +742,12 @@ final class PageRenderer
             }
             $out .= substr($html, $pos, $token[1] - $pos) . $new . substr($tag, $at);
             $pos = $token[2];
+            if ($open === [] && $openInSrcdoc !== [] && $this->continuationEnd($html, $pos, $openInSrcdoc, $place) !== null) {
+                $close = preg_match('/<\/iframe(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', $html, $m, PREG_OFFSET_CAPTURE, $pos) ? $m[0][1] : strlen($html);
+                $range = $this->hideValue(implode('', array_map(static fn (array $o): string => $o[0] . '>', $openInSrcdoc)) . substr($html, $pos, $close - $pos), $place);
+                $out .= str_contains($range, '<') ? '' : $range; // fallback content: text at most
+                $pos = $close;
+            }
             if ($open !== [] && ($end = $this->continuationEnd($html, $pos, $open, $place)) !== null) {
                 // an end inside a later tag (a closing tag written in its quoted value) takes the
                 // whole tag along, so no part of it goes out unprocessed (L-142)

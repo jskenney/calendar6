@@ -21,6 +21,17 @@ final class EndpointsTest extends TestCase
     /** @param array<string, string|null> $extra */
     private function start(array $extra = []): HttpClient
     {
+        // a test may start several courses: the earlier server and course go first (T-31)
+        if ($this->server !== null) {
+            if (!$this->ignoreServerErrors) {
+                $this->assertSame([], $this->server->phpErrors(), 'no PHP errors or warnings on the server');
+            }
+            $this->server->stop();
+            $this->server = null;
+        }
+        if ($this->dir !== '') {
+            Fixture::remove($this->dir);
+        }
         $this->dir = Fixture::course(array_merge(PolicyTest::files(), $extra));
         $this->server = new Server($this->dir);
         return new HttpClient($this->server);
@@ -928,6 +939,35 @@ MD;
         $csrf = (string) $client->get('calendar/php/config.php?csrf=1')->json()['csrf'];
         $this->assertSame(200, $client->post('calendar/php/auth.php', ['username' => 'prof', 'password' => Fixture::PASSWORD, 'csrf' => $csrf], $from('198.51.100.2'))->status, 'the instructor is not locked out from elsewhere (M-7)');
         $this->assertSame(401, $attacker->post('calendar/php/auth.php', ['username' => 'ta', 'password' => 'bad', 'csrf' => $token], $from('198.51.100.1'))->status, 'another username from the same address is still allowed');
+    }
+
+    public function testLockCodesHaveAPerPageGate(): void
+    {
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
+        $client = $this->start([
+            'config/config.ini' => $config . "\n[server]\ntrusted_proxies = 127.0.0.1\n",
+            'class/01.Introduction/index.html' => '<lock code="open">LOCKED</lock>',
+        ]);
+        $key = $client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['key'];
+        preg_match('/name="csrf" value="([^"]+)"/', $client->get("calendar/php/html.php?file=$key")->body, $m);
+        for ($i = 0; $i < 100; $i++) { // 20 x the login limit (5), each from another network
+            $this->assertSame(303, $client->post("calendar/php/html.php?file=$key", ['lock' => "bad$i", 'csrf' => $m[1]], ['X-Forwarded-For' => "203.0.113.9, 198.51." . intdiv($i, 250) . '.' . ($i % 250)])->status);
+        }
+        $this->assertSame(303, $client->post("calendar/php/html.php?file=$key", ['lock' => 'bad-a', 'csrf' => $m[1]], ['X-Forwarded-For' => '203.0.113.9, 192.0.2.1'])->status, 'once full, one attempt passes this second');
+        $this->assertSame(429, $client->post("calendar/php/html.php?file=$key", ['lock' => 'bad-b', 'csrf' => $m[1]], ['X-Forwarded-For' => '203.0.113.9, 192.0.2.2'])->status, 'and the next waits, from any address (L-158)');
+    }
+
+    public function testConfigMapsAreAlwaysObjects(): void
+    {
+        $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
+        $config = (string) preg_replace('/^\[schedule\]\n(?:[a-z]{3} *=.*\n)+/m', "[schedule]\n", $config);
+        $client = $this->start(['config/config.ini' => $config, 'config/periods.ini' => "[zero]\n0 = 07:00-07:40\n1 = 07:45-08:35\n[empty]\nlabel = Nothing\n"]);
+        $data = json_decode($client->get('calendar/php/config.php')->body, false);
+        $this->assertTrue(is_object($data->schedule ?? null) && is_object($data->periods ?? null), 'an empty schedule is {} (L-153)');
+        $this->assertTrue(is_object($data->periods->zero->times ?? null) && is_object($data->periods->empty->times ?? null), 'period times are {} also 0-based or empty');
+        $this->assertSame('07:00-07:40', $data->periods->zero->times->{'0'} ?? null);
+        unlink("$this->dir/config/periods.ini");
+        $this->assertTrue(is_object(json_decode($client->get('calendar/php/config.php')->body, false)->periods ?? null), 'no periods.ini: {}');
     }
 
     public function testLoginFailsClosedWithoutRateLimiter(): void

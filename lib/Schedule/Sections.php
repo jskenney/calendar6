@@ -94,9 +94,7 @@ final class Sections
             if (str_starts_with($rest, '10')) {
                 $periods[] = '10';
                 $rest = substr($rest, 2);
-            } elseif ($rest[0] === '0') {
-                return null; // there is no period 0
-            } else {
+            } else { // any single period name, 0 too, as periods.ini allows it (L-153)
                 $periods[] = $rest[0];
                 $rest = substr($rest, 1);
             }
