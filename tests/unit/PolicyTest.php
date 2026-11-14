@@ -130,7 +130,7 @@ INI;
     public function testVirtualFilesKeepTheirRealFilesRules(): void
     {
         $course = $this->load([
-            'config/paths.ini' => "[pages]\nhome = pages/home.html\nsolutions = pages/syllabus.html\n",
+            'config/pages.ini' => "[pages]\nhome = pages/home.html\nsolutions = pages/syllabus.html\n",
             'config/default.ini' => "class_1 = always\npage/solutions = never\nexam_2/answers.pdf = always\n",
             'config/virtual.ini' => "class_1/sol.html = pages/syllabus.html\nclass_1/final.pdf = exam/02.Final/answers.pdf\nclass_1/handout.md = shared/checklist.md\n",
             'config/duplicate.ini' => "class_2 = class_1\n",
@@ -158,7 +158,7 @@ INI;
     public function testAFileSharedByTwoPagesFollowsEachPage(): void
     {
         $course = $this->load([
-            'config/paths.ini' => "[pages]\nhome = pages/home.html\nresources = pages/resources.html\n",
+            'config/pages.ini' => "[pages]\nhome = pages/home.html\nresources = pages/resources.html\n",
             'config/default.ini' => "page/home = never\n",
             'pages/home.html' => '<img src="logo.png">',
             'pages/resources.html' => '<img src="logo.png">',
@@ -172,7 +172,7 @@ INI;
     public function testAVirtualNameOfAHiddenPagesAttachmentIsHidden(): void
     {
         $course = $this->load([
-            'config/paths.ini' => "[pages]\nhome = pages/home.html\nanswers = pages/answers.html\n",
+            'config/pages.ini' => "[pages]\nhome = pages/home.html\nanswers = pages/answers.html\n",
             'config/default.ini' => "class_1 = always\npage/answers = never\n",
             'config/virtual.ini' => "class_1/answers.pdf = pages/answers.pdf\nclass_1/logo.png = pages/logo.png\n",
             'pages/answers.html' => '<a href="answers.pdf">answers</a>',
@@ -352,7 +352,7 @@ INI;
     {
         $course = $this->load([
             'config/default.ini' => "CLASS_1/INDEX.HTML = never\npage/Solutions = never\nLab/Lab-Solution = 2000-01-01\n",
-            'config/paths.ini' => "[pages]\nhome = pages/home.html\nSolutions = pages/syllabus.html\n",
+            'config/pages.ini' => "[pages]\nhome = pages/home.html\nSolutions = pages/syllabus.html\n",
             'config/dates.ini' => "2026-09-18 = EXAM\n",
             'class/01.Introduction/Reading.md' => 'two names that differ only in case',
         ]);
@@ -370,7 +370,7 @@ INI;
     {
         $course = $this->load([
             'config/default.ini' => "2024 = never\nlab_1 = always\n",
-            'config/paths.ini' => "[pages]\n2027 = pages/home.html\n",
+            'config/pages.ini' => "[pages]\n2027 = pages/home.html\n",
             'config/virtual.ini' => "lab_1/42 = shared/checklist.md\n",
             'lab/01.Setup/2024' => 'old exam',
             'lab/01.Setup/1' => 'one',

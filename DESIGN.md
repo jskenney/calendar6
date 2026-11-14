@@ -66,7 +66,7 @@ A course is two directories, and this is the only layout:
 │   ├── config.ini                the main configuration
 │   ├── dates.ini                 days that differ from the weekly schedule
 │   ├── default.ini               when things become available to anonymous users
-│   ├── paths.ini                 where the course's own pages are (resources, policy, ...)
+│   ├── pages.ini                 where the course's own pages are (resources, policy, ...)
 │   ├── virtual.ini               files shown in an event but stored elsewhere
 │   ├── duplicate.ini             events that are used again (class 5 also as class 6)
 │   ├── periods.ini               the school's periods, per period schedule
@@ -76,7 +76,7 @@ A course is two directories, and this is the only layout:
 │   ├── 01.Introduction/          one directory per event, in natural order of the names
 │   └── 02.Loops/
 ├── lab/, exam/, project/, ...    one directory per event type
-├── pages/                        the pages named in paths.ini (home, resources, syllabus)
+├── pages/                        the pages named in pages.ini (home, resources, syllabus)
 └── shared/                       files used by virtual.ini or <inject>
 
 /home/faculty/bob/public_html/AB123/   the WEB DIRECTORY: what the web server serves
@@ -117,7 +117,7 @@ between the server and the browser.
 
 ### The course directory is the boundary (Decided)
 
-- **Every path in every `.ini` file is relative to `course_directory/`** (`paths.ini` pages,
+- **Every path in every `.ini` file is relative to `course_directory/`** (`pages.ini` pages,
   `virtual.ini` real files). Absolute paths and `..` are rejected and listed as problems for the
   instructor. (Paths inside pages, such as `<img src>`, `<inject src>` and `<calphp src>`, stay
   relative to the page, as in v4, and are held to the same boundary.)
@@ -129,7 +129,7 @@ between the server and the browser.
   through a link, under any name), a `calendar/` or `web/` directory at the course root if there
   is one, names starting with a dot, `.php` files (only run by `<calphp>`), `.ini` files.
 - **Only known files are served:** `get.php` and `html.php` serve a key, and keys exist only for
-  event files, `virtual.ini` files, `paths.ini` pages and the files their pages link to.
+  event files, `virtual.ini` files, `pages.ini` pages and the files their pages link to.
 - **The configuration is always `course_directory/config/`**; `course.ini` says where the course
   directory is, nothing moves `config/` within it.
 - **The location of calendar6 does not matter**: the web directory reaches it through a link or a
@@ -145,7 +145,7 @@ the endpoints:
 |---|---|
 | `config/config.ini` | below |
 | `config/dates.ini` | below |
-| `config/paths.ini` | below |
+| `config/pages.ini` | below |
 | `config/virtual.ini` | below |
 | `config/duplicate.ini` | below |
 | `config/default.ini` | under "Access model" |
@@ -380,16 +380,28 @@ the lesson's day has met. This is fixed (Decided), so `config.ini` has no settin
 Without sections, `start` / `end` come from `[schedule]` times (00:00 /
 end of day without them).
 
-### `paths.ini` (Decided: the course's own pages)
+### `pages.ini` (Decided: the course's own pages, and where the site starts)
 
-Pages outside the events, by name, relative to the course directory:
+Pages outside the events, by name, relative to the course directory, and the page the site opens
+with (DOC-47; the file was called `paths.ini` before: an old `paths.ini` is listed as a problem
+and not read):
 
 ```ini
 [pages]
 home      = pages/home.html       | Home
 resources = pages/resources.html  | Resources
 policy    = pages/syllabus.html   | Syllabus
+
+; Which page should be brought up when the user arrives at the website: a page's name or menu
+; label from [pages], or calendar if the site should start in the calendar.
+[start]
+start     = home
 ```
+
+- `[start] start` is a page's name or menu label (not case-sensitive), or `calendar`;
+  `config.php` sends the page's name (or `calendar`) as `start`. Without it the site starts in
+  the calendar; an unknown value is a problem, and the calendar is used.
+- `calendar` can not be a page's name (the line is ignored, with a problem).
 
 ### `virtual.ini` (Decided: files shown in an event but stored elsewhere)
 
@@ -406,8 +418,8 @@ lab_2,4,6/checklist.md = shared/checklist.md
 - The virtual file is part of that event like any other: it can fill a box (by its name), its
   links are rewritten relative to its **real** directory, and it gets its own key.
 - Access is checked under the virtual name (`lab_1/notes.html`) **and** under the real file's
-  path; both must allow it (R13). When the real file is a `paths.ini` page, its `page/<name>` rule
-  counts; when it is a file that `paths.ini` pages link to (`pages/answers.pdf`), each of those
+  path; both must allow it (R13). When the real file is a `pages.ini` page, its `page/<name>` rule
+  counts; when it is a file that `pages.ini` pages link to (`pages/answers.pdf`), each of those
   pages' rules counts too; when it belongs to an event on no calendar day, the virtual file is
   hidden too (R14).
 - A virtual file added to an event is also added to that event's `same` repeats and `numbered`
@@ -449,7 +461,7 @@ Meaning (Decided, M-38):
 - A line whose number no meeting reaches (the material or the calendar ends first) does nothing
   and is listed as a problem (L-99).
 
-Pages from `paths.ini` (Decided): each gets a key like any file, is served by `html.php`, is
+Pages from `pages.ini` (Decided): each gets a key like any file, is served by `html.php`, is
 listed in `calendar.php`'s `pages` when visible, and is targeted by rules and grants as
 `page/<name>` (`page/policy = 2026-08-24 08:00`); with no rule it is visible (R8). The files a
 page links to get keys too, decided by the page's rule (see `html.php`).
@@ -551,9 +563,9 @@ Links in processed pages follow this table (Decided, M-36):
 | written by the author, to a course file this viewer may see | rewritten to `#/view/KEY` (pages; a query string goes along: `#/view/KEY?week=3`, or `html.php?file=KEY&week=3` for frames) or `get.php?file=KEY` |
 | written by the author, to a course file this viewer may not see (or one never served) | text kept, target removed (`data-cal6-hidden`) |
 | written by the author, to a missing file, or a path outside the course (or into `config/`, `calendar/`) | left exactly as written, as in Calendar 4; nothing is said about the disk outside the course |
-| filled in by `<url>` (the visitor chose it) | rewritten only to a visible file `calendar.php` lists (a box file or a `paths.ini` page); anything else (a missing file, a path outside the course, any other file of an event, one that borrows a page's rule) loses its target, all alike |
+| filled in by `<url>` (the visitor chose it) | rewritten only to a visible file `calendar.php` lists (a box file or a `pages.ini` page); anything else (a missing file, a path outside the course, any other file of an event, one that borrows a page's rule) loses its target, all alike |
 
-- files that a `paths.ini` page links to (its images, style sheets, the pages next to it) get
+- files that a `pages.ini` page links to (its images, style sheets, the pages next to it) get
   keys of their own, decided by that page's rule; an event page's link to a file outside its event
   (`../../shared/style.css`) gets no key and loses its target, so give such a course-wide file a
   place with a `virtual.ini` line (`class_1/style.css = shared/style.css`, or a range for every
@@ -685,7 +697,7 @@ pattern fails on a page, the request fails rather than sending the page half pro
 |---|---|
 | `<inst>` ... `</inst>` | only for instructors (`instructor = true`) |
 | `<student>` ... `</student>` | answers behind a "reveal" icon (sent to everyone, hidden only visually, as v4) |
-| `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times). In an injected or codeinjected page, that page's own event decides (a file without an event, such as `shared/`, follows the page that injects it). A page with no event at all (a `paths.ini` page) has no meeting to wait for: its `<postmeeting>` is always shown (DOC-19), so do not use it there to hide anything |
+| `<postmeeting>` ... `</postmeeting>` | shown once the event's meetings are over: after the last section's end on the event's day (end of day without times). In an injected or codeinjected page, that page's own event decides (a file without an event, such as `shared/`, follows the page that injects it). A page with no event at all (a `pages.ini` page) has no meeting to wait for: its `<postmeeting>` is always shown (DOC-19), so do not use it there to hide anything |
 | `<lock code="a,b">` ... `</lock>` | a section unlocked by a **shared code** (Decided: codes only; grants do not unlock it). Only codes of `<lock>`s this viewer can reach count: one inside a hidden block (`<inst>`, an unmet `<postmeeting>`, another `<host>`) or inside a `<lock>` not yet opened is not accepted (L-91, L-120) |
 | `<host server="name">` ... `</host>` | shown only when served by that server |
 | `<inject src="file">` | another file, processed as part of the page. The file obeys its own rule: a file with a key must be visible to the viewer; a file without one may come only from outside the event directories (`shared/`, `pages/`; compared by real path, so a type directory that is a link still counts, L-83) |
@@ -836,7 +848,7 @@ Notes:
 
 - The v4 manual shows `class/01.Course Overview/intro.html` as a target, but v4 never matched
   course-relative paths (only `T_N/F` and `F`); Calendar 6 writes it `class_1/intro.html`.
-- Pages from `paths.ini` are targeted as `page/<name>`.
+- Pages from `pages.ini` are targeted as `page/<name>`.
 
 Other v4 security behaviour to keep: names starting with a dot are ignored everywhere; content
 files and link targets must be inside the course directory (no `$ALLOWED_PATHS`);
@@ -1003,7 +1015,7 @@ The plan:
   from `$document_root$fastcgi_script_name` (not `$realpath_root`). If it is resolved, every
   endpoint answers `500` instead of guessing.
 - **Files in the web directory are served as they are**: keep pages in the course's `pages/`
-  (through `paths.ini`) and material in its event directories, never in the web directory.
+  (through `pages.ini`) and material in its event directories, never in the web directory.
 - **Reverse proxies:** list them in `config.ini` `[server] trusted_proxies`; only then are
   `X-Forwarded-For` (the client's address, for rate limits) and `X-Forwarded-Proto` (HTTPS, for
   the `Secure` cookie flag) believed. Entries are addresses or CIDR ranges (`10.0.0.0/8`),
@@ -1101,7 +1113,7 @@ Choices the code made where the design left room (change them here if they are w
 | 7 | Search | Removed (with `<keyword>` / `<search>`) |
 | 8 | Config format | INI, so instructors can edit it |
 | 9 | Users | Created by hand; a tool is a future enhancement |
-| 10 | Course pages | `config/paths.ini` (resources, policy, ...) |
+| 10 | Course pages | `config/pages.ini` (resources, policy, ...) |
 | - | Virtual files | `config/virtual.ini` |
 | - | Reusing an event | `config/duplicate.ini`, `numbered` or `same` |
 
@@ -1109,7 +1121,7 @@ Choices the code made where the design left room (change them here if they are w
 
 1. **Converter** from Calendar 4 / Calendar 5 courses: `calendar.php` settings to `config.ini`,
    `cal4.access` to `default.ini` (dates to `YYYY-MM-DD`, `1 1 1999` to `always`, `99 99 9999`
-   to `never`, a missing year from the semester), the class file, `$LOAD_PAGES` to `paths.ini`.
+   to `never`, a missing year from the semester), the class file, `$LOAD_PAGES` to `pages.ini`.
 2. **User tool** (`bin/cal6 user add <name>`): asks for the password, writes the hash, sets the
    `valid` window and grants.
-3. More named pages in `paths.ini`.
+3. More named pages in `pages.ini`.

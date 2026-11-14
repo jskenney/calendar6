@@ -30,7 +30,7 @@ final class BoundaryTest extends TestCase
         file_put_contents("$this->outside/secret.html", 'OUTSIDE');
         $this->dir = Fixture::course([
             'config/virtual.ini' => "class_1/v1.html = ../outside.html\nclass_1/v2.html = /etc/passwd\nclass_1/v3.html = config/config.ini\nclass_1/ok.md = shared/checklist.md\n",
-            'config/paths.ini' => "[pages]\nhome = pages/home.html\nescape = ../x.html\nconf = config/config.ini\n",
+            'config/pages.ini' => "[pages]\nhome = pages/home.html\nescape = ../x.html\nconf = config/config.ini\n",
         ]);
         symlink($this->outside, "$this->dir/class/01.Introduction/out");
         symlink("$this->outside/secret.html", "$this->dir/class/01.Introduction/linked.html");

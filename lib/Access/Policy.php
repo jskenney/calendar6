@@ -136,10 +136,10 @@ final class Policy
             $real = $this->realPlace($place->file->realPath);
             $lists[] = match (true) {
                 $real !== null && $real->event !== null => [self::eventTargets($real->event->type, $real->event->number, $real->file->name, $real->box), $real->event->time],
-                $real !== null => [['page/' . $real->page, 'page', '*'], null], // a paths.ini page keeps its rule (L-31)
+                $real !== null => [['page/' . $real->page, 'page', '*'], null], // a pages.ini page keeps its rule (L-31)
                 default => [[$place->file->virtualOf, basename($place->file->virtualOf), '*'], null],
             };
-            // a file that paths.ini pages link to (pages/answers.pdf) also follows each of those
+            // a file that pages.ini pages link to (pages/answers.pdf) also follows each of those
             // pages' rules, so a virtual name does not publish a hidden page's attachment (L-49)
             if ($real === null || $real->event === null) {
                 foreach ($this->pageAssetsOf($place->file->realPath) as $page) {
@@ -179,7 +179,7 @@ final class Policy
         return $targets;
     }
 
-    /** The place that owns a virtual file's real file: an event's file, else a paths.ini page. */
+    /** The place that owns a virtual file's real file: an event's file, else a pages.ini page. */
     private function realPlace(string $real): ?Place
     {
         if ($this->byRealPath === null) {
@@ -197,10 +197,10 @@ final class Policy
         return $this->byRealPath[$real] ?? null;
     }
 
-    /** @var array<string, list<string>>|null real path => the paths.ini pages that link to it */
+    /** @var array<string, list<string>>|null real path => the pages.ini pages that link to it */
     private ?array $assetPages = null;
 
-    /** The paths.ini pages whose links give the file at $real a key of its own. @return list<string> */
+    /** The pages.ini pages whose links give the file at $real a key of its own. @return list<string> */
     private function pageAssetsOf(string $real): array
     {
         if ($this->assetPages === null) {

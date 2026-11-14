@@ -7,16 +7,16 @@ namespace Cal6\Course;
 use Cal6\Content\ContentFile;
 use Cal6\Schedule\ScheduledEvent;
 
-/** A file in a place: an event's file, or a page from paths.ini.  Each has its own key. */
+/** A file in a place: an event's file, or a page from pages.ini.  Each has its own key. */
 final class Place
 {
     public function __construct(
         public readonly string $key,
         public readonly ContentFile $file,
         public readonly ?ScheduledEvent $event,   // null for pages
-        public readonly ?string $page = null,     // paths.ini name
+        public readonly ?string $page = null,     // pages.ini name
         public readonly ?string $box = null,
-        public readonly bool $asset = false,      // a file a paths.ini page links to (decided by the page's rule)
+        public readonly bool $asset = false,      // a file a pages.ini page links to (decided by the page's rule)
         public readonly ?string $assetOf = null,  // the key of the page whose rules decide this file (virtual files' links)
     ) {
     }

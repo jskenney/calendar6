@@ -8,7 +8,7 @@ A starting point for a course. A course is two directories (see `../API.md`, sec
 ├── config/                           OUTSIDE the web tree
 │   └── auth/                         one file per account (instructors and staff)
 ├── class/, lab/, ...                 one directory per event type, then <sort>.<event title>/
-├── pages/                            the pages named in config/paths.ini
+├── pages/                            the pages named in config/pages.ini
 └── shared/                           files used by config/virtual.ini
 
 /home/faculty/bob/public_html/AB123/  the web directory (copy web/ here): what the web

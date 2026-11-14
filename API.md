@@ -54,7 +54,7 @@ A course is two directories (this is the only layout):
 │   ├── config.ini                 REQUIRED: course name, semester, schedule, types, boxes, secret, ...
 │   ├── dates.ini                  special days (holidays, swapped weekdays, delays)
 │   ├── default.ini                release rules: when material becomes visible to students
-│   ├── paths.ini                  the course's own pages (home, syllabus, ...)
+│   ├── pages.ini                  the course's own pages (home, syllabus, ...)
 │   ├── virtual.ini                files shown in an event but stored elsewhere in the course
 │   ├── duplicate.ini              events shown again on other days
 │   ├── periods.ini                the school's period times, per period schedule
@@ -64,7 +64,7 @@ A course is two directories (this is the only layout):
 │   ├── 01.Introduction/           ... and in it one directory per event, "<sort>.<Title>"
 │   └── 02.Loops/
 ├── lab/, exam/, project/, ...
-├── pages/                         pages named in paths.ini
+├── pages/                         pages named in pages.ini
 └── shared/                        files used through virtual.ini or <inject>
 
 /home/faculty/bob/public_html/AB123/    the WEB DIRECTORY: what the web server serves
@@ -97,7 +97,7 @@ A course is two directories (this is the only layout):
   name or link), a `calendar/` or `web/` directory at the course root, names starting with a dot,
   `.ini` files, PHP files under any spelling (`.php`, `.php5`, `.phtml`, `.phar`, ...), and editors'
   backups of pages (`index.html~`, `notes.md.bak`, `#index.html#`, ...).
-- **Only known files get keys:** event files, `virtual.ini` files, `paths.ini` pages, and the
+- **Only known files get keys:** event files, `virtual.ini` files, `pages.ini` pages, and the
   files those pages link to. There is no way to ask for a file by path.
 
 Event directories: `<type>/<sort>.<Title>/`, natural sort order, names starting with a dot
@@ -186,7 +186,7 @@ the viewer may open come from `calendar.php`.
 inside `calendar.php`, at most 2000 bytes. It is **not processed**: show it as plain text, or, if
 you choose to render HTML notes, sanitize them first.
 
-**Page.** A course page from `paths.ini` (home, syllabus, resources), identified by name.
+**Page.** A course page from `pages.ini` (home, syllabus, resources), identified by name.
 
 **Key.** A 22-character base64url string (`[A-Za-z0-9_-]{22}`) naming one file in one place.
 Keys are stable (bookmarkable) until the course's secret, or the event the file belongs to,
@@ -289,6 +289,7 @@ the calendar), and when the server software is updated (`version.software`).
   ],
   "types":    {"class": {"label": "Class"}, "lab": {"label": "Lab"}, "project": {"label": "Project"}, "exam": {"label": "Exam"}},
   "boxes":    [{"box": "title", "label": "Lecture"}, {"box": "homework", "label": "Homework"}, {"box": "lab-solution", "label": "Solution"}, {"box": "slides", "label": "Slides"}],
+  "start":    "home",
   "pages":    [{"page": "home", "label": "Home"}, {"page": "resources", "label": "Resources"}, {"page": "policy", "label": "Syllabus"}],
   "duplicates": [{"event": "class_6", "copy_of": "class_5", "mode": "numbered"},
                  {"event": "lab_6@2026-10-07", "copy_of": "lab_6", "mode": "same"}],
@@ -312,6 +313,7 @@ the calendar), and when the server software is updated (`version.software`).
 | `sections` | array | each section: `section` (its number, a string), `meetings` (`meets`: weekday letters `M T W R F S U` then period names, e.g. `MF1`, `R34`; `type`: the event type; `room`), and `instructor` (comma-separated names). Sections are information: a meeting on a weekday that has no event of its type in `schedule` (say `R34` when Thursday has no class) never shows up in `calendar.php` |
 | `types` | object | event type → `label`, in the course's order |
 | `boxes` | array | the boxes in display order, `box` (id) and `label` |
+| `start` | string | where the site opens (`pages.ini` `[start]`): a page's name (a key of `pages`) or `"calendar"`; `"calendar"` when not set. If the start page is hidden from the viewer (`calendar.php` gives it a title only), open the calendar instead |
 | `pages` | array | the course's pages in menu order: `page` (name, the key into `calendar.php`'s `pages`) and `label` |
 | `duplicates` | array | events that repeat another, as the calendar applied them: `event` (id as in `calendar.php`), `copy_of` (the source event's id), `mode` (`numbered`: a copy under its own number; `same`: the source shown again under its number) |
 | `session_seconds` | int | the longest a login lasts |
@@ -409,7 +411,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
 | `viewer` | object | `user` (string\|null), `instructor` (bool) and `valid_until` (moment\|null, when the login ends by itself, as in `config.php`); for an instructor's `as` preview, the previewed viewer, with `valid_until` `null` (an `at`-only preview keeps the instructor's own `valid_until`) |
 | `section` | string | only when a section was requested |
 | `dropdown` | array | the event types (keys of `config.php` → `types`) to offer as drop-down menus in the menu bar, in order, from `config.ini` `[dropdown] show`; only types `[types]` defines; `[]` when the section is missing |
-| `pages` | object | page name → page (see below), in `paths.ini` order |
+| `pages` | object | page name → page (see below), in `pages.ini` order |
 | `days` | object | **every** date from `semester.start` to `semester.end` → list of items (see below), in date order; `[]` for a day with nothing on it |
 | `events` | object | event id → event (see below) |
 | `problems` | array | instructors only: `{"message": string, "file": string, "line": int}` (bad configuration lines, overridden lines, odd file names, copies that could not be made, files named like a box's file that follow the event's rule, ...). `line` is `0` when it does not apply |
@@ -712,6 +714,9 @@ source contains hidden material. Use `html.php`.
    `boxes` for box labels and order, `pages` for the menu, and `calendar.php` → `dropdown` for
    the menu bar's drop-downs: one per listed type (labelled from `types`), holding that type's
    events from `events` (in number order, with their titles).
+4. With no route in the URL (a visitor arriving at the site), open `config.php` → `start`: that
+   page (`#/view/KEY` with the page's key from `calendar.php` → `pages`, or `#/md/KEY` for
+   `kind: "md"`), or the calendar for `"calendar"` or when the page has no key for this viewer.
 
 The two requests are independent; send them together.
 

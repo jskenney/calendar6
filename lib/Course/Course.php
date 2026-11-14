@@ -208,7 +208,7 @@ final class Course
             $name = (string) $name;
             $real = $this->boundary->resolveRelative($page['file']);
             if ($real === null || !is_file($real) || !ContentFile::isPage($real)) {
-                $this->problems[] = new Problem("page \"$name\": missing, outside the course, or not .html/.md: $page[file]", 'paths.ini');
+                $this->problems[] = new Problem("page \"$name\": missing, outside the course, or not .html/.md: $page[file]", 'pages.ini');
                 continue;
             }
             $file = new ContentFile(basename($real), $real, (int) filesize($real), (int) filemtime($real));
@@ -314,7 +314,7 @@ final class Course
     }
 
     /**
-     * Files a paths.ini page links to (images, style sheets, other pages next to it)
+     * Files a pages.ini page links to (images, style sheets, other pages next to it)
      * get keys of their own, decided by that page's rule (M-5).  Linked pages are
      * followed a few levels; files that already belong to an event keep the event's key.
      */

@@ -1381,7 +1381,7 @@ final class PageRenderer
         return $inside !== null ? null : $value . $fragment;
     }
 
-    /** A box file or a paths.ini page: exactly the places calendar.php lists. */
+    /** A box file or a pages.ini page: exactly the places calendar.php lists. */
     private function hasOwnRule(Place $target): bool
     {
         if ($target->event !== null) {

@@ -174,7 +174,7 @@ final class EndpointsTest extends TestCase
 
     public function testNumericNamesDoNotTakeTheCourseDown(): void
     {
-        $client = $this->start(['class/01.Introduction/1' => 'one', 'class/01.Introduction/2024.pdf' => 'pdf', 'config/paths.ini' => "[pages]\n2027 = pages/home.html\n"]);
+        $client = $this->start(['class/01.Introduction/1' => 'one', 'class/01.Introduction/2024.pdf' => 'pdf', 'config/pages.ini' => "[pages]\n2027 = pages/home.html\n"]);
         foreach (['config.php', 'calendar.php'] as $endpoint) {
             $this->assertSame(200, $client->get("calendar/php/$endpoint")->status, "$endpoint with numeric names (M-17)");
         }
@@ -574,7 +574,7 @@ HTML;
         $client = $this->start([
             'class/01.Introduction/index.html' => '<p>Week <url value="week" default="1"></p><lock code="open">LOCKED-PART</lock>',
             'class/01.Introduction/notes.txt' => str_repeat(" \n", 6000) . 'Late remark',
-            'config/paths.ini' => "[pages]\nhome = pages/home.html | Home\ngone = pages/missing.html | Gone\n",
+            'config/pages.ini' => "[pages]\nhome = pages/home.html | Home\ngone = pages/missing.html | Gone\n",
         ]);
         $data = $client->get('calendar/php/calendar.php')->json();
         $this->assertSame('Late remark', $data['events']['class_1']['notes'][0]['text'] ?? null, 'over 8 KB of leading whitespace does not hide a note (L-137)');
@@ -776,6 +776,25 @@ MD;
         $this->assertSame(200, $client->get('calendar/php/config.php')->status);
     }
 
+    public function testStartPage(): void
+    {
+        $pages = "[pages]\nhome = pages/home.html | Home\npolicy = pages/syllabus.html | Syllabus\n";
+        $client = $this->start();
+        $this->assertSame('home', $client->get('calendar/php/config.php')->json()['start'] ?? null, 'the template starts at home');
+        foreach (["[start]\nstart = Syllabus\n" => 'policy', "[start]\nstart = POLICY\n" => 'policy', "[start]\nstart = calendar\n" => 'calendar', '' => 'calendar'] as $start => $expected) {
+            file_put_contents("$this->dir/config/pages.ini", $pages . $start);
+            $this->assertSame($expected, $client->get('calendar/php/config.php')->json()['start'] ?? null, "pages.ini [start]: a name, a label, calendar, or nothing: $expected");
+        }
+        file_put_contents("$this->dir/config/pages.ini", $pages . "[start]\nstart = nowhere\n");
+        $this->assertSame('calendar', $client->get('calendar/php/config.php')->json()['start'] ?? null);
+        $this->login($client);
+        $this->assertContains('"nowhere" is neither', implode("\n", array_column($client->get('calendar/php/calendar.php')->json()['problems'] ?? [], 'message')), 'an unknown start page is a problem');
+        rename("$this->dir/config/pages.ini", "$this->dir/config/paths.ini");
+        $problems = implode("\n", array_column($client->get('calendar/php/calendar.php')->json()['problems'] ?? [], 'message'));
+        $this->assertContains('paths.ini is now called pages.ini', $problems, 'an old paths.ini is reported, not read');
+        $this->assertSame([], $client->get('calendar/php/config.php')->json()['pages'] ?? null);
+    }
+
     public function testDayMarkers(): void
     {
         $client = $this->start(['config/dates.ini' => "2026-08-27 = lab\n2026-08-31 = none\n"]);
@@ -958,7 +977,7 @@ MD;
         $this->assertSame(['class', 'lab', 'project', 'exam'], array_keys($data['types'] ?? []));
         $this->assertSame(['box' => 'title', 'label' => 'Lecture'], $data['boxes'][0] ?? null);
         $this->assertFalse(isset($data['replace']), '[replace] values are not sent');
-        $this->assertSame([['page' => 'home', 'label' => 'Home'], ['page' => 'resources', 'label' => 'Resources'], ['page' => 'policy', 'label' => 'Syllabus']], $data['pages'] ?? null, 'paths.ini pages, in order');
+        $this->assertSame([['page' => 'home', 'label' => 'Home'], ['page' => 'resources', 'label' => 'Resources'], ['page' => 'policy', 'label' => 'Syllabus']], $data['pages'] ?? null, 'pages.ini pages, in order');
         $this->assertSame(8 * 3600, $data['session_seconds'] ?? null);
         $this->assertSame(1, $data['version']['format'] ?? null);
         $this->assertSame(1, preg_match('/^[0-9a-f]{12}$/', $data['version']['software'] ?? ''));

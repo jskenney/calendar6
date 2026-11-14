@@ -381,7 +381,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/index.html' => '<inject src="../../shared/frag.html">',
             'config/default.ini' => "class_1 = never\nclass_2 = always\nlab = always\n",
         ]);
-        $this->assertNotContains('data-cal6-hidden', $this->render($course, 'page/home'), 'a paths.ini page that injects (L-32)');
+        $this->assertNotContains('data-cal6-hidden', $this->render($course, 'page/home'), 'a pages.ini page that injects (L-32)');
         $prof = Viewer::account($course->config, 'prof');
         $this->assertNotContains('data-cal6-hidden', $this->render($course, 'lab_1/lab-solution-part2.html', [], $prof), 'a box-asset page that injects');
         $this->assertNotContains('data-cal6-hidden', $this->render($course, 'class_2/index.html'), 'a numbered copy, while its source is hidden');
@@ -449,7 +449,7 @@ final class RendererTest extends TestCase
     public function testUrlTargetsMayOnlyBeFilesWithTheirOwnRule(): void
     {
         $course = $this->course([
-            'config/paths.ini' => "[pages]\nhome = pages/home.html\n",
+            'config/pages.ini' => "[pages]\nhome = pages/home.html\n",
             'config/default.ini' => "class_1 = always\n",
             'pages/home.html' => '<inst><a href="answers/exam-key.pdf">key</a></inst><a href="https://cnn.com/x">news</a> <a href="gone.html">gone</a> <a href="../../../../../../etc/passwd">p</a> <a href="../config/config.ini">c</a>',
             'pages/answers/exam-key.pdf' => 'KEY',
@@ -468,7 +468,7 @@ final class RendererTest extends TestCase
         $this->assertContains('<a data-cal6-hidden="1">next</a>', $link('img/pic.png'), 'nor a file in a subfolder');
         $this->assertContains('#/view/', $link('index.html'), 'a box file still works through <url>');
         $this->assertContains('<a data-cal6-hidden="1">next</a>', $link('notes.html'), 'a file calendar.php does not list does not');
-        $this->assertContains('#/view/', $link('../../pages/home.html'), 'and so does a paths.ini page');
+        $this->assertContains('#/view/', $link('../../pages/home.html'), 'and so does a pages.ini page');
         $this->assertContains('href="https://cnn.com/"', $link('https://cnn.com/'), 'and an external address');
     }
 
@@ -719,7 +719,7 @@ final class RendererTest extends TestCase
         $course = $this->course([
             'config/default.ini' => "class_1 = always\n",
             'pages/home.html' => '<inject src="../material/class/01.Introduction/a/b/c/d/e/deep.html">HOME',
-            'config/paths.ini' => "[pages]\nhome = pages/home.html\n",
+            'config/pages.ini' => "[pages]\nhome = pages/home.html\n",
             'material/class/01.Introduction/index.html' => 'I',
             'material/class/01.Introduction/a/b/c/d/e/deep.html' => 'DEEP-SECRET',
         ]);

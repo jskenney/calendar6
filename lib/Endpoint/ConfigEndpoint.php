@@ -94,6 +94,7 @@ final class ConfigEndpoint
             'sections' => $config->sections->toArray(),
             'types' => array_map(static fn (string $label): array => ['label' => $label], $config->types),
             'boxes' => array_values(array_map(static fn (array $b): array => ['box' => $b['box'], 'label' => $b['label']], array_filter($config->boxes, static fn (array $b): bool => !($b['notes'] ?? false)))),
+            'start' => $config->startPage,
             'pages' => array_values(array_map(static fn ($name, array $page): array => ['page' => (string) $name, 'label' => $page['label']], array_keys($config->pages), $config->pages)),
             'duplicates' => $duplicates,
             'session_seconds' => $config->sessionSeconds,

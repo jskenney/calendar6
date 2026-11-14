@@ -48,8 +48,11 @@ final class CourseConfig
     public array $replace = [];
     /** @var list<string> [server] trusted_proxies: addresses whose X-Forwarded-For / -Proto are believed */
     public array $trustedProxies = [];
-    /** @var array<string, array{file: string, label: string}> paths.ini pages */
+    /** @var array<string, array{file: string, label: string}> pages.ini pages */
     public array $pages = [];
+
+    /** pages.ini [start]: the page (by name) the site opens with, or "calendar" */
+    public string $startPage = 'calendar';
     public Periods $periods;
     public Sections $sections;
     /** @var list<Problem> */
@@ -217,11 +220,40 @@ final class CourseConfig
             $config->replace[$line->key] = $line->value;
         }
 
-        $paths = $config->ini('paths.ini');
-        array_push($config->problems, ...$paths->problems);
-        foreach ($paths->section('pages') as $line) {
+        // pages.ini (it was paths.ini: an old file is reported, not read)
+        if (!is_file($config->configDir() . '/pages.ini') && is_file($config->configDir() . '/paths.ini')) {
+            $config->problems[] = new Problem('paths.ini is now called pages.ini: rename it (it is not read)', 'paths.ini');
+        }
+        $pagesIni = $config->ini('pages.ini');
+        array_push($config->problems, ...$pagesIni->problems);
+        foreach ($pagesIni->section('pages') as $line) {
+            if (strtolower($line->key) === 'calendar') {
+                $config->problems[] = new Problem('[pages] calendar: "calendar" names the calendar itself in [start], not a page (the line is ignored)', 'pages.ini', $line->line);
+                continue;
+            }
             [$file, $label] = array_pad(explode('|', $line->value, 2), 2, '');
             $config->pages[strtolower($line->key)] = ['file' => trim($file), 'label' => trim($label) !== '' ? trim($label) : ucfirst($line->key)];
+        }
+        // [start] start = a page's name or menu label, or calendar: where the site opens
+        $start = trim((string) $pagesIni->get('start', 'start', ''));
+        if ($start !== '' && strtolower($start) !== 'calendar') {
+            $found = null;
+            foreach ($config->pages as $name => $page) {
+                if (strcasecmp((string) $name, $start) === 0) {
+                    $found = (string) $name;
+                    break;
+                }
+            }
+            foreach ($found === null ? $config->pages : [] as $name => $page) {
+                if (strcasecmp($page['label'], $start) === 0) {
+                    $found = (string) $name;
+                    break;
+                }
+            }
+            if ($found === null) {
+                $config->problems[] = new Problem("[start] start: \"$start\" is neither a page's name or label nor calendar (the site starts in the calendar)", 'pages.ini');
+            }
+            $config->startPage = $found ?? 'calendar';
         }
 
         $config->periods = Periods::fromIni($config->ini('periods.ini'));
