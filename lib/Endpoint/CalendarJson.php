@@ -186,7 +186,15 @@ final class CalendarJson
         if ($section !== null) {
             $out['section'] = $section;
         }
-        $out += ['dropdown' => $this->course->config->dropdown, 'pages' => (object) $pages, 'days' => (object) $days, 'events' => (object) $events];
+        // announcements shown now (to everyone), with their identifiers (DOC-50)
+        $announcements = [];
+        foreach ($this->course->config->announcements as $announcement) {
+            $this->note($announcement['show']->nextChange($now, $this->course->config->zone, null));
+            if ($announcement['show']->isOpen($now, $this->course->config->zone, null)) {
+                $announcements[] = ['id' => $announcement['id'], 'text' => $announcement['text']];
+            }
+        }
+        $out += ['announcements' => $announcements, 'dropdown' => $this->course->config->dropdown, 'pages' => (object) $pages, 'days' => (object) $days, 'events' => (object) $events];
         if ($instructor) {
             $out['problems'] = array_map(static fn ($p): array => $p->toArray(), $this->course->problems);
         }

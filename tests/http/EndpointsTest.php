@@ -803,6 +803,37 @@ MD;
         $this->assertContains('is now called security.ini', implode("\n", array_column($client->get('calendar/php/calendar.php')->json()['problems'] ?? [], 'message')), 'an old default.ini is reported');
     }
 
+    public function testLanguageAnnouncementsAndFileTypes(): void
+    {
+        $client = $this->start([
+            'class/01.Introduction/index.html' => '<lock code="open">L</lock><student>A</student><img src="book.epub"><img src="f.woff2"><img src="d.xml">',
+            'class/01.Introduction/book.epub' => 'EPUB', 'class/01.Introduction/f.woff2' => 'FONT', 'class/01.Introduction/d.xml' => '<x/>',
+            'config/language.ini' => "[text]\nlock_prompt = Code bitte <b>\nshow_answer = Reveal\nbogus = x\n",
+            'config/announcements.ini' => "[welcome]\ntext = Welcome to the course!\n\n[closed-2026-11-20]\ntext = No class on Friday.\nshow = 2026-11-18 until 2026-11-21\n\n[broken]\nshow = always\n",
+        ]);
+        $data = $client->get('calendar/php/calendar.php')->json();
+        $page = $client->get('calendar/php/html.php?file=' . $data['events']['class_1']['boxes'][0]['key'])->body;
+        $this->assertContains('<label>Code bitte &lt;b&gt; <input', $page, 'language.ini words, HTML-escaped (DOC-49)');
+        $this->assertContains('<button type="submit">Unlock</button>', $page, 'a key left out keeps its default');
+        $this->assertContains('<summary>Reveal</summary>', $page);
+
+        $this->assertSame([['id' => 'welcome', 'text' => 'Welcome to the course!']], $data['announcements'] ?? null, 'announcements shown now, with their identifiers (DOC-50)');
+        $this->login($client);
+        $then = $client->get('calendar/php/calendar.php?at=' . rawurlencode('2026-11-19 10:00'))->json();
+        $this->assertSame(['welcome', 'closed-2026-11-20'], array_column($then['announcements'] ?? [], 'id'), 'one with a window, inside it');
+        $problems = implode("\n", array_column($then['problems'] ?? [], 'message'));
+        $this->assertContains('[broken]: an announcement needs text', $problems);
+        $this->assertContains('[text] bogus: unknown key', $problems);
+
+        preg_match_all('#get\.php\?file=([A-Za-z0-9_-]{22})#', $page, $m);
+        $types = [];
+        foreach ($m[1] as $key) {
+            $file = $client->get("calendar/php/get.php?file=$key");
+            $types[] = $file->header('content-type') . ' ' . explode(';', (string) $file->header('content-disposition'))[0];
+        }
+        $this->assertSame(['application/epub+zip attachment', 'font/woff2 inline', 'application/xml attachment'], $types, 'standard types: an epub, a font, XML never inline (#1)');
+    }
+
     public function testDayMarkers(): void
     {
         $client = $this->start(['config/dates.ini' => "2026-08-27 = lab\n2026-08-31 = none\n"]);

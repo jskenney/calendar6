@@ -125,8 +125,9 @@ final class PageRenderer
         $html = $this->hideInAttributes($html, $place);
         // only scripts that are still in the page run; their output is passed through as-is
         $html = $this->calphp($html, $dir, $place);
+        $summary = htmlspecialchars($this->course->config->text['show_answer'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $html = self::block($html, 'student', static fn (string $inner): string =>
-            '<details class="cal6-student"><summary>Show answer</summary>' . $inner . '</details>');
+            '<details class="cal6-student"><summary>' . $summary . '</summary>' . $inner . '</details>');
         $html = $this->replace($html, $place);
         $html = $this->url($html);
         $html = self::block($html, 'ace', static fn (string $inner): string => '<pre class="cal6-ace"><code>' . $inner . '</code></pre>');
@@ -989,8 +990,8 @@ final class PageRenderer
             }
             return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . $this->softwarePath . 'php/html.php?file=' . rawurlencode($this->lockKey) . ($this->lockQuery !== '' ? '&' . $this->lockQuery : '')) . '">'
                 . '<input type="hidden" name="csrf" value="' . htmlspecialchars($this->csrf) . '">'
-                . '<label>Enter the code to see this section <input type="password" name="lock" autocomplete="off"></label>'
-                . '<button type="submit">Unlock</button></form>';
+                . '<label>' . htmlspecialchars($this->course->config->text['lock_prompt'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . ' <input type="password" name="lock" autocomplete="off"></label>'
+                . '<button type="submit">' . htmlspecialchars($this->course->config->text['lock_button'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</button></form>';
         });
     }
 

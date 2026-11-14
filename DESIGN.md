@@ -71,6 +71,8 @@ A course is two directories, and this is the only layout:
 │   ├── duplicate.ini             events that are used again (class 5 also as class 6)
 │   ├── periods.ini               the school's periods, per period schedule
 │   ├── sections.ini              the course's sections: meetings, instructors, rooms (optional)
+│   ├── announcements.ini         course-wide announcements: identifier, text, when (optional)
+│   ├── language.ini              the words calendar6 writes into pages (optional)
 │   └── auth/<username>.ini       one file per user, instructors included
 ├── class/
 │   ├── 01.Introduction/          one directory per event, in natural order of the names
@@ -150,6 +152,8 @@ the endpoints:
 | `config/virtual.ini` | below |
 | `config/duplicate.ini` | below |
 | `config/security.ini` | under "Access model" |
+| `config/announcements.ini` | below |
+| `config/language.ini` | below |
 | `config/auth/<username>.ini` | under "Access model" (a user and an instructor) |
 
 Common to all of them: `key = value` lines, `[sections]`, values unquoted. **Comments:** a line
@@ -403,6 +407,28 @@ start     = home
   `config.php` sends the page's name (or `calendar`) as `start`. Without it the site starts in
   the calendar; an unknown value is a problem, and the calendar is used.
 - `calendar` can not be a page's name (the line is ignored, with a problem).
+
+### `announcements.ini` (Decided: course-wide announcements, DOC-50)
+
+One section per announcement; its name is the identifier a front end remembers when a visitor
+dismisses it (so it is not shown again in that browser). `text` (plain text) is required; `show`
+is a window as in `security.ini` (a date, or `from until to`; no relative times), always when left
+out. `calendar.php` sends the ones shown now, to every viewer, as `announcements`
+(`[{"id", "text"}]`), and its cached answer ends when a window opens or closes. An announcement
+without text, a bad window or an unknown key is a problem.
+
+```ini
+[closed-2026-11-20]
+text = No class on Friday: the building is closed.
+show = 2026-11-18 until 2026-11-21 08:00
+```
+
+### `language.ini` (Decided: the words calendar6 writes into pages, DOC-49)
+
+`[text]` with `lock_prompt` (the label of a `<lock>` form, "Enter the code to see this
+section"), `lock_button` ("Unlock") and `show_answer` (the summary of a `<student>` answer, "Show
+answer"). Plain text, written HTML-escaped; a missing key keeps its default, an unknown key is a
+problem. Kept out of `config.ini` so the main configuration stays short.
 
 ### `virtual.ini` (Decided: files shown in an event but stored elsewhere)
 

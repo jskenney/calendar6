@@ -51,6 +51,15 @@ final class CourseConfig
     /** @var array<string, array{file: string, label: string}> pages.ini pages */
     public array $pages = [];
 
+    /** language.ini [text]: the words html.php writes into pages (DOC-49) */
+    public const TEXT_DEFAULTS = ['lock_prompt' => 'Enter the code to see this section', 'lock_button' => 'Unlock', 'show_answer' => 'Show answer'];
+
+    /** @var array<string, string> */
+    public array $text = self::TEXT_DEFAULTS;
+
+    /** @var list<array{id: string, text: string, show: Window}> announcements.ini (DOC-50) */
+    public array $announcements = [];
+
     /** pages.ini [start]: the page (by name) the site opens with, or "calendar" */
     public string $startPage = 'calendar';
     public Periods $periods;
@@ -254,6 +263,44 @@ final class CourseConfig
                 $config->problems[] = new Problem("[start] start: \"$start\" is neither a page's name or label nor calendar (the site starts in the calendar)", 'pages.ini');
             }
             $config->startPage = $found ?? 'calendar';
+        }
+
+        // language.ini [text]: the words calendar6 writes into pages; unknown keys are problems
+        $language = $config->ini('language.ini');
+        array_push($config->problems, ...$language->problems);
+        foreach ($language->section('text') as $line) {
+            if (!isset(self::TEXT_DEFAULTS[strtolower($line->key)])) {
+                $config->problems[] = new Problem("[text] $line->key: unknown key (" . implode(', ', array_keys(self::TEXT_DEFAULTS)) . ')', 'language.ini', $line->line);
+            } elseif (trim($line->value) !== '') {
+                $config->text[strtolower($line->key)] = trim($line->value);
+            }
+        }
+
+        // announcements.ini: one section per announcement, its name the identifier
+        $announcements = $config->ini('announcements.ini');
+        array_push($config->problems, ...$announcements->problems);
+        foreach ($announcements->sections() as $id) {
+            if ($id === '') {
+                continue; // lines before the first section
+            }
+            $text = trim((string) $announcements->get($id, 'text', ''));
+            if ($text === '') {
+                $config->problems[] = new Problem("[$id]: an announcement needs text (it is not shown)", 'announcements.ini');
+                continue;
+            }
+            $show = trim((string) $announcements->get($id, 'show', 'always'));
+            try {
+                $window = Window::parse($show === '' ? 'always' : $show, false);
+            } catch (InvalidArgumentException $e) {
+                $config->problems[] = new Problem("[$id] show: " . $e->getMessage() . ' (it is not shown)', 'announcements.ini');
+                continue;
+            }
+            foreach ($announcements->section($id) as $line) {
+                if (!in_array(strtolower($line->key), ['text', 'show'], true)) {
+                    $config->problems[] = new Problem("[$id] $line->key: unknown key (text, show)", 'announcements.ini', $line->line);
+                }
+            }
+            $config->announcements[] = ['id' => $id, 'text' => $text, 'show' => $window];
         }
 
         $config->periods = Periods::fromIni($config->ini('periods.ini'));

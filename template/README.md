@@ -49,7 +49,9 @@ course into the web directory; `course.ini` is the only connection.
 3. Edit `config/config.ini` (in the course directory): course number and name, semester,
    `secret` (`php -r 'echo bin2hex(random_bytes(32)), "\n";'`), the weekly `[schedule]`.
 4. Edit `config/dates.ini` (holidays), `config/sections.ini` (or delete it), and
-   `config/security.ini` (when things open).
+   `config/security.ini` (when things open). `config/announcements.ini` holds course-wide
+   announcements and `config/language.ini` the words calendar6 writes into pages; both are
+   optional.
 5. Rename `config/auth/instructor.ini` to `<your username>.ini` and put in a password hash
    (`php -r 'echo password_hash("the password", PASSWORD_DEFAULT), "\n";'`). Delete
    `assistant.ini` unless you need it.

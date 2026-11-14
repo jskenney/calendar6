@@ -59,6 +59,8 @@ A course is two directories (this is the only layout):
 │   ├── duplicate.ini              events shown again on other days
 │   ├── periods.ini                the school's period times, per period schedule
 │   ├── sections.ini               the course's sections: meetings, rooms, instructors
+│   ├── announcements.ini          course-wide announcements (identifier, text, when shown)
+│   ├── language.ini               the words calendar6 writes into pages (lock form, answers)
 │   └── auth/<username>.ini        one file per account (password hash, instructor flag, grants)
 ├── class/                         one directory per event type ...
 │   ├── 01.Introduction/           ... and in it one directory per event, "<sort>.<Title>"
@@ -368,6 +370,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
   "generated": "2026-11-09T14:05:00-05:00",
   "viewer":    {"user": null, "instructor": false, "valid_until": null},
   "section":   "1121",
+  "announcements": [{"id": "closed-2026-11-20", "text": "No class on Friday: the building is closed."}],
   "dropdown":  ["class", "lab", "project"],
   "pages": {
     "home":      {"title": "Home", "key": "IfPCJDMatGX2jBxNZx2Lyc", "filename": "home.html", "kind": "html"},
@@ -412,6 +415,7 @@ each name the first non-empty value counts, the query string first. A list (`sec
 | `generated` | moment | when the answer was built (it may come from the server's cache) |
 | `viewer` | object | `user` (string\|null), `instructor` (bool) and `valid_until` (moment\|null, when the login ends by itself, as in `config.php`); for an instructor's `as` preview, the previewed viewer, with `valid_until` `null` (an `at`-only preview keeps the instructor's own `valid_until`) |
 | `section` | string | only when a section was requested |
+| `announcements` | array | course-wide announcements shown now (`announcements.ini`), to every viewer, in file order: `id` (string, the announcement's identifier) and `text` (plain text). An announcement with a `show` window appears only inside it. Show them as a banner; remember the `id`s a visitor dismissed (e.g. in `localStorage`, or `sessionStorage` for once per visit) and do not show those again. A new or changed announcement that should be seen again gets a new `id` from the instructor |
 | `dropdown` | array | the event types (keys of `config.php` → `types`) to offer as drop-down menus in the menu bar, in order, from `config.ini` `[dropdown] show`; only types `[types]` defines; `[]` when the section is missing |
 | `pages` | object | page name → page (see below), in `pages.ini` order |
 | `days` | object | **every** date from `semester.start` to `semester.end` → list of items (see below), in date order; `[]` for a day with nothing on it |
@@ -594,8 +598,8 @@ is `404` here.
 | Markup | Where | What to do |
 |---|---|---|
 | `<a data-cal6-hidden="1">text</a>` (no `href`; other elements likewise) | a link to something the viewer may not open | show as plain text |
-| `<form class="cal6-lock" method="post" action="/…/calendar/php/html.php?file=KEY"><input type="hidden" name="csrf" value="…"><label>Enter the code to see this section <input type="password" name="lock" autocomplete="off"></label><button type="submit">Unlock</button></form>` | a `<lock>` section not yet unlocked | submit with `fetch` (see 10.5) |
-| `<details class="cal6-student"><summary>Show answer</summary>…</details>` | `<student>…</student>` | works as is; content is sent to everyone, hidden only visually |
+| `<form class="cal6-lock" method="post" action="/…/calendar/php/html.php?file=KEY"><input type="hidden" name="csrf" value="…"><label>Enter the code to see this section <input type="password" name="lock" autocomplete="off"></label><button type="submit">Unlock</button></form>` | a `<lock>` section not yet unlocked | submit with `fetch` (see 10.5). The label and button text come from `language.ini` (`lock_prompt`, `lock_button`) |
+| `<details class="cal6-student"><summary>Show answer</summary>…</details>` | `<student>…</student>` | works as is; content is sent to everyone, hidden only visually. The summary text comes from `language.ini` (`show_answer`) |
 | `<pre class="cal6-ace"><code>…</code></pre>` | legacy `<ace>` blocks | style as code |
 | `<p class="cal6-error">…</p>` | instructors only: a `<calphp>` script that is missing or failed | show it |
 | `id` on `<a name="x">` (becomes `<a id="x" name="x">`) and on Markdown headings | anchors | build an in-page menu from them; `#x` links work within the page |
@@ -686,10 +690,14 @@ Any course file that is not a page, by key, **byte for byte**.
 **Output:** `200` with the whole file, `Content-Type` by extension (`application/pdf`,
 `image/png`, `text/css`, `text/javascript`, ...), `Content-Length`, `Accept-Ranges: bytes`,
 `ETag`, `Last-Modified`, `Cache-Control: private, no-cache`, and `Content-Disposition` with the
-file's name: `inline` for types a browser shows (PDF, images, audio, video, text, CSS, JS, JSON,
-...), `attachment` for everything else and always with `download=1`. HTML and SVG files are
+file's name. The standard types are known by extension (about 200: text and source code as
+`text/plain`, images, audio, video, fonts such as `font/woff2`, PDF, `.epub` as
+`application/epub+zip`, office documents, archives, notebooks, 3-D models, ...). `inline` for types
+a browser shows safely (text, images, audio, video, PDF, fonts, CSS, JS, JSON, WebAssembly),
+`attachment` for everything else and always with `download=1`. HTML, XHTML, SVG, XML and XSLT are
 always attachments, so they can not run as pages of the site; a file without an extension is
 sent as `text/plain` inline, other unknown types as `application/octet-stream` attachments.
+(A front end's own JavaScript can still `fetch` an attachment, e.g. an `.epub` for a reader.)
 
 | Situation | Status |
 |---|---|
@@ -803,7 +811,13 @@ marked as hidden from students, with their `opens` date; list events with `date:
 preview "as anonymous" / "as user" and "at a moment" (`calendar.php?as=anonymous&at=2026-12-01
 08:00`). Users with grants also get `visible` / `opens` hints on what their grants open.
 
-### 10.8 Freshness
+### 10.8 Announcements
+
+Show `calendar.php` → `announcements` as a banner (each `text` as plain text). Keep the dismissed
+`id`s in `localStorage` (never again in this browser) or `sessionStorage` (once per visit) and skip
+those; the instructor gives an announcement a new identifier when it should be seen again.
+
+### 10.8a Freshness
 
 Refetch `calendar.php` on load, after login/logout, when the tab becomes visible, and on a
 modest timer (it answers `304` when unchanged). If `config.php` → `version.software` changes,
