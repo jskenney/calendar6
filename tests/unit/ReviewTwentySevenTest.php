@@ -85,17 +85,23 @@ final class ReviewTwentySevenTest extends TestCase
         $this->assertContains('After', $page);
     }
 
-    public function testShortLockCodesArePointedOutToInstructors(): void
+    public function testShortLockCodesAreNotedOutsideThePage(): void
     {
         $this->dir = Fixture::course([
             'config/security.ini' => "class = always\n",
-            'class/01.Introduction/short.html' => '<lock code="1234, long-enough-code">A</lock><lock code="eightchr">B</lock>',
+            'class/01.Introduction/short.html' => '<lock code="1234, long-enough-code">A</lock><lock code="eightchr">B</lock><lock code="1234">C</lock>',
         ]);
         $course = Course::load($this->dir);
-        $page = $this->render($course, 'class_1/short.html', Viewer::account($course->config, 'prof'));
-        $this->assertContains('<p class="cal6-error">lock: &quot;1234&quot; has fewer than 8 characters', $page, 'a short code is pointed out (M-54)');
-        $this->assertSame(1, substr_count($page, 'cal6-error'), 'codes of 8 characters or more are not');
-        $this->assertNotContains('cal6-error', $this->render($course, 'class_1/short.html'), 'only to instructors');
+        foreach ($course->places as $place) {
+            if ($place->id() === 'class_1/short.html') {
+                $prof = new PageRenderer($course, new Policy($course), Viewer::account($course->config, 'prof'), strtotime('2030-01-01'), '/');
+                $this->assertSame('ABC', $prof->render($place), 'the page is only the processed file: no notice in it (M-54)');
+                $this->assertSame(['1234'], $prof->shortCodes, 'short codes noted once; 8 characters or more are not');
+                $anonymous = new PageRenderer($course, new Policy($course), Viewer::anonymous(), strtotime('2030-01-01'), '/');
+                $anonymous->render($place);
+                $this->assertSame([], $anonymous->shortCodes, 'only for instructors');
+            }
+        }
     }
 
     public function testTheSweepCanNotBeFooledAndHasALimit(): void

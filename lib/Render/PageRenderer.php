@@ -32,6 +32,9 @@ final class PageRenderer
 
     /** @var list<string> <url> values that were used, to remember in the session */
     public array $usedUrlValues = [];
+
+    /** @var list<string> lock codes shorter than STRONG_CODE met while rendering for an instructor (M-54) */
+    public array $shortCodes = [];
     /** @var array<string, string> placeholder => <calphp> output */
     private array $outputs = [];
     private ?string $outputKey = null;
@@ -1067,17 +1070,23 @@ final class PageRenderer
     {
         return self::block($html, 'lock', function (string $inner, string $opening): string {
             $codes = array_filter(array_map('trim', explode(',', (string) self::attribute($opening, 'code'))), static fn (string $c): bool => $c !== '');
+            if ($this->viewer->instructor) {
+                // short codes are noted for html.php's X-Cal6-Warning header, never written into
+                // the page: only per-address limits slow guessing, so on a server reachable from
+                // the internet many addresses could guess them (M-54)
+                foreach ($codes as $code) {
+                    if (mb_strlen($code, 'UTF-8') < self::STRONG_CODE && !in_array($code, $this->shortCodes, true)) {
+                        $this->shortCodes[] = $code;
+                    }
+                }
+            }
             foreach ($this->unlocked as $entered) {
                 if (self::codeMatches($entered, array_values($codes))) {
                     return $inner;
                 }
             }
             if ($this->viewer->instructor) {
-                // short codes are pointed out: only per-address limits slow guessing, so on a
-                // server reachable from the internet many addresses could guess them (M-54)
-                $short = array_values(array_filter($codes, static fn (string $c): bool => mb_strlen($c, 'UTF-8') < self::STRONG_CODE));
-                return ($short === [] ? '' : '<p class="cal6-error">lock: ' . htmlspecialchars(implode(', ', array_map(static fn (string $c): string => '"' . $c . '"', $short)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
-                    . ' has fewer than ' . self::STRONG_CODE . ' characters: fine on a campus network, guessable on a server reachable from the internet</p>') . $inner;
+                return $inner;
             }
             return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . $this->softwarePath . 'php/html.php?file=' . rawurlencode($this->lockKey) . ($this->lockQuery !== '' ? '&' . $this->lockQuery : '')) . '">'
                 . '<input type="hidden" name="csrf" value="' . htmlspecialchars($this->csrf) . '">'

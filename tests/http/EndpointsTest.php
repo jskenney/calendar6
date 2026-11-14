@@ -960,6 +960,11 @@ MD;
             $client->post("calendar/php/html.php?file=$key", ['lock' => "again$i", 'csrf' => $m[1]], ['X-Forwarded-For' => '203.0.113.9, 192.0.2.7']);
         }
         $this->assertSame(429, $client->post("calendar/php/html.php?file=$key", ['lock' => 'again', 'csrf' => $m[1]], ['X-Forwarded-For' => '203.0.113.9, 192.0.2.7'])->status, 'one address is still limited');
+        $this->assertFalse(isset($client->get("calendar/php/html.php?file=$key")->headers['x-cal6-warning']), 'no warning for students');
+        $this->login($client);
+        $page = $client->get("calendar/php/html.php?file=$key");
+        $this->assertSame('lock codes shorter than 8 characters (guessable on a server reachable from the internet): ["open"]', $page->headers['x-cal6-warning'] ?? null, 'short codes in a header for instructors (M-54)');
+        $this->assertSame('LOCKED', trim($page->body), 'and the page itself is only the processed file');
     }
 
     public function testConfigMapsAreAlwaysObjects(): void

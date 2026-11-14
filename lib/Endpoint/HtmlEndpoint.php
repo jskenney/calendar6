@@ -174,6 +174,12 @@ final class HtmlEndpoint
         http_response_code(200);
         header('Content-Type: text/html; charset=utf-8');
         header('Cache-Control: private, no-store');
+        if ($viewer->instructor && $renderer->shortCodes !== []) {
+            // instructors only, and outside the page, which stays exactly the processed file
+            // (M-54); the codes as a JSON list, escaped to plain ASCII, so a header stays one line
+            header('X-Cal6-Warning: lock codes shorter than ' . PageRenderer::STRONG_CODE . ' characters (guessable on a server reachable from the internet): '
+                . json_encode($renderer->shortCodes, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
+        }
         if ($method !== 'HEAD') {
             echo $html;
         }

@@ -547,9 +547,10 @@ This section keeps the design decisions behind them.
   refuse a whole class its right codes (M-54), and inside a campus network it protects against
   nobody the per-address limits do not already stop: one computer needs days to try every
   4-digit code.
-- **Short codes are pointed out:** instructors see the content of a lock, and above it a notice
-  (`<p class="cal6-error">`) for each code shorter than 8 characters. On a server reachable
-  from the internet, many addresses together could guess such a code; use longer codes there.
+- **Short codes are pointed out:** for an instructor, html.php names the page's lock codes
+  shorter than 8 characters in an `X-Cal6-Warning` header (API.md), never in the page, which
+  stays exactly the processed file. On a server reachable from the internet, many addresses
+  together could guess such a code; use longer codes there.
 
 ### `calendar.php`: caching
 

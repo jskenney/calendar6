@@ -564,6 +564,16 @@ converts to.
 not a page, or that this viewer may not open: `404` (JSON error). A get-file key (`kind: "get"`)
 is `404` here.
 
+**`X-Cal6-Warning` (instructors only):** when the page has lock codes shorter than 8 characters,
+the answer carries one header, never anything in the page itself:
+
+```
+X-Cal6-Warning: lock codes shorter than 8 characters (guessable on a server reachable from the internet): ["1234","abc"]
+```
+
+The codes are a JSON list after the first `": "` (escaped to plain ASCII). Students and anonymous
+viewers never get it; a front end may show it to the instructor (`response.headers.get("X-Cal6-Warning")`).
+
 **What processing does** (all on the server, before anything reaches the browser):
 
 1. **Removes what the viewer may not see:** `<inst>…</inst>` (instructors only),
@@ -602,7 +612,7 @@ is `404` here.
 | `<form class="cal6-lock" method="post" action="/…/calendar/php/html.php?file=KEY"><input type="hidden" name="csrf" value="…"><label>Enter the code to see this section <input type="password" name="lock" autocomplete="off"></label><button type="submit">Unlock</button></form>` | a `<lock>` section not yet unlocked | submit with `fetch` (see 10.5). The label and button text come from `language.ini` (`lock_prompt`, `lock_button`) |
 | `<details class="cal6-student"><summary>Show answer</summary>…</details>` | `<student>…</student>` | works as is; content is sent to everyone, hidden only visually. The summary text comes from `language.ini` (`show_answer`) |
 | `<pre class="cal6-ace"><code>…</code></pre>` | legacy `<ace>` blocks | style as code |
-| `<p class="cal6-error">…</p>` | instructors only: a `<calphp>` script that is missing or failed, or a lock code shorter than 8 characters (written above the lock's content) | show it |
+| `<p class="cal6-error">…</p>` | instructors only: a `<calphp>` script that is missing or failed | show it |
 | `id` on `<a name="x">` (becomes `<a id="x" name="x">`) and on Markdown headings | anchors | build an in-page menu from them; `#x` links work within the page |
 
 Math (`\( \)`, `\[ \]`, `$$ $$`) is left as written for MathJax; code blocks for highlight.js.
