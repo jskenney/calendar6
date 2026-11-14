@@ -56,14 +56,17 @@ final class Course
         $course->addVirtualFiles();
         $course->indexPlaces();
 
-        $default = $course->config->ini('default.ini');
+        $default = $course->config->ini('security.ini');
         // no usable release rules: anonymous viewers see nothing (fail closed), also when the
         // file is missing or misnamed (M-19)
         $course->rulesUnreadable = !$default->exists || !$default->readable;
         if (!$default->exists) {
-            $course->problems[] = new Problem('config/default.ini is missing: nothing is shown to anonymous viewers until it exists', 'default.ini');
+            // it was default.ini: an old file is reported, not read (fail closed)
+            $course->problems[] = is_file($course->config->configDir() . '/' . 'default' . '.ini')
+                ? new Problem('default.ini is now called security.ini: rename it (it is not read; nothing is shown to anonymous viewers until then)', 'default' . '.ini')
+                : new Problem('config/security.ini is missing: nothing is shown to anonymous viewers until it exists', 'security.ini');
         }
-        // default.ini has no sections: a line under a header such as [rules] is still a rule
+        // security.ini has no sections: a line under a header such as [rules] is still a rule
         // (dropping it would publish what it hides), in file order, and the header is a
         // problem (M-33)
         // an old-style line without "=" (lab 99 99 9999, exam never) hides its first word's
@@ -74,7 +77,7 @@ final class Course
             $target = trim(str_contains($bad->key, "\t") ? explode("\t", $bad->key, 2)[0] : (preg_split('/\s+/', $bad->key, 2)[0] ?? ''));
             if ($target !== '') {
                 $lines[] = new IniLine($bad->section, $target, 'never', $bad->line);
-                $course->problems[] = new Problem("$target is hidden until line $bad->line is written as \"target = when\"", 'default.ini', $bad->line);
+                $course->problems[] = new Problem("$target is hidden until line $bad->line is written as \"target = when\"", 'security.ini', $bad->line);
             }
         }
         usort($lines, static fn (IniLine $a, IniLine $b): int => $a->line <=> $b->line);
@@ -82,7 +85,7 @@ final class Course
         array_unshift($course->rules->problems, ...$default->problems);
         foreach ($default->sections() as $section) {
             if ($section !== '') {
-                $course->problems[] = new Problem("[$section]: default.ini has no sections; the lines under it are read as rules all the same", 'default.ini');
+                $course->problems[] = new Problem("[$section]: security.ini has no sections; the lines under it are read as rules all the same", 'security.ini');
             }
         }
         array_push($course->problems, ...$course->rules->problems);
@@ -91,7 +94,7 @@ final class Course
         foreach ($course->rules->byTarget as $rule) {
             if (preg_match('/^([a-z][a-z0-9-]*)_(\d+)(?:\/|$)/i', $rule->target, $m) && $course->config->typeName($m[1]) !== null
                 && !isset($course->events[$course->config->typeName($m[1]) . '_' . (int) $m[2]])) {
-                $course->problems[] = new Problem("$rule->target: there is no {$m[1]} {$m[2]}, so this rule does nothing", 'default.ini', $rule->line);
+                $course->problems[] = new Problem("$rule->target: there is no {$m[1]} {$m[2]}, so this rule does nothing", 'security.ini', $rule->line);
             }
         }
         // a rule (or grant) whose target matches no file, event, box or page does nothing:
@@ -134,7 +137,7 @@ final class Course
                 }
                 if (preg_match('/^([a-z][a-z0-9-]*)_(\d+)(?:\/|$)/i', $rule->target, $m) && ($type = $course->config->typeName($m[1])) !== null
                     && !isset($course->events[$type . '_' . (int) $m[2]])) {
-                    if ($label !== 'default.ini') { // default.ini's are listed above; a grant's here (L-119)
+                    if ($label !== 'security.ini') { // security.ini's are listed above; a grant's here (L-119)
                         $course->problems[] = new Problem("$rule->target: there is no {$m[1]} {$m[2]}, so this grant does nothing", $label, $rule->line);
                     }
                     continue;
@@ -145,7 +148,7 @@ final class Course
                 $course->problems[] = new Problem("$rule->target matches no file, event, box or page, so this line does nothing (a typo?)", $label, $rule->line);
             }
         };
-        $unmatched($course->rules, 'default.ini');
+        $unmatched($course->rules, 'security.ini');
         foreach (glob($course->config->configDir() . '/auth/*.ini') ?: [] as $file) {
             $account = \Cal6\Access\Viewer::account($course->config, basename($file, '.ini'));
             if ($account !== null) {
@@ -153,7 +156,7 @@ final class Course
             }
         }
         foreach ($course->rules->overridden as $note) {
-            $course->problems[] = new Problem($note, 'default.ini');
+            $course->problems[] = new Problem($note, 'security.ini');
         }
         return $course;
     }

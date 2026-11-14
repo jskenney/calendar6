@@ -6,13 +6,13 @@ namespace Cal6\Access;
 
 use Cal6\Time\Window;
 
-/** One line of default.ini or of a user's [grants]: target = window. */
+/** One line of security.ini or of a user's [grants]: target = window. */
 final class Rule
 {
     public function __construct(
         public readonly string $target,
         public readonly Window $window,
-        public readonly string $source,   // "default.ini:12" or "auth/jdoe.ini:8"
+        public readonly string $source,   // "security.ini:12" or "auth/jdoe.ini:8"
         public readonly bool $grant = false,
         public readonly int $line = 0,
         public readonly ?string $unreadable = null,   // the text that could not be read (the rule is then "never")

@@ -65,7 +65,7 @@ A course is two directories, and this is the only layout:
 ├── config/                       all .ini files; always this directory
 │   ├── config.ini                the main configuration
 │   ├── dates.ini                 days that differ from the weekly schedule
-│   ├── default.ini               when things become available to anonymous users
+│   ├── security.ini               when things become available to anonymous users
 │   ├── pages.ini                 where the course's own pages are (resources, policy, ...)
 │   ├── virtual.ini               files shown in an event but stored elsewhere
 │   ├── duplicate.ini             events that are used again (class 5 also as class 6)
@@ -149,13 +149,13 @@ the endpoints:
 | `config/pages.ini` | below |
 | `config/virtual.ini` | below |
 | `config/duplicate.ini` | below |
-| `config/default.ini` | under "Access model" |
+| `config/security.ini` | under "Access model" |
 | `config/auth/<username>.ini` | under "Access model" (a user and an instructor) |
 
 Common to all of them: `key = value` lines, `[sections]`, values unquoted. **Comments:** a line
 that starts with `;` or `#` is a comment; at the end of a line, `;` starts a comment only after a
 space (`period = normal ; the default`); `#` is never a comment at the end of a line.
-Dates and times follow "Dates, times and windows"; event targets follow `default.ini` (`lab_6`,
+Dates and times follow "Dates, times and windows"; event targets follow `security.ini` (`lab_6`,
 ranges `class_20..27`, lists `class_6,8,22`); in every file **the later line wins**.
 
 ### `config.ini` (Decided: the main configuration; proposed keys)
@@ -482,7 +482,7 @@ This section keeps the design decisions behind them.
 - Logging in needs the session's **CSRF token** (from `config.php?csrf=1`); a lock code sent to
   `html.php` carries the token of its own form; **logging out needs no token and may be a GET**
   (Decided).
-- `config.php` never includes password hashes, the secret, server file paths, `default.ini`,
+- `config.php` never includes password hashes, the secret, server file paths, `security.ini`,
   `auth/`, lock codes, the lockdown date or `[replace]` values; `calendar.php` gives anonymous
   viewers no hints about hidden material (Decided); titles are shown to everyone (Decided);
   notes are sent as written, unprocessed (Decided, H-7); there is no files list (Decided, E-8).
@@ -724,7 +724,7 @@ page. `.php` files are never sent by `get.php`, so their source stays private.
 
 | Viewer | Sees |
 |---|---|
-| **Anonymous** | What `default.ini` releases, at the times it says |
+| **Anonymous** | What `security.ini` releases, at the times it says |
 | **A user** (`auth/<username>.ini`; staff, never students) | Everything anonymous sees, plus the user's **grants**, during the user's valid period |
 | **Instructor** (Decided) | Everything, always, and `<inst>` content: a user in `auth/` with `instructor = true` |
 
@@ -747,10 +747,14 @@ when   := "always" | "never"
   an `until` date means through the end of that day (`until 2026-10-22` includes the 22nd).
 - **Everything is a window:** `open until close`, visible when `open <= now < close`. A relative
   `until` is measured from the event, like the opening time. Without `until`, it stays available.
-- This applies to: `default.ini` rules, grants, an account's validity, the lockdown, and the days
+- This applies to: `security.ini` rules, grants, an account's validity, the lockdown, and the days
   in `dates.ini` (`2026-11-25 until 2026-11-27 = holiday`).
 
-### `default.ini` (Decided: when things are available to anonymous users)
+### `security.ini` (Decided: when things are available to anonymous users)
+
+(DOC-48: the file was called `default.ini` before. An old `default.ini` is listed as a problem
+and not read; until it is renamed, nothing is shown to anonymous viewers, as with a missing
+`security.ini`.)
 
 Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manual
 (`calendar-core/instructor.html`, "Setting files to be available on a certain date"):
@@ -771,7 +775,7 @@ Requirements, from a real Calendar 4 access file (`cal4.access`) and the v4 manu
 | R12 | **A semester-end lockdown** | the block at the top of the example |
 | R13 | **Virtual files** (v4 `$CLASS_FILE`, now `virtual.ini`: a file shown in an event but stored elsewhere) are checked under both names; the stricter answer wins (Calendar 5 behaviour; v4 mixed them up) | `notes.html  homework/homework01.html  lab  1` |
 | R14 | **Events that are on no calendar day** are never shown to anonymous viewers | a third exam folder with two exam days |
-| R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable or missing file** hides everything from anonymous viewers (fail closed, Calendar 6 also for a missing one). `default.ini` has no sections: a line under a header such as `[rules]` is still a rule, and the header is listed (M-33). An old-style line without `=` (`lab 99 99 9999`) hides its target until it is rewritten (L-74): the first word, or with a tab everything before it (`class_1/Lecture Notes.pdf<TAB>99 99 9999`, L-80) | |
+| R15 | **Bad lines** are ignored and listed for the instructor; **an unreadable or missing file** hides everything from anonymous viewers (fail closed, Calendar 6 also for a missing one). `security.ini` has no sections: a line under a header such as `[rules]` is still a rule, and the header is listed (M-33). An old-style line without `=` (`lab 99 99 9999`) hides its target until it is rewritten (L-74): the first word, or with a tab everything before it (`class_1/Lecture Notes.pdf<TAB>99 99 9999`, L-80) | |
 | R16 | **Paths with spaces** | tab-separated lines |
 
 Event numbers are numbers: `class_01` is `class_1` (M-35); the name as written is matched too,
@@ -780,7 +784,7 @@ is a file name, not a range. A rule for an event that does not
 exist (`class_40` in a course of 30 classes) does nothing and is listed as a problem.
 
 Targets are **not** case-sensitive (Decided, M-14): `Class_1/Notes.html`, `class_1/notes.html` and
-`page/Solutions` / `page/solutions` mean the same thing, in `default.ini`, grants, `virtual.ini`,
+`page/Solutions` / `page/solutions` mean the same thing, in `security.ini`, grants, `virtual.ini`,
 `duplicate.ini`, `dates.ini` and `sections.ini`. Because of that, two names in one place that
 differ only in case (`Notes.html` and `notes.html` in one event) would share every rule; such
 pairs are listed as problems for instructors.
@@ -818,14 +822,14 @@ lab/slides              = -monday 08:00 until +14 23:59
 
 Decided:
 
-- **Target names are v4's:** `lab_6`, `lab_6/lab-solution`, in `default.ini` and in grants.
+- **Target names are v4's:** `lab_6`, `lab_6/lab-solution`, in `security.ini` and in grants.
 - **The later line wins** (R9), as v4. `bin/cal6 check` (or the instructor's status view) lists
   lines that a later line overrides, as information, since that is how the lockdown example
   silently failed to lock labs.
 - **Ranges and lists** (R11): `class_20..27` is the same as eight lines, `class_20` ...
   `class_27`, written where the range is, so a later line for one of them still wins. Lists
   (`class_6,8,22`) and both together (`class_1..3,7`) work the same way. Allowed wherever `T_N`
-  is, in every file (`default.ini`, grants, `virtual.ini`, `duplicate.ini`):
+  is, in every file (`security.ini`, grants, `virtual.ini`, `duplicate.ini`):
   `class_20..27/notes`, `class_6,8,22/slides.pdf`.
 - **Lockdown** (R12) is a setting, a window like everything else: `config.ini` `[access]
   lockdown = 2026-12-18 17:00` (or `2026-12-18 17:00 until 2027-01-04 08:00` to end it). From then on, anonymous viewers see a file only when the rule that decides it is
@@ -833,7 +837,7 @@ Decided:
   `class/notes = always` keeps every class's notes open, and `class/instructor = never` still
   hides instructor material in class 1. Users' grants are not affected (they have their own
   `valid` window). **Pages count too:** a page with no rule (home, the syllabus) disappears
-  during the lockdown unless `default.ini` says `page/home = always`. An unreadable lockdown
+  during the lockdown unless `security.ini` says `page/home = always`. An unreadable lockdown
   value locks at once (and is listed for instructors).
 - **A line whose time can not be read hides its target** (fail closed): `exam = nver` hides the
   exams and is listed for instructors; it never releases anything. A line whose target can not
@@ -869,9 +873,9 @@ password_hash = $2y$12$...          ; password_hash(), never plain text
 instructor    = false               ; true: complete access (every file, always, and <inst>)
 valid         = 2026-08-24 until 2026-12-18 17:00   ; optional window; default from config.ini
 
-[grants]                            ; the same targets and "when" as default.ini
+[grants]                            ; the same targets and "when" as security.ini
 lab_6              = always
-lab_6/lab-solution = +7 08:00 until +7 17:00             ; relative to lab 6, like default.ini
+lab_6/lab-solution = +7 08:00 until +7 17:00             ; relative to lab 6, like security.ini
 lab/lab-solution   = 2026-10-15 13:30 until 2026-10-22   ; an extension, with its own window
 exam_2             = 2026-11-06 08:00 until 2026-11-06 11:50   ; extra time
 class_20..27       = always                             ; ranges work in grants too
@@ -890,7 +894,7 @@ needed. `password_hash`, `instructor` and `valid` belong to the account wherever
 written: one placed after `[grants]` is still the account's own, never a grant. The `valid` window still applies, so a teaching assistant can be an instructor for a
 semester only.
 
-**How grants combine with `default.ini` (proposed):** a user's rules are `default.ini` with the
+**How grants combine with `security.ini` (proposed):** a user's rules are `security.ini` with the
 user's grants laid over it (a grant replaces the rule for the same target), evaluated with the
 **same precedence**. The user sees a file if anonymous viewers see it **or** the user's rules
 allow it, so a grant can only add, never hide. Grants apply only inside the account's
@@ -1121,7 +1125,7 @@ Choices the code made where the design left room (change them here if they are w
 ## Future enhancements
 
 1. **Converter** from Calendar 4 / Calendar 5 courses: `calendar.php` settings to `config.ini`,
-   `cal4.access` to `default.ini` (dates to `YYYY-MM-DD`, `1 1 1999` to `always`, `99 99 9999`
+   `cal4.access` to `security.ini` (dates to `YYYY-MM-DD`, `1 1 1999` to `always`, `99 99 9999`
    to `never`, a missing year from the semester), the class file, `$LOAD_PAGES` to `pages.ini`.
 2. **User tool** (`bin/cal6 user add <name>`): asks for the password, writes the hash, sets the
    `valid` window and grants.

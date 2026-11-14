@@ -7,7 +7,7 @@ namespace Cal6\Access;
 use InvalidArgumentException;
 
 /**
- * Event targets with ranges and lists (DESIGN.md, `default.ini`):
+ * Event targets with ranges and lists (DESIGN.md, `security.ini`):
  * `class_20..27/notes` is the same as `class_20/notes` ... `class_27/notes`, and
  * `class_6,8,22` / `class_1..3,7` work the same way.
  */

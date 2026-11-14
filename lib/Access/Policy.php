@@ -13,11 +13,11 @@ use Cal6\Time\EventTime;
  * (DESIGN.md, "Access model"):
  *
  * - instructors see everything;
- * - anonymous viewers see what default.ini releases (v4 precedence, the later
+ * - anonymous viewers see what security.ini releases (v4 precedence, the later
  *   line wins, no rule = visible); during the lockdown only what an `always` rule
- *   decides; never events on no calendar day; nothing when default.ini is unreadable;
+ *   decides; never events on no calendar day; nothing when security.ini is unreadable;
  * - a user sees what anonymous viewers see, or what one of the user's grants
- *   (laid over default.ini, same precedence) opens, inside the account's window;
+ *   (laid over security.ini, same precedence) opens, inside the account's window;
  * - a virtual file must be allowed under its name and under its real file.
  */
 final class Policy

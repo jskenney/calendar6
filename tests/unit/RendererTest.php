@@ -41,7 +41,7 @@ final class RendererTest extends TestCase
     public function testAWholeDocumentComesBackAsWrittenButComments(): void
     {
         $page = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>My Page Title</title>\n<style>body { color: red; }</style>\n<script>var x = 1 < 2;</script>\n</head>\n<body class=\"main\">\n<!-- PRIVATE REMARK -->\n<h1 id=\"top\">Heading</h1>\n<inst>INSTRUCTOR-ONLY</inst>\n</body>\n</html>\n";
-        $course = $this->course(['class/01.Introduction/index.html' => $page, 'class/01.Introduction/old.html' => "<!doctype HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\">\n<p>x</p>", 'class/01.Introduction/odd.html' => "<!DOCTYPE html <inst>SECRET</inst>>\n<p>y</p>", 'config/default.ini' => "class = always\n"]);
+        $course = $this->course(['class/01.Introduction/index.html' => $page, 'class/01.Introduction/old.html' => "<!doctype HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\">\n<p>x</p>", 'class/01.Introduction/odd.html' => "<!DOCTYPE html <inst>SECRET</inst>>\n<p>y</p>", 'config/security.ini' => "class = always\n"]);
         $this->assertSame(str_replace(["<!-- PRIVATE REMARK -->", "<inst>INSTRUCTOR-ONLY</inst>"], '', $page), $this->render($course, 'class_1/index.html'), 'the doctype, html, head, title, style, script and body exactly as written; only the comment and the hidden block go');
         $this->assertSame("<!doctype HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\">\n<p>x</p>", $this->render($course, 'class_1/old.html'), 'any doctype, as written');
         $this->assertNotContains('SECRET', $this->render($course, 'class_1/odd.html'), 'a "doctype" holding a block tag is not kept');
@@ -50,7 +50,7 @@ final class RendererTest extends TestCase
     public function testBlocksOpenedInAValueAndDoctypeVariants(): void
     {
         $course = $this->course([
-            'config/default.ini' => "class = always\n",
+            'config/security.ini' => "class = always\n",
             'class/01.Introduction/a.html' => '<p title="<inst title=">">SECRET1</inst> tail',
             'class/01.Introduction/b.html' => '<p title="<inst>">SECRET2 to the end',
             'class/01.Introduction/c.html' => '<textarea><!DOCTYPE html <inst>SECRET3</inst>></textarea><!doctypehtml><p>x</p>',
@@ -72,7 +72,7 @@ final class RendererTest extends TestCase
     {
         $part = '<p title="<inst x=">">A <inst>B</inst> C-SECRET</inst> tail';
         $course = $this->course([
-            'config/default.ini' => "class = always\n",
+            'config/security.ini' => "class = always\n",
             'shared/part.html' => $part,
             'class/01.Introduction/a.html' => '<p title="<inst x=">">Answer 42 <iframe srcdoc="<b>hi</b>"></iframe> SECRET-A</inst> tail',
             'class/01.Introduction/b.html' => '<p title="<inst a><lock code=x y=">">S1</lock> SECRET-B </inst> tail',
@@ -97,7 +97,7 @@ final class RendererTest extends TestCase
     public function testMarkdownEndpointContextsAndLeftovers(): void
     {
         $course = $this->course([
-            'config/default.ini' => "class = always\nclass/instructor = never\n",
+            'config/security.ini' => "class = always\nclass/instructor = never\n",
             'class/01.Introduction/instructor.html' => 'I',
             'class/01.Introduction/run.php' => '<?php echo "RAN";',
             'class/01.Introduction/part.md' => 'PARTTEXT',
@@ -171,7 +171,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/index.html' => '<script src="x.js"></script><link href="s.css" rel="stylesheet"><img srcset="a.png 1x, instructor.png 2x, b.png 3x">',
             'class/01.Introduction/x.js' => 'var a;', 'class/01.Introduction/s.css' => 'p{}', 'class/01.Introduction/a.png' => 'P',
             'class/01.Introduction/b.png' => 'P', 'class/01.Introduction/instructor.png' => 'P',
-            'config/default.ini' => "class_1 = always\nclass_1/instructor.png = never\n",
+            'config/security.ini' => "class_1 = always\nclass_1/instructor.png = never\n",
         ]);
         $home = $this->render($course, 'page/home');
         $this->assertNotContains('data-cal6-hidden', $home, 'files next to a page get keys (M-5)');
@@ -192,7 +192,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/answers.html' => 'HIDDEN-ANSWERS',
             'class/02.Two/index.html' => 'OTHER-EVENT',
             'shared/part.html' => 'SHARED-PART',
-            'config/default.ini' => "class_1 = always\nclass_1/answers.html = never\nclass_2 = never\n",
+            'config/security.ini' => "class_1 = always\nclass_1/answers.html = never\nclass_2 = never\n",
         ]);
         $page = $this->render($course, 'class_1/index.html');
         $this->assertNotContains('HIDDEN-ANSWERS', $page, 'a hidden file of the same event (M-2)');
@@ -207,7 +207,7 @@ final class RendererTest extends TestCase
         $course = $this->course([
             'class/01.Introduction/index.html' => '<inject src="../../config/config.ini"><codeinject src="../../config/auth/prof.ini"><inject src="../../../../etc/hostname"><calphp src="../../config/x.php"><calphp src="../../calendar/php/get.php">',
             'config/x.php' => '<?php echo "CONFIG-SCRIPT";',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/index.html');
         $this->assertNotContains('secret', $page, 'no config.ini (T-1)');
@@ -223,7 +223,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/part2/fig.png' => 'P',
             'class/01.Introduction/top.png' => 'P',
             'class/02.Two/index.html' => 'two',
-            'config/default.ini' => "class_1 = always\nclass_2 = never\n",
+            'config/security.ini' => "class_1 = always\nclass_2 = never\n",
         ]);
         $page = $this->render($course, 'class_1/part2/page.html');
         $this->assertSame(2, substr_count($page, 'get.php?file='), 'files next to it and above it get keys (T-4)');
@@ -237,7 +237,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/index.html' => '<a href="other.html">a</a><iframe src="other.html"></iframe><img src="other.html"><script src="reading.md"></script><a href="data.txt">d</a>',
             'class/01.Introduction/other.html' => 'O',
             'class/01.Introduction/data.txt' => 'D',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/index.html');
         $other = $course->keysByEvent['class_1']['other.html'];
@@ -267,7 +267,7 @@ final class RendererTest extends TestCase
                 . '<host server="nowhere">H1<host server="nowhere">H2</host>HOST-NESTED</host><INST >UPPER-CASE</Inst ><p>AFTER-NESTED</p>',
             'class/01.Introduction/unclosed.html' => '<p>BEFORE</p><inst>NEVER-CLOSED <p>everything after</p>',
             'class/01.Introduction/photo.html' => "<p>PHOTO</p>$image",
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/index.html', [], null, 0);
         foreach (['SECRET-BIG', 'LOCKED-BIG', 's3cret', 'AFTER-BIG', 'HOST-BIG'] as $hidden) {
@@ -299,7 +299,7 @@ final class RendererTest extends TestCase
             'homework/data.csv' => 'x',
             'class/01.Introduction/fig.png' => 'EVENT-FIG',
             'config/virtual.ini' => "class_1/homework.html = homework/hw1.html\n",
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/homework.html');
         preg_match('/<img src="[^"]*file=([A-Za-z0-9_-]+)"/', $page, $m);
@@ -309,7 +309,7 @@ final class RendererTest extends TestCase
         $hidden = $this->course([
             'homework/hw1.html' => '<img src="fig.png">', 'homework/fig.png' => 'P',
             'config/virtual.ini' => "class_1/homework.html = homework/hw1.html\n",
-            'config/default.ini' => "class_1 = always\nclass_1/homework.html = never\n",
+            'config/security.ini' => "class_1 = always\nclass_1/homework.html = never\n",
         ]);
         foreach ($hidden->places as $place) {
             if ($place->file->name === 'homework/fig.png') {
@@ -325,7 +325,7 @@ final class RendererTest extends TestCase
             'shared/footer.html' => '<img src="logo.png"><calphp src="c.php"><showlink src="logo.png"><a href="../class/01.Introduction/reading.md#x">notes</a>',
             'shared/logo.png' => 'LOGO',
             'shared/c.php' => '<?php echo "FOOTER-SCRIPT";',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/index.html');
         $this->assertContains('FOOTER-SCRIPT', $page, '<calphp> relative to the injected file (L-21)');
@@ -341,7 +341,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/index.html' => '<inst>A<!-- </inst> -->SECRET-COMMENT</inst><inst><script>var s = "</inst>";</script>SECRET-SCRIPT</inst><p>AFTER</p>',
             'class/01.Introduction/deep.html' => $deep . '<p>DEEP-AFTER</p>',
             'class/01.Introduction/quote.md' => str_repeat('> ', 20000) . 'quoted',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/index.html');
         $this->assertNotContains('SECRET-COMMENT', $page, 'a closing tag in a comment does not end the block (L-29)');
@@ -360,7 +360,7 @@ final class RendererTest extends TestCase
         $course = $this->course([
             'class/01.Introduction/index.html' => '<pre><codeinject src="other.html"></pre>',
             'class/01.Introduction/other.html' => '<p>shown</p><inst>INST-TEXT</inst><lock code="s3cret">LOCKED-TEXT</lock>',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/index.html');
         $this->assertContains('&lt;p&gt;shown&lt;/p&gt;', $page, 'the source is shown');
@@ -379,7 +379,7 @@ final class RendererTest extends TestCase
             'lab/01.Setup/lab-solution-part2.html' => '<inject src="../../shared/frag.html">',
             'config/duplicate.ini' => "class_2 = class_1\n",
             'class/01.Introduction/index.html' => '<inject src="../../shared/frag.html">',
-            'config/default.ini' => "class_1 = never\nclass_2 = always\nlab = always\n",
+            'config/security.ini' => "class_1 = never\nclass_2 = always\nlab = always\n",
         ]);
         $this->assertNotContains('data-cal6-hidden', $this->render($course, 'page/home'), 'a pages.ini page that injects (L-32)');
         $prof = Viewer::account($course->config, 'prof');
@@ -392,7 +392,7 @@ final class RendererTest extends TestCase
         $course = $this->course([
             'class/01.Introduction/index.html' => 'A <!-- <inject src="../../shared/part.html"> --> <!-- <inst>COMMENTED-INST</inst> --><script>var t = `<inject src="../../shared/part.html">`; // <!-- kept --></script><p>END</p>',
             'shared/part.html' => '<inst>INJ-SECRET</inst><postmeeting>PM</postmeeting>',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/index.html', [], null, 0);
         foreach (['INJ-SECRET', 'COMMENTED-INST', '<!-- <inst>'] as $hidden) {
@@ -409,7 +409,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/index.html' => 'C1 <inject src="../02.Two/index.html"> <pre><codeinject src="../02.Two/index.html"></pre>',
             'class/02.Two/index.html' => 'C2 <postmeeting>PM-ANSWER</postmeeting>',
             'pages/home.html' => '<inject src="../class/02.Two/index.html">',
-            'config/default.ini' => "class = always\n",
+            'config/security.ini' => "class = always\n",
         ]);
         $classTwo = $course->events['class_2'];
         $before = $classTwo->time->start()->getTimestamp() - 60; // class 1 is long over, class 2 not yet
@@ -425,7 +425,7 @@ final class RendererTest extends TestCase
         $course = $this->course([
             'pages/home.html' => '<img src="x%00.png"><a href="y%00.html">y</a>',
             'class/01.Introduction/index.html' => '<img src="z%00.png">',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $this->assertContains('x%00.png', $this->render($course, 'page/home'), 'the course loads and the link is a missing file, left as written (L-35)');
         $this->assertContains('z%00.png', $this->render($course, 'class_1/index.html'));
@@ -436,7 +436,7 @@ final class RendererTest extends TestCase
         $course = $this->course([
             'class/01.Introduction/index.html' => '<a href="<url value=a>">a</a>',
             'lab/01.Setup/answers.pdf' => 'A',
-            'config/default.ini' => "class_1 = always\nlab = never\n",
+            'config/security.ini' => "class_1 = always\nlab = never\n",
         ]);
         $answers = [];
         foreach (['../../../../../../../../etc/passwd', '../../../../../../../../etc/nonexistent', '../../lab/01.Setup/answers.pdf', 'nope.pdf'] as $value) {
@@ -450,7 +450,7 @@ final class RendererTest extends TestCase
     {
         $course = $this->course([
             'config/pages.ini' => "[pages]\nhome = pages/home.html\n",
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'pages/home.html' => '<inst><a href="answers/exam-key.pdf">key</a></inst><a href="https://cnn.com/x">news</a> <a href="gone.html">gone</a> <a href="../../../../../../etc/passwd">p</a> <a href="../config/config.ini">c</a>',
             'pages/answers/exam-key.pdf' => 'KEY',
             'class/01.Introduction/index.html' => '<a href="<url value=next>">next</a>',
@@ -476,7 +476,7 @@ final class RendererTest extends TestCase
     {
         $course = $this->course([
             'class/01.Introduction/index.html' => '<a href="<url value="next" default="#">">go</a> <url value="7" default="none">',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['next' => ' JavaScript:alert(1)', '7' => 'seven']))
             ->render($course->places[$course->keysByEvent['class_1']['index.html']]);
@@ -497,7 +497,7 @@ final class RendererTest extends TestCase
             'unclosed-style' => '<style>p{}</stlye><inst>S12</inst><lock code="xyz">S13</lock>',
             'unclosed-script' => '<script src="a.js"><inst>S14</inst>',
         ];
-        $files = ['config/default.ini' => "class_1 = always\n"];
+        $files = ['config/security.ini' => "class_1 = always\n"];
         foreach ($cases as $name => $html) {
             $files["class/01.Introduction/$name.html"] = $html . '<p>END</p>';
         }
@@ -522,7 +522,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/secret.txt' => 'INJECTED',
             'class/01.Introduction/lock.html' => '<lock code="a>b">LOCKED</lock>',
             'class/01.Introduction/many.html' => str_repeat('<script></script><inject src="nope.html">', 20000),
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $place = static fn (string $f) => $course->places[$course->keysByEvent['class_1'][$f]];
         $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], ['n' => 'EVIL']))->render($place('url.html'));
@@ -548,7 +548,7 @@ final class RendererTest extends TestCase
         $course = $this->course([
             'class/01.Introduction/c.md' => "Text <!-- start\n\nM1 -->after\n\n`<!-- shown -->`\n\n```\n<!-- fenced -->\n```\n\n<img alt=\"<!--\"><inst>-->M2</inst>",
             'class/01.Introduction/i.md' => "Intro\n\n    <inst>\n    M3\n    </inst>\n\n- item\n\n        <inst>\n\n        M4\n\n        </inst>\n\nEND",
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/c.md');
         $this->assertSame(0, preg_match('/M[12]\b/', $page), 'a Markdown comment that spans a blank line is removed (M-30): ' . $page);
@@ -564,7 +564,7 @@ final class RendererTest extends TestCase
     {
         $course = $this->course([
             'class/01.Introduction/index.html' => "<a name=\"top\">T</a><keyword x>K</keyword> <search>S\n<script>var s = \"<a name='x'>\"; var t = '<keyword x>'; if (a<search.length) { b(); } // > end\n</script>",
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = $this->render($course, 'class_1/index.html');
         $this->assertContains("var s = \"<a name='x'>\"; var t = '<keyword x>'; if (a<search.length) { b(); } // > end", $page, 'script text is left as written (L-54)');
@@ -579,7 +579,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/a.md' => "![diagram <inst>ALT-SECRET</inst>](pic.png)\n\n[link](x.html \"<inst>TITLE-SECRET</inst>\")\n",
             'class/01.Introduction/x.php.html' => 'X',
             'shared/menu.inc.html' => '<nav>MENU</nav>',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $this->assertContains('MENU', $this->render($course, 'class_1/index.html'), 'a .inc.html page can be injected (L-57)');
         $this->assertSame(1, count(array_filter($course->problems, static fn ($p): bool => str_contains($p->message, 'x.php.html'))), 'a page with a PHP extension is a problem');
@@ -594,7 +594,7 @@ final class RendererTest extends TestCase
                 . '<a href="<url value=a><url value=b>">b</a><p title="<url value=z>">z</p><calphp src="../../shared/x.php">',
             'class/01.Introduction/pic.png' => 'P',
             'shared/x.php' => '<?php echo "CALPHP";',
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         $page = (new PageRenderer($course, new Policy($course), Viewer::anonymous(), time(), '/', [], [
             't' => ' src=nope.png data-injected=1 x', 'a' => 'javascript', 'b' => ':void(0)', 'z' => "\x00cal6-calphp-0\x00",
@@ -612,7 +612,7 @@ final class RendererTest extends TestCase
             'quote-in-name' => '<p"x="y> <inst>S2</inst> ">',
             'odd-name' => "<scriptx\u{e9}><inst>S4</inst></scriptx\u{e9}>",
         ];
-        $files = ['config/default.ini' => "class_1 = always\n", 'class/01.Introduction/h.md' => "## Quiz 3 <inst>answer is 42</inst>\n"];
+        $files = ['config/security.ini' => "class_1 = always\n", 'class/01.Introduction/h.md' => "## Quiz 3 <inst>answer is 42</inst>\n"];
         foreach ($cases as $name => $html) {
             $files["class/01.Introduction/$name.html"] = $html;
         }
@@ -639,7 +639,7 @@ final class RendererTest extends TestCase
             'formed2' => 'A<<inst>x</inst>!-- <lock code=abc>S5</lock> -->B',
         ];
         $files = [
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/n.md' => "## Intro <inst>a <inst>b</inst> S6</inst>\n\n![pic <inst>x <inst>y</inst> S7</inst>](a.png)\n\n<inst>\n[r]: x.html \"S8\"\n</inst>\n\n[solutions][r]\n\n[" . str_repeat('a ', 8000) . "]\n",
             'class/01.Introduction/url.html' => '<textarea><b title=\'</textarea><img src=x title="<url value=n>">\'></b></textarea><textarea title="x"><url value=n></textarea>',
             'class/01.Introduction/deep.html' => str_repeat('<student>', 40000) . 'X' . str_repeat('</student>', 40000) . 'END',
@@ -677,7 +677,7 @@ final class RendererTest extends TestCase
             'codeinject' => '<codeinject src="m.md"><codeinject src="f.html">',
         ];
         $files = [
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/m.md' => "Start a link with `<a href=\"` and close it.\n\n<inst>\nS7\n</inst>\n\n[f](https://forms.example.com/f?k=<inst>S8</inst>)\n",
             'class/01.Introduction/f.html' => 'A<<inst>x</inst>inst>S9</inst>',
         ];
@@ -696,7 +696,7 @@ final class RendererTest extends TestCase
     public function testMathAttributesSvgAndTextareaComments(): void
     {
         $course = $this->course([
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/m.md' => "Formula: \\( x = <inst>T1</inst> \\) and \$\$a<b\$\$\n",
             'class/01.Introduction/a.html' => '<abbr title="Hint: <inst>T2</inst>">x</abbr>',
             'class/01.Introduction/s.html' => '<svg><style>rect{fill:red}</svg><p>Visible</p><inst>T3</inst><style>p{}</style>',
@@ -717,7 +717,7 @@ final class RendererTest extends TestCase
     public function testAnEventDirectoryReachedThroughALinkIsStillAnEventDirectory(): void
     {
         $course = $this->course([
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'pages/home.html' => '<inject src="../material/class/01.Introduction/a/b/c/d/e/deep.html">HOME',
             'config/pages.ini' => "[pages]\nhome = pages/home.html\n",
             'material/class/01.Introduction/index.html' => 'I',
@@ -733,7 +733,7 @@ final class RendererTest extends TestCase
     public function testQueryStringsAndNumberedMarkdownCopies(): void
     {
         $course = $this->course([
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/index.html' => '<a href="notes.html?week=3&amp;file=x#q2">n</a> <a href="reading.md2">old</a> <a href="<url value=next>">u</a>',
             'class/01.Introduction/notes.html' => 'N',
             'class/01.Introduction/reading.md2' => '# OLD <inst>S</inst>',
@@ -758,7 +758,7 @@ final class RendererTest extends TestCase
             'codeattr' => '<codeinject src="part.html">',
         ];
         $files = [
-            'config/default.ini' => "class_1 = always\nclass_2 = always\n",
+            'config/security.ini' => "class_1 = always\nclass_2 = always\n",
             'class/01.Introduction/part.html' => '<img title="tip <inst>U4</inst>" src="x.png">',
             'class/01.Introduction/md.md' => "Run <kbd title=\"`\">Ctrl</kbd> then <inst>U5</inst> then <kbd title=\"`\">Esc</kbd>.\n\n\$\$ y = <inst title=\"a>b\">U6</inst> \$\$ AFTER\n\nQ <!-- x --!> <inst>U7 <!-- c --></inst>\n",
             'class/01.Introduction/c.html' => '<noscript><!-- C1 --></noscript><svg><title><!-- C2 --></title></svg><textarea><!-- KEEP --></textarea>',
@@ -800,7 +800,7 @@ final class RendererTest extends TestCase
             'bogus2' => '<? <b title=">" <lock code=k>V5</lock>',
         ];
         $files = [
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/inj.html' => '<script>var a = 1;</scirpt><inject src="../../shared/part.html"> <url value=n>',
             'shared/part.html' => 'Hello <url value=n>!',
             'class/01.Introduction/ok.html' => 'A<svg><foreignObject><style>p{}</style><p>ok</p></foreignObject></svg><inst>H</inst> Z',
@@ -831,7 +831,7 @@ final class RendererTest extends TestCase
             'code' => '<codeinject src="n.md">',
         ];
         $files = [
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/n.md' => "- item\n\n    More text <inst>W4</inst> here\n\n```x`y\n<inst>\nW5\n</inst>\n```\n\nPress <kbd title=\"`\">K</kbd> then <inst>W6</inst> or `x`\n",
             'class/01.Introduction/url.html' => '<p>Week <url value=week default=1></p><svg><style>.a{}</style></svg><noscript><script>x()</script></noscript><textarea><script>y()</script></textarea><p>Again <url value=week default=1></p>',
             'class/01.Introduction/frame.html' => '<iframe src="notes.html?file%00x=K2&amp;file[]=K3&amp;week=3"></iframe>',
@@ -864,7 +864,7 @@ final class RendererTest extends TestCase
             'attr2' => 'A<p title=x<inst>X4</inst>>B',
         ];
         $files = [
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/deep.html' => str_repeat('<svg>', 5000) . str_repeat('<svg></x>', 5000),
             'class/01.Introduction/many.html' => '<url value=a>' . str_repeat('<textarea><script></textarea>', 16000),
         ];
@@ -894,7 +894,7 @@ final class RendererTest extends TestCase
             'default' => '<a href="x" title=\'<url value=q default="<inst>Y7</inst>">\'>a</a>',
         ];
         $files = [
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/starter.html' => "<textarea>\nfor (int i = 0; i<n; i++) {\n  <inst>sum += a[i];</inst>\n}\n</textarea>\n<p>VISIBLE-NEXT-QUESTION</p>",
             'class/01.Introduction/deep.html' => str_repeat('<b a<student>', 20000) . str_repeat('x', 200000),
             'class/01.Introduction/ends.html' => str_repeat('<math>', 300) . str_repeat('<svg>', 300) . str_repeat('</math>', 80000),
@@ -931,7 +931,7 @@ final class RendererTest extends TestCase
             'skipped' => str_repeat('<inst>', 257) . '<p<inst>x' . str_repeat('</inst>', 257) . 'Z9</inst>',
         ];
         $files = [
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/ta.html' => '<textarea><script src="app.js"></textarea><inst>H</inst><p>VISIBLE-AFTER</p><script>var a=1;</script>',
             'class/01.Introduction/svgs.html' => str_repeat('<svg><desc>', 8000) . str_repeat('</desc></svg>', 8000),
             'class/01.Introduction/links.html' => '<map><area href="notes.html"></map><input type="image" src="pic.png"><svg><image href="pic.png"/></svg><table background="pic.png"></table>',
@@ -962,7 +962,7 @@ final class RendererTest extends TestCase
     public function testReview20Leftovers(): void
     {
         $course = $this->course([
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
             'class/01.Introduction/pad.html' => '<iframe srcdoc="&#00000060;inst>Q1&#00000060;/inst> &#x000000003c;inst>Q2&#x000000003c;/inst>"></iframe>',
             'class/01.Introduction/sur.html' => '<iframe srcdoc="x&#xD800;y&#55296;z"></iframe>END',
             'class/01.Introduction/heads.md' => str_repeat("## h\n\n", 20000),
@@ -983,7 +983,7 @@ final class RendererTest extends TestCase
             'class/01.Introduction/self.html' => str_repeat('<inject src="self.html">', 8) . 'SELF',
             'class/01.Introduction/emph.md' => str_repeat('_a ', 50000),
             'class/01.Introduction/list.md' => implode("\n", array_map(static fn (int $i): string => str_repeat('  ', $i) . '- item', range(0, 3000))),
-            'config/default.ini' => "class_1 = always\n",
+            'config/security.ini' => "class_1 = always\n",
         ]);
         foreach (['unclosed.html' => 'U-END', 'deep.html' => 'DEEP-END', 'scripts.html' => '', 'self.html' => 'SELF', 'emph.md' => 'a', 'list.md' => 'item'] as $file => $expect) {
             $start = microtime(true);

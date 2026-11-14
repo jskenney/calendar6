@@ -90,7 +90,7 @@ final class EndpointsTest extends TestCase
         $this->assertSame('', $response->header('set-cookie'));
         $withToken = $client->get('calendar/php/config.php?csrf=1');
         $this->assertSame(48, strlen((string) ($withToken->json()['csrf'] ?? '')));
-        foreach ([Fixture::SECRET, 'password_hash', '$2y$', 'default.ini', $this->dir, 'lockdown'] as $secret) {
+        foreach ([Fixture::SECRET, 'password_hash', '$2y$', 'security.ini', $this->dir, 'lockdown'] as $secret) {
             $this->assertNotContains($secret, $response->body, 'never in config.php');
         }
         $this->assertContains('HttpOnly', $withToken->header('set-cookie'));
@@ -442,7 +442,7 @@ HTML;
     {
         $hash = password_hash(Fixture::PASSWORD, PASSWORD_DEFAULT);
         $client = $this->start([
-            'config/default.ini' => "class = always\nclass/slides = 2099-01-01 08:00\nclass/instructor = never\npage/policy = 2099-01-01 08:00\n",
+            'config/security.ini' => "class = always\nclass/slides = 2099-01-01 08:00\nclass/instructor = never\npage/policy = 2099-01-01 08:00\n",
             'class/01.Introduction/slides.pdf' => 'PDF',
             'config/auth/ta.ini' => "password_hash = $hash\nvalid = always\n[grants]\nclass_1/slides.pdf = always\n",
         ]);
@@ -503,7 +503,7 @@ HTML;
     public function testNotesComeBackAsText(): void
     {
         $client = $this->start([
-            'config/default.ini' => "class = always\nclass/notes = always\nclass_2/notes = never\n",
+            'config/security.ini' => "class = always\nclass/notes = always\nclass_2/notes = never\n",
             'class/01.Introduction/notes.txt' => "  The class meets in the auditorium today.\n",
             'class/02.Second/notes.txt' => 'Hidden remark',
         ]);
@@ -526,7 +526,7 @@ HTML;
         $long = "\n\n\n" . str_repeat('é', 1500) . "\n";
         $client = $this->start([
             'config/config.ini' => $config,
-            'config/default.ini' => "class = always\nlab = always\nlab/notes = -0\n",
+            'config/security.ini' => "class = always\nlab = always\nlab/notes = -0\n",
             'class/01.Introduction/notes.txt' => null,
             'class/01.Introduction/notes.html' => '<p>Bring a <b>laptop</b>.</p>',
             'class/02.Second/notes.md' => $long,
@@ -685,7 +685,7 @@ Hello <url value="who" default="nobody">.
 <codeinject src="Example.java">
 MD;
         $client = $this->start([
-            'config/default.ini' => "class = always\nclass/instructor = never\n",
+            'config/security.ini' => "class = always\nclass/instructor = never\n",
             'class/01.Introduction/lesson.md' => $page,
             'class/01.Introduction/reading.md' => '# Reading',
             'class/01.Introduction/pic.png' => 'PNG',
@@ -793,6 +793,16 @@ MD;
         $this->assertSame([], $client->get('calendar/php/config.php')->json()['pages'] ?? null);
     }
 
+    public function testOldDefaultIniIsReportedNotRead(): void
+    {
+        $client = $this->start();
+        rename("$this->dir/config/security.ini", "$this->dir/config/" . 'default' . '.ini');
+        $events = $client->get('calendar/php/calendar.php')->json()['events'] ?? [];
+        $this->assertSame([], array_merge(...array_values(array_map(static fn (array $e): array => $e['boxes'], $events))), 'without security.ini nothing is shown to anonymous viewers (fail closed)');
+        $this->login($client);
+        $this->assertContains('is now called security.ini', implode("\n", array_column($client->get('calendar/php/calendar.php')->json()['problems'] ?? [], 'message')), 'an old default.ini is reported');
+    }
+
     public function testDayMarkers(): void
     {
         $client = $this->start(['config/dates.ini' => "2026-08-27 = lab\n2026-08-31 = none\n"]);
@@ -864,7 +874,7 @@ MD;
     public function testLoggedOnUserWithoutGrantsGetsNoHints(): void
     {
         $hash = password_hash(Fixture::PASSWORD, PASSWORD_DEFAULT);
-        $client = $this->start(['config/auth/student.ini' => "password_hash = $hash\nvalid = always\n", 'config/default.ini' => "class = always\nclass/slides = 2099-01-01 08:00\n", 'class/01.Introduction/slides.pdf' => 'PDF']);
+        $client = $this->start(['config/auth/student.ini' => "password_hash = $hash\nvalid = always\n", 'config/security.ini' => "class = always\nclass/slides = 2099-01-01 08:00\n", 'class/01.Introduction/slides.pdf' => 'PDF']);
         $this->login($client, 'student');
         $data = $client->get('calendar/php/calendar.php');
         $this->assertSame('student', $data->json()['viewer']['user'] ?? null);

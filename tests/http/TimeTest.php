@@ -53,7 +53,7 @@ final class TimeTest extends TestCase
 
     public function testCachedAnswerChangesAtNextChange(): void
     {
-        $client = $this->start(['config/default.ini' => "lab/lab-solution = 2026-09-02 17:00\n"], '2026-09-02 16:59');
+        $client = $this->start(['config/security.ini' => "lab/lab-solution = 2026-09-02 17:00\n"], '2026-09-02 16:59');
         $before = $client->get('calendar/php/calendar.php')->json();
         $this->assertFalse(self::hasFile($before, 'lab_1', 'lab-solution.html'), 'not yet');
         $this->assertFalse(isset($before['next_change']), 'not sent (E-10)');

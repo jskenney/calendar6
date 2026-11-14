@@ -53,7 +53,7 @@ A course is two directories (this is the only layout):
 ├── config/                        REQUIRED: all configuration (.ini files)
 │   ├── config.ini                 REQUIRED: course name, semester, schedule, types, boxes, secret, ...
 │   ├── dates.ini                  special days (holidays, swapped weekdays, delays)
-│   ├── default.ini                release rules: when material becomes visible to students
+│   ├── security.ini                release rules: when material becomes visible to students
 │   ├── pages.ini                  the course's own pages (home, syllabus, ...)
 │   ├── virtual.ini                files shown in an event but stored elsewhere in the course
 │   ├── duplicate.ini              events shown again on other days
@@ -161,7 +161,7 @@ The front end must be served **from the same host** as the endpoints: the sessio
 
 | Viewer | How | Sees |
 |---|---|---|
-| anonymous | no login | what the release rules (`default.ini`) allow now |
+| anonymous | no login | what the release rules (`security.ini`) allow now |
 | user | logged in, `instructor` false | the same, plus their **grants** (from `auth/<user>.ini`) |
 | instructor | logged in, `instructor` true | everything, plus problems, hidden-item markers and previews |
 
