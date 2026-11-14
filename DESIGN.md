@@ -534,22 +534,22 @@ This section keeps the design decisions behind them.
   `valid` window does, and when the account's `password_hash` changes (a reset after a leak ends
   every session of that account at once, L-100).
 
-### `html.php`: lock-code limits (DOC-54)
+### `html.php`: lock-code limits (Decided, M-54)
 
 - Wrong lock codes count against `[users] login_attempts` (5 per 15 minutes in the template),
   over the same window: per address and page four times that (20), per address twenty times
-  that (100); an IPv6 address counts per /64 network. A right code is never counted.
-- **Page gate:** once a page has had twenty times that many wrong codes (100) from anywhere in
-  the window, its codes pass **one per second** for everyone (others get `429` with
-  `Retry-After` at once), so many addresses together can not try codes quickly.
-- **Open trade-off (M-54, the owner's decision):** a gated page is slow for the whole class at
-  once: a few addresses guessing keep it at one attempt per second, so students entering the
-  right code in class meet `429`s. The choices are to exempt logged-in viewers and allow a small
-  burst per second, to drop the page gate (keeping the per-address limits), or to keep it and
-  use longer codes. Until decided, short codes on pages a class opens together are the weak
-  case.
-- `503` when the attempts can not be counted (the private temporary directory is unusable):
-  codes fail closed, like logins.
+  that (100); an IPv6 address counts per /64 network. A right code is never counted. Over the
+  limit: `429` with `Retry-After`; `503` when attempts can not be counted (the private temporary
+  directory is unusable), so codes fail closed, like logins.
+- **No limit across addresses** (Decided): Calendar 6 serves courses on campus networks, where
+  each student and lab computer has its own address and nobody outside can reach the server. A
+  limit shared by everyone on a page (the former page gate, L-158) would let a few addresses
+  refuse a whole class its right codes (M-54), and inside a campus network it protects against
+  nobody the per-address limits do not already stop: one computer needs days to try every
+  4-digit code.
+- **Short codes are pointed out:** instructors see the content of a lock, and above it a notice
+  (`<p class="cal6-error">`) for each code shorter than 8 characters. On a server reachable
+  from the internet, many addresses together could guess such a code; use longer codes there.
 
 ### `calendar.php`: caching
 

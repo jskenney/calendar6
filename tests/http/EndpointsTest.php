@@ -942,7 +942,7 @@ MD;
         $this->assertSame(401, $attacker->post('calendar/php/auth.php', ['username' => 'ta', 'password' => 'bad', 'csrf' => $token], $from('198.51.100.1'))->status, 'another username from the same address is still allowed');
     }
 
-    public function testLockCodesHaveAPerPageGate(): void
+    public function testLockCodesAreLimitedPerAddressOnly(): void
     {
         $config = (string) file_get_contents(__DIR__ . '/../../template/course/config/config.ini');
         $client = $this->start([
@@ -951,11 +951,15 @@ MD;
         ]);
         $key = $client->get('calendar/php/calendar.php')->json()['events']['class_1']['boxes'][0]['key'];
         preg_match('/name="csrf" value="([^"]+)"/', $client->get("calendar/php/html.php?file=$key")->body, $m);
-        for ($i = 0; $i < 100; $i++) { // 20 x the login limit (5), each from another network
+        for ($i = 0; $i < 120; $i++) { // more than the old page gate's 100, each from another network
             $this->assertSame(303, $client->post("calendar/php/html.php?file=$key", ['lock' => "bad$i", 'csrf' => $m[1]], ['X-Forwarded-For' => "203.0.113.9, 198.51." . intdiv($i, 250) . '.' . ($i % 250)])->status);
         }
-        $this->assertSame(303, $client->post("calendar/php/html.php?file=$key", ['lock' => 'bad-a', 'csrf' => $m[1]], ['X-Forwarded-For' => '203.0.113.9, 192.0.2.1'])->status, 'once full, one attempt passes this second');
-        $this->assertSame(429, $client->post("calendar/php/html.php?file=$key", ['lock' => 'bad-b', 'csrf' => $m[1]], ['X-Forwarded-For' => '203.0.113.9, 192.0.2.2'])->status, 'and the next waits, from any address (L-158)');
+        $this->assertSame(303, $client->post("calendar/php/html.php?file=$key", ['lock' => 'open', 'csrf' => $m[1]], ['X-Forwarded-For' => '203.0.113.9, 192.0.2.1'])->status, 'no page gate: wrong codes from elsewhere never refuse a student (M-54)');
+        $this->assertContains('LOCKED', $client->get("calendar/php/html.php?file=$key")->body, 'and the right code opens the page');
+        for ($i = 0; $i < 20; $i++) { // the per-address-and-page limit: 4 x 5
+            $client->post("calendar/php/html.php?file=$key", ['lock' => "again$i", 'csrf' => $m[1]], ['X-Forwarded-For' => '203.0.113.9, 192.0.2.7']);
+        }
+        $this->assertSame(429, $client->post("calendar/php/html.php?file=$key", ['lock' => 'again', 'csrf' => $m[1]], ['X-Forwarded-For' => '203.0.113.9, 192.0.2.7'])->status, 'one address is still limited');
     }
 
     public function testConfigMapsAreAlwaysObjects(): void

@@ -13,9 +13,8 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **M-54**: the lock-code page gate; the owner chooses the trade-off (DESIGN.md, "html.php: lock-code limits").
-2. A new review of the review-27 fixes.
-3. Other **E** items; E-1 (the front end) is the next big piece of work.
+1. A new review of the review-27 fixes.
+2. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -27,9 +26,7 @@ None open.
 
 ## Medium
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| M-54 | 27 | `lib/Endpoint/HtmlEndpoint.php:132-145` | **New with L-158: about 45 addresses can stop a class from unlocking a page.** The page gate runs before the code is checked, so right codes are refused too, and a refused request forgives the attacker's counters; once the gate is on, the attacker's one attempt per second wins the race and students get 429 (reproduced). Each place of a page has its own gate (duplicates, virtual copies, pages sharing a code). Not in DESIGN. | Owner to decide the trade-off: exempt logged-in viewers, allow a small burst per second, key the gate by the page's real file or code set; document it. |
+None open.
 
 ## Low
 
@@ -381,6 +378,7 @@ None open.
 | L-165 | 27 | `e797b19` | Found while fixing M-53/L-159 (fuzzing): when an attribute value leaves a hidden block open, the rest of that tag (later attribute names and values, which a plain scan reads as inside the block) was kept: `<p title='<inst>x</inst><inst><p title='SECRET<</inst>` sent SECRET in the page source; also before review 26. | The rest of such a tag is left out (the value's closing quote and the tag's `>` stay). Test. |
 | DOC-54 | 27 | `e797b19` | No section on lock-code limits (the page gate and its trade-off are only in API.md's table); DESIGN's period-0 condition ("when periods.ini has a period 0") is not what the code does. | DESIGN.md has a section on lock-code limits (per address and page, per address, the page gate) with the open trade-off M-54; the period-0 wording follows L-162. |
 | T-34 | 27 | `e797b19` | `testCourseIniFindsTheCourse` leaves a private cache directory per run (its course in `$web/course`); the smoke test skips the lock-form check silently when no form is found; no tests for M-53, L-159, L-160, L-161. | `testCourseIniFindsTheCourse` removes its course in the web directory with its private directory; smoke.php fails when the lock form is missing (course-setup.sh puts one in); tests for M-53, L-159..L-165. |
+| M-54 | 27 | (this commit) | **New with L-158: about 45 addresses can stop a class from unlocking a page.** The page gate runs before the code is checked, so right codes are refused too, and a refused request forgives the attacker's counters; once the gate is on, the attacker's one attempt per second wins the race and students get 429 (reproduced). Each place of a page has its own gate (duplicates, virtual copies, pages sharing a code). Not in DESIGN. | Owner's decision (b): the page gate is removed; lock codes are limited per address and page and per address only, since courses run on campus networks where each computer has its own address. Instructors see a notice above each lock whose code is shorter than 8 characters (guessable on a server reachable from the internet). DESIGN.md and API.md updated. Tests (120 wrong codes from many networks, then a right code opens the page; one address is still limited; the notice for instructors only). |
 
 ## Reviews
 

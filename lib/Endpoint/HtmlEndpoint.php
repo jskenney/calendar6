@@ -126,23 +126,9 @@ final class HtmlEndpoint
                     }
                     $recorded[] = $limitKey;
                 }
-                // from anywhere: once a page has had many wrong codes (twenty times the login
-                // limit), its attempts pass one per second, so many addresses (a botnet, an IPv6
-                // /48) can not guess a short code quickly (L-158), as for logins (M-18)
-                $pageKey = 'lockpage:' . $place->key;
-                if ($limiter->hit($pageKey, $c->now, $c->config->loginAttempts[0] * 20) === 0) {
-                    $recorded[] = $pageKey;
-                } else {
-                    $wait = $limiter->gate($pageKey, $c->now, 1);
-                    if ($wait > 0) {
-                        foreach ($recorded as $done) {
-                            $limiter->forgive($done);
-                        }
-                        Session::close();
-                        Response::error($limiter->available() ? 429 : 503, 'too many attempts on this page: try again in a moment', ['Retry-After: ' . $wait]);
-                        return;
-                    }
-                }
+                // no limit across addresses (no page gate): it would let a few addresses refuse
+                // a whole class its right codes (M-54); Calendar 6 serves campus networks, and
+                // short codes are pointed out to instructors on the page (PageRenderer::lock)
                 if (PageRenderer::codeMatches($code, PageRenderer::lockCodes($source))) {
                     Session::start($c, true);
                     $unlocked = (array) Session::get('unlocked', []);

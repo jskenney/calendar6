@@ -1059,6 +1059,9 @@ final class PageRenderer
         return array_values(array_filter([$host, explode('.', $host)[0], (string) ($server['SERVER_ADDR'] ?? '')]));
     }
 
+    /** Lock codes shorter than this are pointed out to instructors (M-54). */
+    public const STRONG_CODE = 8;
+
     /** <lock code="a,b">: a shared code unlocks the section; otherwise a form takes its place. */
     private function lock(string $html): string
     {
@@ -1070,7 +1073,11 @@ final class PageRenderer
                 }
             }
             if ($this->viewer->instructor) {
-                return $inner;
+                // short codes are pointed out: only per-address limits slow guessing, so on a
+                // server reachable from the internet many addresses could guess them (M-54)
+                $short = array_values(array_filter($codes, static fn (string $c): bool => mb_strlen($c, 'UTF-8') < self::STRONG_CODE));
+                return ($short === [] ? '' : '<p class="cal6-error">lock: ' . htmlspecialchars(implode(', ', array_map(static fn (string $c): string => '"' . $c . '"', $short)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    . ' has fewer than ' . self::STRONG_CODE . ' characters: fine on a campus network, guessable on a server reachable from the internet</p>') . $inner;
             }
             return '<form class="cal6-lock" method="post" action="' . htmlspecialchars($this->baseUrl . $this->softwarePath . 'php/html.php?file=' . rawurlencode($this->lockKey) . ($this->lockQuery !== '' ? '&' . $this->lockQuery : '')) . '">'
                 . '<input type="hidden" name="csrf" value="' . htmlspecialchars($this->csrf) . '">'

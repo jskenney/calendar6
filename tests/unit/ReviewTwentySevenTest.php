@@ -14,7 +14,7 @@ use Cal6\Render\PageRenderer;
 use Cal6\Tests\Fixture;
 use Cal6\Tests\TestCase;
 
-/** Review 27's fixes: M-53, L-159..L-164 (T-34). */
+/** Review 27's fixes: M-53, M-54, L-159..L-165 (T-34). */
 final class ReviewTwentySevenTest extends TestCase
 {
     private string $dir = '';
@@ -83,6 +83,19 @@ final class ReviewTwentySevenTest extends TestCase
         $page = $this->render($course, 'class_1/srcdoc.html');
         $this->assertNotContains('SECRET', $page, "a srcdoc's open block beside another value's (L-160)");
         $this->assertContains('After', $page);
+    }
+
+    public function testShortLockCodesArePointedOutToInstructors(): void
+    {
+        $this->dir = Fixture::course([
+            'config/security.ini' => "class = always\n",
+            'class/01.Introduction/short.html' => '<lock code="1234, long-enough-code">A</lock><lock code="eightchr">B</lock>',
+        ]);
+        $course = Course::load($this->dir);
+        $page = $this->render($course, 'class_1/short.html', Viewer::account($course->config, 'prof'));
+        $this->assertContains('<p class="cal6-error">lock: &quot;1234&quot; has fewer than 8 characters', $page, 'a short code is pointed out (M-54)');
+        $this->assertSame(1, substr_count($page, 'cal6-error'), 'codes of 8 characters or more are not');
+        $this->assertNotContains('cal6-error', $this->render($course, 'class_1/short.html'), 'only to instructors');
     }
 
     public function testTheSweepCanNotBeFooledAndHasALimit(): void

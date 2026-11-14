@@ -602,7 +602,7 @@ is `404` here.
 | `<form class="cal6-lock" method="post" action="/…/calendar/php/html.php?file=KEY"><input type="hidden" name="csrf" value="…"><label>Enter the code to see this section <input type="password" name="lock" autocomplete="off"></label><button type="submit">Unlock</button></form>` | a `<lock>` section not yet unlocked | submit with `fetch` (see 10.5). The label and button text come from `language.ini` (`lock_prompt`, `lock_button`) |
 | `<details class="cal6-student"><summary>Show answer</summary>…</details>` | `<student>…</student>` | works as is; content is sent to everyone, hidden only visually. The summary text comes from `language.ini` (`show_answer`) |
 | `<pre class="cal6-ace"><code>…</code></pre>` | legacy `<ace>` blocks | style as code |
-| `<p class="cal6-error">…</p>` | instructors only: a `<calphp>` script that is missing or failed | show it |
+| `<p class="cal6-error">…</p>` | instructors only: a `<calphp>` script that is missing or failed, or a lock code shorter than 8 characters (written above the lock's content) | show it |
 | `id` on `<a name="x">` (becomes `<a id="x" name="x">`) and on Markdown headings | anchors | build an in-page menu from them; `#x` links work within the page |
 
 Math (`\( \)`, `\[ \]`, `$$ $$`) is left as written for MathJax; code blocks for highlight.js.
@@ -613,7 +613,7 @@ Math (`\( \)`, `\[ \]`, `$$ $$`) is left as written for MathJax; code blocks for
 |---|---|
 | right or wrong code, valid token | `303 See Other`, `Location: …/calendar/php/html.php?file=KEY&…` (the page's own query, its `<url>` values, is kept in the form's `action` and in `Location`; fetch it to get the page, now unlocked if the code was right) |
 | missing or expired token (tokens last 1–2 hours), or a cross-site POST | 403 |
-| too many wrong codes (per address and page, per address, and, once a page has had many wrong codes from anywhere, one attempt per second on that page) | 429 with `Retry-After` (503 if attempts can not be counted) |
+| too many wrong codes from one address (per address and page, and per address; no limit is shared across addresses) | 429 with `Retry-After` (503 if attempts can not be counted) |
 
 A right code is remembered in the session (one is created then) and opens every `<lock>` with
 that code on every page until logout or the session ends.
