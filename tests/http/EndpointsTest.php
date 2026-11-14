@@ -781,6 +781,7 @@ MD;
         file_put_contents("$web/course.ini", "[course]\nroot = course\n");
         $this->assertSame(200, $client->get('calendar/php/config.php')->status, 'a course inside the web directory is accepted (the instructor\'s choice)');
         rename("$web/course/config", "$this->dir/config");
+        Fixture::remove("$web/course"); // with the private directory made for it (T-34)
         file_put_contents("$web/course.ini", "[course]\nroot = $this->dir\n");
         $this->assertSame(200, $client->get('calendar/php/config.php')->status);
     }
@@ -968,6 +969,9 @@ MD;
         $this->assertSame('07:00-07:40', $data->periods->zero->times->{'0'} ?? null);
         unlink("$this->dir/config/periods.ini");
         $this->assertTrue(is_object(json_decode($client->get('calendar/php/config.php')->body, false)->periods ?? null), 'no periods.ini: {}');
+        file_put_contents("$this->dir/config/config.ini", (string) preg_replace('/^\[types\]\n(?:[^\[\n].*\n|\n)*/m', "[types]\n\n", (string) file_get_contents("$this->dir/config/config.ini")));
+        $body = $client->get('calendar/php/config.php')->body;
+        $this->assertTrue(is_object(json_decode($body, false)->types ?? null), 'no types: {} (L-163)');
     }
 
     public function testLoginFailsClosedWithoutRateLimiter(): void

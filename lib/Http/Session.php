@@ -92,13 +92,31 @@ final class Session
                 if ($excess <= 0) {
                     break;
                 }
-                if (str_contains((string) @file_get_contents($file, false, null, 0, 65536), '"user";s:')) {
+                // up to twice MAX_FILES, logins are kept; beyond that the oldest go whatever they
+                // hold, so the directory has a hard limit (L-161)
+                if ($excess <= self::MAX_FILES && self::holdsLogin((string) @file_get_contents($file, false, null, 0, 65536))) {
                     continue;
                 }
                 @unlink($file);
                 $excess--;
             }
         }
+    }
+
+    /**
+     * Whether stored session data holds a login: this module's own entry ("cal6|" and its
+     * serialized array, PHP's default session format) read as data, with a user name in it.
+     * A user name can't be faked by text in another value (a stored URL holding '"user";s:',
+     * L-161), and the data is never turned into objects.
+     */
+    private static function holdsLogin(string $data): bool
+    {
+        $prefix = self::KEY . '|';
+        if (!str_starts_with($data, $prefix)) {
+            return false;
+        }
+        $value = @unserialize(substr($data, strlen($prefix)), ['allowed_classes' => false, 'max_depth' => 8]);
+        return is_array($value) && is_string($value['user'] ?? null) && $value['user'] !== '';
     }
 
     /**

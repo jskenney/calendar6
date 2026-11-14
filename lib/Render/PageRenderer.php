@@ -241,13 +241,52 @@ final class PageRenderer
                 return $out; // never closed: to the end
             }
             [$found, $at] = $m[0];
-            // a block tag ends the comment just before it, and stays; a comment end is removed
-            $pos = $found[0] === '<' ? $at : $at + strlen($found);
+            if ($found[0] === '<') {
+                // a comment holding a block tag: removed up to whichever ends later, the comment
+                // or the block (nesting counted, the page's end if never closed), and over every
+                // block opened in that range: comment text is never revealed (M-53), and no
+                // block's opening tag goes while its content stays (M-52)
+                $end = preg_match('/--!?>/', $text, $e, PREG_OFFSET_CAPTURE, $from) ? $e[0][1] + strlen($e[0][0]) : $length;
+                $pos = self::extendOverBlocks($text, $start, $end);
+            } else {
+                $pos = $at + strlen($found);
+            }
             if ($pos >= $length) {
                 return $out;
             }
         }
         return $out . substr($text, $pos);
+    }
+
+    /**
+     * The end of a range that starts at $start and ends at $end at least: moved on past the
+     * close of every block opened in it (nesting counted; the text's end for one never closed),
+     * until no block opened in the range closes after it. Hiding the range then never removes a
+     * block's opening tag while its content goes out (M-53, L-159).
+     */
+    private static function extendOverBlocks(string $text, int $start, int $end): int
+    {
+        // one pass over the block tags from $start, nesting counted per name (a close with
+        // none open is ignored): the range ends at the first point at or after $end where no
+        // block is open, the text's end if there is none; linear however blocks are nested
+        $length = strlen($text);
+        $depth = ['inst' => 0, 'lock' => 0, 'postmeeting' => 0, 'host' => 0];
+        $at = $start;
+        while (preg_match('/<(\/?)(inst|lock|postmeeting|host)(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', $text, $m, PREG_OFFSET_CAPTURE, $at)) {
+            if ($m[0][1] >= $end && array_sum($depth) === 0) {
+                return $end;
+            }
+            $name = strtolower($m[2][0]);
+            $depth[$name] = max(0, $depth[$name] + ($m[1][0] === '' ? 1 : -1));
+            $at = $m[0][1] + max(1, strlen($m[0][0]));
+            if ($at >= $end && array_sum($depth) === 0) {
+                return $at;
+            }
+        }
+        if (preg_last_error() !== PREG_NO_ERROR) {
+            self::failed();
+        }
+        return array_sum($depth) === 0 ? min($end, $length) : $length;
     }
 
     /** <inject> and <codeinject> in a Markdown page, with the checks of injects() (by plain scan). */
@@ -715,6 +754,7 @@ final class PageRenderer
             $at = 0;
             $open = [];
             $openInSrcdoc = [];
+            $cut = $cutInSrcdoc = null; // where $new stood after the first value that left a block open
             foreach (HtmlLexer::attributes($tag) as [$name, $start, $end]) {
                 if ($start < 0) {
                     continue;
@@ -739,25 +779,46 @@ final class PageRenderer
                 }
                 $new .= substr($tag, $at, $start - $at) . $hidden;
                 $at = $end;
+                // with the value's closing quote, if any
+                $quote = $start > 0 && in_array($tag[$start - 1], ['"', "'"], true) && ($tag[$end] ?? '') === $tag[$start - 1] ? $tag[$start - 1] : '';
+                if ($open !== [] && $cut === null) {
+                    $cut = $new . $quote;
+                }
+                if ($openInSrcdoc !== [] && $cutInSrcdoc === null) {
+                    $cutInSrcdoc = $new . $quote;
+                }
             }
-            $out .= substr($html, $pos, $token[1] - $pos) . $new . substr($tag, $at);
+            $before = substr($html, $pos, $token[1] - $pos);
             $pos = $token[2];
-            if ($open === [] && $openInSrcdoc !== [] && $this->continuationEnd($html, $pos, $openInSrcdoc, $place) !== null) {
-                $close = preg_match('/<\/iframe(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', $html, $m, PREG_OFFSET_CAPTURE, $pos) ? $m[0][1] : strlen($html);
-                $range = $this->hideValue(implode('', array_map(static fn (array $o): string => $o[0] . '>', $openInSrcdoc)) . substr($html, $pos, $close - $pos), $place);
-                $out .= str_contains($range, '<') ? '' : $range; // fallback content: text at most
-                $pos = $close;
+            $srcdocHidden = $openInSrcdoc !== [] && $this->continuationEnd($html, $pos, $openInSrcdoc, $place) !== null;
+            $end = $open !== [] ? $this->continuationEnd($html, $pos, $open, $place) : null;
+            $rest = substr($tag, $at);
+            if ($srcdocHidden || $end !== null) {
+                // the rest of the tag after that value is inside the block too, as a plain scan
+                // reads it (<p title="<inst>" SECRET>): left out, the tag's ">" kept (L-165)
+                $kept = array_filter([$end !== null ? $cut : null, $srcdocHidden ? $cutInSrcdoc : null], 'is_string');
+                usort($kept, static fn (string $a, string $b): int => strlen($a) <=> strlen($b));
+                $new = $kept[0];
+                $rest = str_ends_with($tag, '>') ? '>' : '';
             }
-            if ($open !== [] && ($end = $this->continuationEnd($html, $pos, $open, $place)) !== null) {
-                // an end inside a later tag (a closing tag written in its quoted value) takes the
-                // whole tag along, so no part of it goes out unprocessed (L-142)
-                $end = self::tokenEndAround($tokens, $end);
+            $out .= $before . $new . $rest;
+            if ($srcdocHidden || $end !== null) {
                 // blocks opened in values and not closed there (a quoted ">" ended the tag early:
                 // <p title="<inst title=">">S</inst>) go on in the page up to their own ends, as a
                 // plain scan reads them counting nesting, or to the end of the page: fail closed
-                // (L-136, L-139). Only when one of them is hidden from this viewer; the range is
-                // handled once, and its visible parts are hidden in again (L-138)
-                $range = $this->hideValue(implode('', array_map(static fn (array $o): string => $o[0] . '>', $open)) . substr($html, $pos, $end - $pos), $place);
+                // (L-136, L-139); a block left open in a srcdoc goes on through the iframe's own
+                // content, to </iframe> (L-154), also beside another value's block (L-160). Only
+                // when one of them is hidden from this viewer; the range is handled once, and its
+                // visible parts are hidden in again (L-138)
+                if ($srcdocHidden) {
+                    $iframeEnd = preg_match('/<\/iframe(?=[\t\n\f\r \/>]|$)[^>]*(?:>|$)/i', $html, $m, PREG_OFFSET_CAPTURE, $pos) ? $m[0][1] : strlen($html);
+                    $end = max($end ?? $pos, $iframeEnd);
+                }
+                // an end inside a later tag takes the whole tag along (L-142), and the range goes
+                // on past every block opened in it, so no opening tag goes while its content
+                // stays (L-159)
+                $end = self::extendOverBlocks($html, $pos, self::tokenEndAround($tokens, $end));
+                $range = $this->hideValue(implode('', array_map(static fn (array $o): string => $o[0] . '>', [...$open, ...($srcdocHidden ? $openInSrcdoc : [])])) . substr($html, $pos, $end - $pos), $place);
                 $out .= $depth < 3 ? $this->hideInAttributes($range, $place, $depth + 1) : (str_contains($range, '<') ? '' : $range);
                 $pos = $end;
             }

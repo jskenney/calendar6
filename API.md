@@ -316,7 +316,7 @@ the calendar), and when the server software is updated (`version.software`).
 | `period` | string | the default period schedule's name |
 | `periods` | object | schedule name → `label` and `times`: period name → `"HH:MM-HH:MM"`, or `"cancelled"` (the period exists but does not meet on that schedule). Period names are strings (`"1"`, `"X"`, `"10"`) |
 | `sections` | array | each section: `section` (its number, a string), `meetings` (`meets`: weekday letters `M T W R F S U` then period names, e.g. `MF1`, `R34`; `type`: the event type; `room`), and `instructor` (comma-separated names). Sections are information: a meeting on a weekday that has no event of its type in `schedule` (say `R34` when Thursday has no class) never shows up in `calendar.php` |
-| `types` | object | event type → `label`, in the course's order |
+| `types` | object | event type → `label`, in the course's order (`{}` when `[types]` is empty, L-163) |
 | `boxes` | array | the boxes in display order, `box` (id) and `label` |
 | `start` | string | where the site opens (`pages.ini` `[start]`): a page's name (a key of `pages`) or `"calendar"`; `"calendar"` when not set. If the start page is hidden from the viewer (`calendar.php` gives it a title only), open the calendar instead |
 | `pages` | array | the course's pages in menu order: `page` (name, the key into `calendar.php`'s `pages`) and `label` |
@@ -654,7 +654,7 @@ other tags and links are handled with code set aside: `<inject>`, `<calphp>`, `<
 | `<postmeeting>…</postmeeting>`, `<host server>…</host>` | the content without the tags when the viewer may see it (as in `html.php`), otherwise nothing |
 | `<lock>…</lock>` | **always removed, tags and content, for every viewer (instructors too).** Lock codes are not available through `md.php`; a page that needs them must be shown through `html.php` |
 | `<student>…</student>` | the content, without the tags |
-| `<!-- … -->` | removed, everywhere (code included); one never closed runs to the end |
+| `<!-- … -->` | removed, everywhere (code included); one never closed runs to the end. A comment that holds a block tag (`<inst>`, `<lock>`, `<postmeeting>`, `<host>`) is removed up to that block's end if it ends later (the page's end if it never closes), for every viewer: so `<!-- put this in <inst> tags -->` hides the rest of the page; write `&lt;inst>` in comments |
 | `srcdoc` attributes in HTML written in the page (outside code) | removed |
 | `<inject src="part.md">` (or another file) | that file's text, processed the same way (its own place decides its blocks; its links are rewritten from its own directory) |
 | `<codeinject src="x">` | a fenced code block with the file's source (a page's source without what the viewer may not see) |

@@ -309,6 +309,21 @@ final class CourseConfig
         if ($config->periods->schedules !== [] && !isset($config->periods->schedules[$config->defaultPeriod])) {
             $config->problems[] = new Problem("[course] period: no such period schedule in periods.ini: $config->defaultPeriod", 'config.ini');
         }
+        // a meeting in a period no period schedule has would be marked cancelled every time (L-162)
+        if ($config->periods->schedules !== []) {
+            $known = [];
+            foreach ($config->periods->schedules as $schedule) {
+                $known += $schedule['periods'];
+            }
+            foreach ($config->sections->sections as $name => $section) {
+                foreach ($section['meetings'] as $meeting) {
+                    $missing = array_diff($meeting['periods'], array_map('strval', array_keys($known)));
+                    if ($missing !== []) {
+                        $config->problems[] = new Problem("[$name] meets = {$meeting['meets']}: no period schedule has period " . implode(', ', $missing), 'sections.ini');
+                    }
+                }
+            }
+        }
         return $config;
     }
 

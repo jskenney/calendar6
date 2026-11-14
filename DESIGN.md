@@ -342,8 +342,10 @@ instructor = JONES
 room       = HP132, HP301    ; one room per entry of meets: Thursday's R34 meets in HP301
 ```
 
-- Periods are read greedily as `X`, `10`, then single digits, `0` too when `periods.ini` has a
-  period 0 (`T910` is 9 and 10; L-153).
+- Periods are read greedily as `X`, `10`, then single digits, `0` included (`T910` is 9 and 10;
+  L-153). A meeting in a period that no period schedule in `periods.ini` has is listed as a
+  problem for the instructor (L-162); a period missing from only the day's schedule is that
+  day's cancelled meeting.
 - `room`: one room for every meeting, or one per entry of `meets`, in order (Decided). A count
   that matches neither is listed as a problem for the instructor.
 - `instructor` is a display name (several: `SMITH, LEE`); it does not have to be a user in
@@ -532,6 +534,23 @@ This section keeps the design decisions behind them.
   `valid` window does, and when the account's `password_hash` changes (a reset after a leak ends
   every session of that account at once, L-100).
 
+### `html.php`: lock-code limits (DOC-54)
+
+- Wrong lock codes count against `[users] login_attempts` (5 per 15 minutes in the template),
+  over the same window: per address and page four times that (20), per address twenty times
+  that (100); an IPv6 address counts per /64 network. A right code is never counted.
+- **Page gate:** once a page has had twenty times that many wrong codes (100) from anywhere in
+  the window, its codes pass **one per second** for everyone (others get `429` with
+  `Retry-After` at once), so many addresses together can not try codes quickly.
+- **Open trade-off (M-54, the owner's decision):** a gated page is slow for the whole class at
+  once: a few addresses guessing keep it at one attempt per second, so students entering the
+  right code in class meet `429`s. The choices are to exempt logged-in viewers and allow a small
+  burst per second, to drop the page gate (keeping the per-address limits), or to keep it and
+  use longer codes. Until decided, short codes on pages a class opens together are the weak
+  case.
+- `503` when the attempts can not be counted (the private temporary directory is unusable):
+  codes fail closed, like logins.
+
 ### `calendar.php`: caching
 
 **Caching (Decided: cache when possible):**
@@ -696,7 +715,10 @@ removed for viewers who may not see it, and its tags go in any case (L-79). A bl
 `<p title="<inst x=">">S</inst>`, also in an end tag) goes on in the page as a plain scan reads
 it, nesting counted, up to its own closing tag, or to the end of the page if there is none:
 fail closed, so a stray `title="use <inst>"` hides the rest of the page from students
-(L-136, L-138..L-140). Comments and the
+(L-136, L-138..L-140). The rest of that tag goes too (its later attributes, as a plain scan reads
+them, are inside the block; the tag's `>` stays, L-165), and the hidden range goes on past the
+end of every block opened in it (L-159); a block left open in a `srcdoc` goes on to `</iframe>`
+(L-154, L-160). Comments and the
 doctype inside a `<textarea>`, `<xmp>` or `<title>` (not one inside `<svg>`) are text the
 reader sees, so they stay, unless they hold a block tag (L-82, L-89). Blocks of one tag
 nested more than 256 deep are removed with their content.
@@ -708,7 +730,11 @@ wherever a link says. Use `<url>` in text, or after a fixed path (`href="notes.h
 `<inject>` does not follow cycles and stops after about 4 MB of injected text; the Markdown
 converter nests quotes and lists at most 16 deep and emphasis spans at most 1000 characters.
 **In Markdown**, HTML comments are removed from the source before it is converted (outside code),
-and a block tag (`<inst>`, `<lock>`, `<postmeeting>`, `<host>`, `<student>`) on its own line is
+read by a plain scan; a comment that holds a block tag is removed up to whichever ends later,
+the comment or that block (nesting counted; the end of the page if the block is never closed),
+for every viewer: neither commented-out text nor a block's content comes out (M-52, M-53). So a
+comment that only mentions a tag (`<!-- put this in <inst> tags -->`) hides the rest of the
+page in `md.php`; write `&lt;inst>` in a comment. And a block tag (`<inst>`, `<lock>`, `<postmeeting>`, `<host>`, `<student>`) on its own line is
 HTML however far it is indented, so an indented `<inst>` still hides. Code shows what is written:
 an `<inst>` inside a fenced code block (or a code span) is shown as code, so to hide a code
 block, put `<inst>` and `</inst>` on lines of their own around the fence. Image alt text, link
@@ -1060,7 +1086,8 @@ The plan:
   (`<temp>/cal6-<uid>-<hash>/sessions`) when it can, so another application's cleanup does not
   end them early. Calendar 6 sweeps that directory itself (expired files, and the oldest beyond
   20000 that hold no login: anyone can create anonymous sessions, and must not push real logins
-  out, L-157), since PHP's own cleanup is often off, and a read-only request with an unknown session
+  out, L-157; a login is the session's own user entry read as data, which text stored in the
+  session can not fake, and beyond 40000 the oldest go whatever they hold, L-161), since PHP's own cleanup is often off, and a read-only request with an unknown session
   id creates no new session (L-72).
 - **One origin, many courses:** courses on one host (`/~bob/AB123/`, `/~ann/CD456/`) each have
   their own login: the session cookie is named after the course directory and limited to its

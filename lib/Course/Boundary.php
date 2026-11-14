@@ -136,7 +136,12 @@ final class Boundary
         if (in_array($extension, ['html', 'htm', 'md'], true)) {
             return false; // x.html.md is a page, processed by html.php
         }
-        // a served type that is not text is that (report.html.pdf); a text one is the source
+        // a served type that is not text is that (report.html.pdf); a text one is the source,
+        // and so is a compressed copy (x.html.gz) or one in a format that holds the text as
+        // it is (x.html.rtf, x.html.mht; L-164)
+        if (in_array($extension, ['gz', 'z', 'bz2', 'xz', 'lz', 'lzma', 'br', 'zst', 'ps', 'eps', 'ai', 'rtf', 'mht', 'mhtml', 'obj'], true)) {
+            return true;
+        }
         return !Download::isKnownType($extension) || Download::isText($extension);
     }
 }

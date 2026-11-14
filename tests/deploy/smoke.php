@@ -69,7 +69,10 @@ check($status === 200 && $body !== '', 'html.php serves the page');
 $path = (string) parse_url($base, PHP_URL_PATH);
 preg_match_all('#(?:src|action)="([^"]*(?:get|html)\.php[^"]*)"#', $body, $written);
 check($written[1] !== [] && array_filter($written[1], static fn (string $u): bool => !str_starts_with(html_entity_decode($u), $path . $sw . 'php/')) === [], 'written URLs start with ' . $path . $sw . 'php/ (' . count($written[1]) . ')');
-if (preg_match('/<form class="cal6-lock" method="post" action="([^"]+)">.*?name="csrf" value="([^"]+)"/s', $body, $form)) {
+// course-setup.sh puts a lock in the page: its form must be there (T-34)
+$hasForm = preg_match('/<form class="cal6-lock" method="post" action="([^"]+)">.*?name="csrf" value="([^"]+)"/s', $body, $form) === 1;
+check($hasForm, 'html.php shows the lock form');
+if ($hasForm) {
     $lock = curl_init((str_starts_with($base, 'https') ? 'https://' : 'http://') . parse_url($base, PHP_URL_HOST) . (($p = parse_url($base, PHP_URL_PORT)) ? ":$p" : '') . html_entity_decode($form[1]));
     curl_setopt_array($lock, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_PROXY => '', CURLOPT_NOPROXY => '*', CURLOPT_POSTFIELDS => http_build_query(['lock' => 'wrong', 'csrf' => $form[2]])]);
     $answer = (string) curl_exec($lock);

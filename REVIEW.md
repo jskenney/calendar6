@@ -13,10 +13,9 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. **M-53** and **L-159**, **L-160**: regressions of the review-26 hiding fixes; fail closed again.
-2. **M-54**: the lock-code page gate; the owner chooses the trade-off.
-3. L-161..L-164, DOC-54, T-34.
-4. Other **E** items; E-1 (the front end) is the next big piece of work.
+1. **M-54**: the lock-code page gate; the owner chooses the trade-off (DESIGN.md, "html.php: lock-code limits").
+2. A new review of the review-27 fixes.
+3. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -30,31 +29,19 @@ None open.
 
 | ID | Found | Where | Finding | Suggestion |
 |---|---|---|---|---|
-| M-53 | 27 | `lib/Render/PageRenderer.php:237`, `:245` (`plainComments`) | **Regression from M-52: md.php sends commented-out text after a block tag in the comment to everyone.** The comment now ends before the block tag, the block is hidden, and the rest of the comment becomes text: `<!-- old draft:` `<inst>key: B</inst>` `DRAFT-SECRET: answer is C` `-->` gives "DRAFT-SECRET: answer is C -->" to anonymous viewers (html.php hides it; `8711989` did too); 193 of 3,000 fuzzed documents. A comment that only mentions a tag (`<!-- put this in <inst> tags -->`) now hides the rest of the page (for everyone with `<lock>`). Reproduced on php -S and Apache+FPM. | Removing a comment must never reveal comment text: when a comment holds an opening block tag, remove up to whichever ends later, the comment or that block (nesting counted; the page end if unclosed); tests for both cases. |
 | M-54 | 27 | `lib/Endpoint/HtmlEndpoint.php:132-145` | **New with L-158: about 45 addresses can stop a class from unlocking a page.** The page gate runs before the code is checked, so right codes are refused too, and a refused request forgives the attacker's counters; once the gate is on, the attacker's one attempt per second wins the race and students get 429 (reproduced). Each place of a page has its own gate (duplicates, virtual copies, pages sharing a code). Not in DESIGN. | Owner to decide the trade-off: exempt logged-in viewers, allow a small burst per second, key the gate by the page's real file or code set; document it. |
 
 ## Low
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| L-159 | 27 | `PageRenderer.php:115`, `:200`, `:745-762` | Regression from L-154: a continuation range can take a real block opening whose close lies outside it: `<p title="<lock code=x>">Hint</p>` `<inst>Answer</lock> key 42</inst>` sends " key 42" to anonymous viewers (html.php and md.php; `8711989` failed closed); 135 of 3,000 fuzz cases. Needs crossed blocks (two author mistakes). | Extend the range to the close of every block opened inside it, repeating until stable, or to the page end. |
-| L-160 | 27 | `PageRenderer.php:745` | L-154 incomplete: the srcdoc continuation is skipped when another attribute of the tag leaves a visible block open: `<iframe title="<host server=thishost>" srcdoc="<inst>">SECRET</inst></iframe>` sends SECRET. | Check the srcdoc case independently. |
-| L-161 | 27 | `lib/Http/Session.php:95` | New with L-157: anonymous sessions can look like logins (a remembered `<url>` value such as `"user";s:` lands in the session file), so the sweep keeps them and session files grow without limit for the session lifetime; each sweep also reads every kept file. Student accounts can do the same by logging in repeatedly. Reproduced. | Mark logins in a way page content can not forge (a marker file written at login, or a separate directory); keep a hard cap. |
-| L-162 | 27 | `lib/Schedule/Sections.php:97` | Side effect of L-153: `meets = MF0` with no period 0 is no longer a problem; calendar.php marks every such meeting cancelled. | Report a meets entry naming a period no schedule has. |
-| L-163 | 27 | `lib/Endpoint/ConfigEndpoint.php:95` | L-153 incomplete: an empty `[types]` gives `"types": []`. | Cast to an object. |
-| L-164 | 27 | `lib/Course/Boundary.php:140` | L-152 remainder: `index.html.gz` (a precompressed build of the page, i.e. its source) and copies with text formats under non-text types (`.ps`, `.eps`, `.ai`, `.rtf`, `.mht`, `.obj`) are still served when linked. (A deliberate `example.html.txt` is now refused; tell instructors.) | Treat compressed and text-format copies of a page as backups. |
+None open.
 
 ## Documentation
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| DOC-54 | 27 | `DESIGN.md` | No section on lock-code limits (the page gate and its trade-off are only in API.md's table); DESIGN's period-0 condition ("when periods.ini has a period 0") is not what the code does. | Document; correct with L-162. |
+None open.
 
 ## Testing
 
-| ID | Found | Where | Finding | Suggestion |
-|---|---|---|---|---|
-| T-34 | 27 | `tests/http/EndpointsTest.php:778-786`; `tests/deploy/smoke.php:72` | `testCourseIniFindsTheCourse` leaves a private cache directory per run (its course in `$web/course`); the smoke test skips the lock-form check silently when no form is found; no tests for M-53, L-159, L-160, L-161. | Clean up; fail when the form is missing; tests with the fixes. |
+None open.
 
 ## Enhancements
 
@@ -384,6 +371,16 @@ None open.
 | T-31 | 25 | `1249426` | `testDropdownTypes` calls `start()` three times and tears down only the last: every run leaks two php -S servers, two courses with their web directories, caches and logs in /tmp. | `start()` stops the previous server and removes the previous course (checking its PHP errors); `Server::stop()` is idempotent. No more leaks per run. |
 | T-32 | 25 | `1249426` | The smoke test checks neither the cookie path, nor that written URLs start with `<base>calendar/php/`, nor the lock 303; no tests for L-148, L-149 or an unreadable course.ini; `testCourseIniFindsTheCourse` writes `course.ini` into the repository itself (on a shared install it would briefly serve the test course everywhere, see L-147). | The smoke test checks the cookie path, that written URLs start with the web directory's software path, and the lock form's 303 (passes on Apache); the inner-course.ini test no longer writes into the repository (L-147, unit test with temporary directories). |
 | T-33 | 26 | `1249426` | No tests for M-52, backups with text extensions, svg/html/xhtml attachments and extensionless `text/plain`, the JSON shape of empty or 0-based maps, `plainComments` linearity, announcement windows through the cache (the test uses `at=` previews, which skip it). | Tests for M-52, text-type backups, svg/html/xhtml/xml attachments and extensionless text/plain, JSON shapes of empty and 0-based maps, comment-scan linearity, announcement windows through the cache, and the fixes above. |
+| M-53 | 27 | (this commit) | **Regression from M-52: md.php sends commented-out text after a block tag in the comment to everyone.** The comment now ends before the block tag, the block is hidden, and the rest of the comment becomes text: `<!-- old draft:` `<inst>key: B</inst>` `DRAFT-SECRET: answer is C` `-->` gives "DRAFT-SECRET: answer is C -->" to anonymous viewers (html.php hides it; `8711989` did too); 193 of 3,000 fuzzed documents. A comment that only mentions a tag (`<!-- put this in <inst> tags -->`) now hides the rest of the page (for everyone with `<lock>`). Reproduced on php -S and Apache+FPM. | md.php's comment scan removes a comment that holds a block tag up to whichever ends later, the comment or the block (nesting counted, over every block opened in that range; the page's end if never closed), for every viewer: no comment text and no block content comes out. A comment that only mentions a tag hides the rest of the page (documented in DESIGN.md and API.md). Linear. html.php keeps the browser's reading (`<!--<inst>-->text</inst>` shows the text, as an author un-hiding a block means); 3,000 fuzz cases with secrets inside `<inst>` show no other leak. Tests (draft in a comment, html and md, anonymous and instructor; the mention case). |
+| L-159 | 27 | (this commit) | Regression from L-154: a continuation range can take a real block opening whose close lies outside it: `<p title="<lock code=x>">Hint</p>` `<inst>Answer</lock> key 42</inst>` sends " key 42" to anonymous viewers (html.php and md.php; `8711989` failed closed); 135 of 3,000 fuzz cases. Needs crossed blocks (two author mistakes). | A continuation range goes on past the close of every block opened in it, in one linear pass (nesting counted per tag, the page's end if a block is never closed). Tests (crossed blocks in html and md; 30,000 nested blocks). |
+| L-160 | 27 | (this commit) | L-154 incomplete: the srcdoc continuation is skipped when another attribute of the tag leaves a visible block open: `<iframe title="<host server=thishost>" srcdoc="<inst>">SECRET</inst></iframe>` sends SECRET. | The srcdoc continuation is checked on its own and combined with another value's: the range runs to the later of both ends. Test. |
+| L-161 | 27 | (this commit) | New with L-157: anonymous sessions can look like logins (a remembered `<url>` value such as `"user";s:` lands in the session file), so the sweep keeps them and session files grow without limit for the session lifetime; each sweep also reads every kept file. Student accounts can do the same by logging in repeatedly. Reproduced. | The sweep reads a session's own `cal6|` entry with `unserialize` (no objects) and keeps it only for a non-empty string `user`; beyond twice `MAX_FILES` (40,000) the oldest go whatever they hold. Tests (a forged `"user";s:` in a stored value is evicted; the hard limit). |
+| L-162 | 27 | (this commit) | Side effect of L-153: `meets = MF0` with no period 0 is no longer a problem; calendar.php marks every such meeting cancelled. | A `meets` entry naming a period that no period schedule in periods.ini has is listed as a problem (sections.ini); DESIGN.md's period-0 wording corrected. Test. |
+| L-163 | 27 | (this commit) | L-153 incomplete: an empty `[types]` gives `"types": []`. | `types` is cast to an object (`{}` when empty); API.md says so. Test. |
+| L-164 | 27 | (this commit) | L-152 remainder: `index.html.gz` (a precompressed build of the page, i.e. its source) and copies with text formats under non-text types (`.ps`, `.eps`, `.ai`, `.rtf`, `.mht`, `.obj`) are still served when linked. (A deliberate `example.html.txt` is now refused; tell instructors.) | Copies of a page with a compression extension (`.gz`, `.z`, `.bz2`, `.xz`, `.lz`, `.lzma`, `.br`, `.zst`) or a format that holds its text (`.ps`, `.eps`, `.ai`, `.rtf`, `.mht`, `.mhtml`, `.obj`) are backups; archives (`.zip`) stay downloads. Test. |
+| L-165 | 27 | (this commit) | Found while fixing M-53/L-159 (fuzzing): when an attribute value leaves a hidden block open, the rest of that tag (later attribute names and values, which a plain scan reads as inside the block) was kept: `<p title='<inst>x</inst><inst><p title='SECRET<</inst>` sent SECRET in the page source; also before review 26. | The rest of such a tag is left out (the value's closing quote and the tag's `>` stay). Test. |
+| DOC-54 | 27 | (this commit) | No section on lock-code limits (the page gate and its trade-off are only in API.md's table); DESIGN's period-0 condition ("when periods.ini has a period 0") is not what the code does. | DESIGN.md has a section on lock-code limits (per address and page, per address, the page gate) with the open trade-off M-54; the period-0 wording follows L-162. |
+| T-34 | 27 | (this commit) | `testCourseIniFindsTheCourse` leaves a private cache directory per run (its course in `$web/course`); the smoke test skips the lock-form check silently when no form is found; no tests for M-53, L-159, L-160, L-161. | `testCourseIniFindsTheCourse` removes its course in the web directory with its private directory; smoke.php fails when the lock form is missing (course-setup.sh puts one in); tests for M-53, L-159..L-165. |
 
 ## Reviews
 

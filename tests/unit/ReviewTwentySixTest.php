@@ -54,7 +54,9 @@ final class ReviewTwentySixTest extends TestCase
         ]);
         $course = Course::load($this->dir);
         $this->assertNotContains('42', $this->render($course, 'class_1/m52.md'), 'a comment ends before a block tag in it (M-52)');
-        $this->assertContains('42', $this->render($course, 'class_1/m52.md', Viewer::account($course->config, 'prof')));
+        // the comment as a plain scan reads it ends inside the block: removed with the block, for
+        // instructors too, so neither reading's hidden text comes out (M-53)
+        $this->assertNotContains('42', $this->render($course, 'class_1/m52.md', Viewer::account($course->config, 'prof')));
         $this->assertNotContains('CODE-SECRET', $this->render($course, 'class_1/lock.md'));
         $start = microtime(true);
         $this->assertContains('END', $this->render($course, 'class_1/many.md'));
