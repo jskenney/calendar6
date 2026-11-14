@@ -13,8 +13,10 @@ A running list of code and security findings for the whole project, and their hi
 
 ## Suggested order
 
-1. Review 26's items are fixed; review 27 checks them.
-2. Other **E** items; E-1 (the front end) is the next big piece of work.
+1. **M-53** and **L-159**, **L-160**: regressions of the review-26 hiding fixes; fail closed again.
+2. **M-54**: the lock-code page gate; the owner chooses the trade-off.
+3. L-161..L-164, DOC-54, T-34.
+4. Other **E** items; E-1 (the front end) is the next big piece of work.
 
 ## Critical
 
@@ -26,19 +28,33 @@ None open.
 
 ## Medium
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| M-53 | 27 | `lib/Render/PageRenderer.php:237`, `:245` (`plainComments`) | **Regression from M-52: md.php sends commented-out text after a block tag in the comment to everyone.** The comment now ends before the block tag, the block is hidden, and the rest of the comment becomes text: `<!-- old draft:` `<inst>key: B</inst>` `DRAFT-SECRET: answer is C` `-->` gives "DRAFT-SECRET: answer is C -->" to anonymous viewers (html.php hides it; `8711989` did too); 193 of 3,000 fuzzed documents. A comment that only mentions a tag (`<!-- put this in <inst> tags -->`) now hides the rest of the page (for everyone with `<lock>`). Reproduced on php -S and Apache+FPM. | Removing a comment must never reveal comment text: when a comment holds an opening block tag, remove up to whichever ends later, the comment or that block (nesting counted; the page end if unclosed); tests for both cases. |
+| M-54 | 27 | `lib/Endpoint/HtmlEndpoint.php:132-145` | **New with L-158: about 45 addresses can stop a class from unlocking a page.** The page gate runs before the code is checked, so right codes are refused too, and a refused request forgives the attacker's counters; once the gate is on, the attacker's one attempt per second wins the race and students get 429 (reproduced). Each place of a page has its own gate (duplicates, virtual copies, pages sharing a code). Not in DESIGN. | Owner to decide the trade-off: exempt logged-in viewers, allow a small burst per second, key the gate by the page's real file or code set; document it. |
 
 ## Low
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| L-159 | 27 | `PageRenderer.php:115`, `:200`, `:745-762` | Regression from L-154: a continuation range can take a real block opening whose close lies outside it: `<p title="<lock code=x>">Hint</p>` `<inst>Answer</lock> key 42</inst>` sends " key 42" to anonymous viewers (html.php and md.php; `8711989` failed closed); 135 of 3,000 fuzz cases. Needs crossed blocks (two author mistakes). | Extend the range to the close of every block opened inside it, repeating until stable, or to the page end. |
+| L-160 | 27 | `PageRenderer.php:745` | L-154 incomplete: the srcdoc continuation is skipped when another attribute of the tag leaves a visible block open: `<iframe title="<host server=thishost>" srcdoc="<inst>">SECRET</inst></iframe>` sends SECRET. | Check the srcdoc case independently. |
+| L-161 | 27 | `lib/Http/Session.php:95` | New with L-157: anonymous sessions can look like logins (a remembered `<url>` value such as `"user";s:` lands in the session file), so the sweep keeps them and session files grow without limit for the session lifetime; each sweep also reads every kept file. Student accounts can do the same by logging in repeatedly. Reproduced. | Mark logins in a way page content can not forge (a marker file written at login, or a separate directory); keep a hard cap. |
+| L-162 | 27 | `lib/Schedule/Sections.php:97` | Side effect of L-153: `meets = MF0` with no period 0 is no longer a problem; calendar.php marks every such meeting cancelled. | Report a meets entry naming a period no schedule has. |
+| L-163 | 27 | `lib/Endpoint/ConfigEndpoint.php:95` | L-153 incomplete: an empty `[types]` gives `"types": []`. | Cast to an object. |
+| L-164 | 27 | `lib/Course/Boundary.php:140` | L-152 remainder: `index.html.gz` (a precompressed build of the page, i.e. its source) and copies with text formats under non-text types (`.ps`, `.eps`, `.ai`, `.rtf`, `.mht`, `.obj`) are still served when linked. (A deliberate `example.html.txt` is now refused; tell instructors.) | Treat compressed and text-format copies of a page as backups. |
 
 ## Documentation
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| DOC-54 | 27 | `DESIGN.md` | No section on lock-code limits (the page gate and its trade-off are only in API.md's table); DESIGN's period-0 condition ("when periods.ini has a period 0") is not what the code does. | Document; correct with L-162. |
 
 ## Testing
 
-None open.
+| ID | Found | Where | Finding | Suggestion |
+|---|---|---|---|---|
+| T-34 | 27 | `tests/http/EndpointsTest.php:778-786`; `tests/deploy/smoke.php:72` | `testCourseIniFindsTheCourse` leaves a private cache directory per run (its course in `$web/course`); the smoke test skips the lock-form check silently when no form is found; no tests for M-53, L-159, L-160, L-161. | Clean up; fail when the form is missing; tests with the fixes. |
 
 ## Enhancements
 
@@ -399,6 +415,7 @@ None open.
 | 24 | 2026-11-11 | `e7c55fc` | an **independent** review of the new `md.php` (`87b16f2`) and the L-138..L-141 rework (`44998f4`): 2,100 differential md.php fuzz cases converted by marked and markdown-it (`html:true`) and checked in Chromium against html.php; 34 hand cases and inject/codeinject probes (config/, auth/, .php, dot files, /etc, calendar/lib, hidden boxes: all refused or hidden); 23 adversarial 0.2-1.2 MB pages (linear); 6,300 hideInAttributes cases against Chromium and 16 scaling runs up to 1.8 MB (linear, no duplicated text). M-50 reproduced over HTTP and in Chromium. Nothing reads config/, auth/, code or files outside the course | M-50, L-142..L-146, DOC-43, T-30 |
 | 25 | 2026-11-13 | `522b4d1` | an **independent** full review after the `course.ini` layout (E-14, `a04ca1f`) and the review-24 fixes (`4ca75df`): Locator, Boundary, Session and the endpoints read line by line; 142 tests; Apache+FPM and nginx+FPM deployments built and smoke-tested (all pass) and probed with ~25 path variants each (no way found to make the server write URLs or set cookies elsewhere); ~20 php -S layout probes (relative, renamed, missing and unreadable course.ini, root = web directory, a shared repository with an inner course.ini, special characters); md.php `<url>` contexts converted with marked 12 and markdown-it 14; previews and `valid_until` live; API.md 2 and 8a, DESIGN, README and template docs against the code. Nothing reads config/, auth/, code or files outside the course in a correct deployment | M-51, L-147..L-151, DOC-45, DOC-46, T-31, T-32 |
 | 26 | 2026-11-14 | `51c6b88` | an **independent** security and API review after `522b4d1..51c6b88` (security.ini, pages.ini `[start]`, language.ini, announcements.ini, the MIME table, the M-51 fix): changed lib/ and Boundary, Download, Session, Auth, the endpoints and PageRenderer read line by line; 32,000 html.php cases against Chromium (no leaks) and 41,000 Markdown documents through md.php and html.php converted by marked and markdown-it; Apache+FPM and nginx+FPM deployments (smoke tests pass; M-52 and L-152 reproduced on Apache); ~15 path probes and ~40 live API probes against API.md 4-9; scaling runs. MIME inline set, language.ini and announcement escaping, `[start]`, the security.ini fail-closed rename, M-51 references, calendar.php cache per viewer and section and `valid_until` re-encoding found sound | M-52, L-152..L-158, DOC-52, DOC-53, T-33 |
+| 27 | 2026-11-14 | `2e3b6f9` | an **independent** security and API review of the review-26 fixes (`8711989..2e3b6f9` read line by line, with PageRenderer, HtmlEndpoint, RateLimiter, Session, AuthEndpoint, Boundary/Download, Sections/Periods, ConfigEndpoint): 3,000 html and 3,000 Markdown fuzz cases rendered for anonymous and instructor by `2e3b6f9` and `8711989` and compared; ~6,000 html.php outputs checked in Chromium and ~12,000 md.php outputs converted by marked and markdown-it (135 new html leaks, L-159; 193 comment leaks, M-53; no duplicated text, no 500s); scaling to ~1 MB linear (the 40,000-comment page 5.6 s → 0.17 s); ~30 live probes; Apache+FPM smoke test passes with the new checks; the lock-gate lockout and the forged-session sweep reproduced live; 15 double-extension probes; 154 tests pass. L-156, the JSON objects, the 303 header and announcement ids verified | M-53, M-54, L-159..L-164, DOC-54, T-34 |
 
 ## CI notes
 
